@@ -1,0 +1,136 @@
+# =========================
+# Python / Virtual Envs
+# =========================
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# =========================
+# uv
+# =========================
+.uv/
+
+# =========================
+# HuggingFace / LLM Cache
+# =========================
+.hf/
+.huggingface/
+.huggingface_cache/
+.cache/huggingface/
+.cache/transformers/
+.cache/datasets/
+models/
+checkpoints/
+weights/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.gguf
+
+# =========================
+# ML/Experiment Artifacts
+# =========================
+runs/
+outputs/
+experiments/
+wandb/
+mlruns/
+results/
+predictions/
+metrics/
+*.pkl
+*.joblib
+
+# =========================
+# Config / Secrets
+# =========================
+.env
+.env.*
+*.env
+secrets.yaml
+secrets.json
+credentials.json
+tokens.json
+api_keys.yaml
+
+# =========================
+# Data
+# =========================
+data/raw/
+data/processed/
+data/tmp/
+data/cache/
+*.h5
+*.parquet
+*.db
+*.duckdb
+*.sqlite
+*.sqlite3
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Streamlit / Gradio
+# =========================
+.streamlit/
+.gradio/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+.ipython/
+*.nbconvert.ipynb
+
+# =========================
+# OS / Editor Junk
+# =========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# =========================
+# Docker
+# =========================
+.docker/
+docker-compose.override.yml
+
+# =========================
+# Test Coverage
+# =========================
+.coverage
+htmlcov/
+
+# =========================
+# Temporary Dev Files
+# =========================
+tmp/
+scratch/
+debug/
+notes.txt
+.todo
