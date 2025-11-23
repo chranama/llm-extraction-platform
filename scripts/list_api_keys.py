@@ -2,8 +2,8 @@
 import asyncio
 from sqlalchemy import select
 
-from app.db.session import async_session_maker
-from app.db.models import ApiKey
+from llm_server.db.session import async_session_maker
+from llm_server.db.models import ApiKey
 
 
 async def main():

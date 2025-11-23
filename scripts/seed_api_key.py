@@ -8,8 +8,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import init_db, async_session_maker
-from app.db.models import ApiKey, RoleTable, Role
+from llm_server.db.session import init_db, async_session_maker
+from llm_server.db.models import ApiKey, RoleTable, Role
 
 
 async def upsert_role(session: AsyncSession, role_name: Optional[str]) -> Optional[RoleTable]:

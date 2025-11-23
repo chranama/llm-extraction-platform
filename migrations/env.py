@@ -10,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from alembic import context
 
 # --- Load your app settings & metadata ---
-# Make sure your project root (containing `app/`) is on PYTHONPATH when running alembic.
-from app.core.config import settings
-from app.db.models import Base  # <-- target_metadata comes from here
+from llm_server.core.config import settings
+from llm_server.db.models import Base  # <-- target_metadata comes from here
 
 # Alembic Config object, provides access to the .ini file values
 config = context.config

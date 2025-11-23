@@ -1,7 +1,7 @@
 # tests/test_integration_generate.py
 import pytest
 from sqlalchemy import select
-from app.db.models import InferenceLog, CompletionCache
+from llm_server.db.models import InferenceLog, CompletionCache
 
 @pytest.mark.anyio
 async def test_generate_happy_path(client, api_key, mock_model, db_session):

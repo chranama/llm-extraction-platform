@@ -7,16 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy project files
+# Copy project metadata + source code
 COPY pyproject.toml ./
-# If you use uv, you can install via pip for simplicity here:
-RUN pip install --no-cache-dir "uvicorn[standard]>=0.35" "fastapi>=0.116" \
-    "orjson>=3.9.15" "sqlalchemy[asyncio]>=2.0" "asyncpg>=0.29" "aiosqlite>=0.20" \
-    "greenlet>=3.0" "pydantic-settings>=2.0" "prometheus-client>=0.20" \
-    "httpx>=0.27" "redis[hiredis]>=5.0"
+COPY src ./src
 
-# Copy app
-COPY app ./app
+# Install the project (and its dependencies) as a package
+# Assumes pyproject.toml is configured with [project] and build-system.
+RUN pip install --no-cache-dir .
+
+# Copy runtime extras (DB migrations, Alembic config, etc.)
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
 
@@ -24,4 +23,5 @@ COPY alembic.ini ./alembic.ini
 EXPOSE 8000
 
 # Run the app
-CMD ["uv", "run", "serve"]
+# Assumes your main entrypoint is in src/llm_server/main.py
+CMD ["python", "-m", "llm_server.main"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from redis.asyncio import Redis, from_url
 
-from app.core.config import settings
+from llm_server.core.config import settings
 
 async def init_redis() -> Optional[Redis]:
     if not settings.redis_enabled or not settings.redis_url:

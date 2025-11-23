@@ -1,7 +1,7 @@
 # app/db/models.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional, Dict, Any
 import enum
 
@@ -31,14 +31,27 @@ class Base(DeclarativeBase):
     pass
 
 
+# --------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------
+
+def utc_now() -> datetime:
+    """Timezone-aware UTC timestamp (replacement for datetime.utcnow)."""
+    return datetime.now(UTC)
+
+
+# --------------------------------------------------------------------------
+# Tables
+# --------------------------------------------------------------------------
+
 class RoleTable(Base):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
         index=True,
@@ -56,16 +69,19 @@ class ApiKey(Base):
     # Quotas (optional)
     quota_monthly: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # NULL = unlimited
     quota_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # NEW: link each API key to an optional role row
     role_id: Mapped[Optional[int]] = mapped_column(ForeignKey("roles.id"), nullable=True)
     role: Mapped[Optional["RoleTable"]] = relationship("RoleTable")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,           # Python-side fallback
-        server_default=func.now(),         # DB-side default
+        DateTime(timezone=True),
+        default=utc_now,        # Python-side fallback
+        server_default=func.now(),  # DB-side default
         nullable=False,
         index=True,
     )
@@ -76,8 +92,8 @@ class InferenceLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
         index=True,
@@ -116,8 +132,8 @@ class CompletionCache(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=utc_now,
         server_default=func.now(),
         nullable=False,
         index=True,
@@ -138,8 +154,10 @@ class CompletionCache(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "model_id", "prompt_hash", "params_fingerprint",
-            name="uq_completion_key"
+            "model_id",
+            "prompt_hash",
+            "params_fingerprint",
+            name="uq_completion_key",
         ),
         Index("ix_cache_model_promptfp", "model_id", "params_fingerprint"),
     )

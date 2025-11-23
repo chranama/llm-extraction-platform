@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.services.llm import ModelManager, DEFAULT_STOPS
+from llm_server.services.llm import ModelManager, DEFAULT_STOPS
 
 app = FastAPI(title="LLM Runtime (host)", version="0.1.0")
 _llm = ModelManager()

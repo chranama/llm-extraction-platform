@@ -11,7 +11,7 @@ from transformers import (
     TextIteratorStreamer,
 )
 
-from app.core.config import settings  # <-- central config import
+from llm_server.core.config import settings  # <-- central config import
 
 # Map strings to torch dtypes
 DTYPE_MAP = {
@@ -40,6 +40,20 @@ class ModelManager:
     _model = None
     _device = DEVICE
     _dtype = DTYPE_MAP.get(settings.model_dtype, torch.float16)
+
+    # ------------- factory used by main.py & tests -------------
+    @classmethod
+    def from_settings(cls, settings) -> "ModelManager":
+        """
+        Factory used by the FastAPI startup hook.
+        In tests, this method is monkeypatched to return DummyModelManager.
+        """
+        instance = cls()
+        # Allow overriding model configuration from settings if needed
+        instance.model_id = settings.model_id
+        instance._dtype = DTYPE_MAP.get(getattr(settings, "model_dtype", "float16"), torch.float16)
+        # _device already set from global DEVICE, but you could override here if you ever add a setting
+        return instance
 
     # ------------- lifecycle -------------
     def ensure_loaded(self) -> None:

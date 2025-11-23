@@ -12,7 +12,7 @@ async def test_missing_api_key_returns_401(client, mock_model):
 @pytest.mark.anyio
 async def test_rate_limit_429(client, api_key, mock_model, monkeypatch):
     # Force RPM=1 for test
-    import app.api.deps as deps
+    import llm_server.api.deps as deps
     deps._RL.clear()
     monkeypatch.setattr(deps, "_role_rpm", lambda role: 1, raising=True)
 
@@ -30,10 +30,10 @@ async def test_rate_limit_429(client, api_key, mock_model, monkeypatch):
 @pytest.mark.anyio
 async def test_quota_exhausted_402(client, api_key, mock_model, monkeypatch):
     # Simulate a monthly quota of 0 so first request triggers 402
-    import app.api.deps as deps
-    from app.db.models import ApiKey
+    import llm_server.api.deps as deps
+    from llm_server.db.models import ApiKey
     from sqlalchemy import select
-    from app.db.session import async_session_maker
+    from llm_server.db.session import async_session_maker
 
     async with async_session_maker() as s:
         row = (await s.execute(select(ApiKey).where(ApiKey.key == api_key))).scalar_one()

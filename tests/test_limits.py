@@ -3,7 +3,7 @@ import pytest
 @pytest.mark.anyio
 async def test_rate_limit_window(client, api_key, mock_model, monkeypatch):
     # monkeypatch deps._role_rpm to force small limit (e.g., 1 rpm)
-    import app.api.deps as deps
+    import llm_server.api.deps as deps
     monkeypatch.setattr(deps, "_role_rpm", lambda role: 1)
 
     h = {"X-API-Key": api_key}

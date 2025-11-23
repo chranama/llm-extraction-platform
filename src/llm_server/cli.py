@@ -17,7 +17,7 @@ def serve():
     # In dev we force single worker + reload for hot-reload
     if dev_mode:
         uvicorn.run(
-            "app.main:create_app",
+            "llm_server.main:create_app",
             factory=True,
             host=host,
             port=port,
@@ -29,7 +29,7 @@ def serve():
     # Production-ish defaults
     workers = int(os.getenv("WORKERS", "1"))
     uvicorn.run(
-        "app.main:create_app",
+        "llm_server.main:create_app",
         factory=True,
         host=host,
         port=port,
