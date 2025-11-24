@@ -1,18 +1,19 @@
 # LLM Server  
-### A Production-Style API Gateway + Inference Runtime for Large Language Models
+### A production-style API gateway and inference runtime for large language models
 
-This project is a self-hosted, production-inspired **LLM serving platform** built with FastAPI, Hugging Face Transformers, and PyTorch. It is designed to mirror real-world architecture patterns used by companies deploying foundation models behind internal and external APIs.
+This project is a self-hosted, production-inspired LLM serving platform built with FastAPI, Hugging Face Transformers, PyTorch, and SQLAlchemy.  
+It mirrors the architecture patterns used by teams that deploy foundation models behind internal and external APIs.
 
-Rather than being just a demo model runner, this repository focuses on:
+This is not a notebook demo. It is an infrastructure project focused on:
 
-- Infrastructure
-- Security
-- Quotas
-- Observability
-- Scalability patterns
-- Clean separation of concerns
+- Clean architecture
+- Security and API design
+- Quotas and rate limiting
+- Observability and telemetry
+- Testability and robustness
+- Deployment-readiness
 
-It is designed to be a **portfolio-grade system-level project** demonstrating my ability to design and build ML/AI infrastructure.
+It is intended to be a portfolio-grade systems project demonstrating real ML platform engineering skills.
 
 ---
 
@@ -20,144 +21,222 @@ It is designed to be a **portfolio-grade system-level project** demonstrating my
 
 - FastAPI-based LLM gateway
 - API key authentication
-- Rate limiting + concurrency limits
-- Usage quotas (monthly limits)
-- Prometheus metrics + Grafana dashboards
-- SQLAlchemy + Alembic for persistence
-- Streaming & non-streaming generation
-- Hugging Face Transformers backend
+- Per-key quotas and rate limiting
+- Request logging and history
+- Completion caching
+- Prometheus metrics middleware
+- Streaming and non-streaming generation
+- Local Hugging Face and PyTorch inference
+- Extensible provider layer (local / remote / hybrid)
+- SQLAlchemy and Alembic for persistence
 - Docker support
-- Test suite with Pytest
+- Full Pytest test suite
+- uv-based dependency and environment management
 
-The architecture cleanly separates:
+Architecture layers are cleanly separated:
 
-- Gateway API — validates requests, manages users/quotas, logs history
-- LLM Runtime Service — loads and serves the actual model
-- Database layer — tracks users, API keys, quotas and request history
-- Metrics layer — exposes structured telemetry
+- API Layer — validation, auth, quotas, logging, metrics
+- LLM Layer — model loading and inference execution
+- Database Layer — API keys, roles, quotas, request history
+- Observability Layer — telemetry and metrics
 
-This design follows real patterns used in production AI platforms.
+This closely mirrors real systems used in production AI platforms.
 
 ---
 
 ## Architecture Overview
 
 Client  
-→ FastAPI Gateway (Auth · Quotas · Rate Limit · Logging · Metrics)  
-→ LLM Runtime API (HuggingFace + PyTorch)  
-→ GPU / CPU Inference Engine  
+→ FastAPI Gateway (Auth, Quotas, Rate Limit, Logging, Metrics)  
+→ Model Manager (Transformers + PyTorch)  
+→ GPU / MPS / CPU Inference Engine  
 
 Supporting components:
 
-- Database (Postgres / SQLite) for users, keys, quotas
-- Prometheus for metrics collection
-- Grafana for visualization
-- Docker / Compose for deployment
+- Database (Postgres / SQLite via SQLAlchemy)
+- Prometheus for metrics
+- Redis (optional – caching / queueing)
+- Docker and Compose for deployment
 
-This is intentionally separated from the typical “single-file chatbot” pattern and instead follows:
+The design follows:
 
-- Microservice thinking
-- Separation of concerns
-- Horizontal scalability concepts
+- Modular service boundaries
+- Dependency injection
+- Clear separation of concerns
+- Scalability-ready layout
+
+It is intentionally not a single-file chatbot app.
 
 ---
 
-## Project Structure
+## Current Project Structure
 
     llm-server/
-    ├── app/
-    │   ├── gateway/              # FastAPI gateway (auth, quota, limits)
-    │   ├── runtime/              # Model loading & inference engine
-    │   ├── db/                   # SQLAlchemy models + Alembic migrations
-    │   ├── core/                 # Config, security, settings
-    │   ├── metrics/              # Prometheus metrics endpoints
-    │   └── main.py               # Main FastAPI entrypoint
+    ├── src/
+    │   └── llm_server/
+    │       ├── api/                # /generate, /stream, /health
+    │       ├── core/               # settings, limits, logging, metrics
+    │       ├── db/                 # SQLAlchemy models + session
+    │       ├── providers/          # (future) remote/hybrid LLM clients
+    │       ├── services/           # ModelManager (HuggingFace, local)
+    │       ├── main.py             # FastAPI + lifespan
+    │       └── cli.py              # uv run serve
     │
-    ├── models/                   # Local models (optional)
-    ├── tests/                    # Pytest test suite
-    ├── docker/                   # Docker + compose configs
-    ├── scripts/                  # Admin & bootstrap scripts
-    ├── requirements.txt
-    ├── alembic.ini
-    ├── docker-compose.yml
+    ├── scripts/                    # Admin / DB scripts
+    ├── tests/                      # Full Pytest suite
+    ├── migrations/                 # Alembic
+    ├── data/                       # Local SQLite (dev/test)
+    ├── Dockerfile.api
+    ├── pyproject.toml
+    ├── uv.lock
     └── README.md
 
----
-
-## Core Capabilities
-
-### 1. API Gateway Features
-
-- API key validation
-- User tiers / plans
-- Monthly quotas
-- Per-minute rate limiting
-- Request logging
-- Request tracing
-- Abuse & replay protection
-
-This makes the project closer to:
-
-**“OpenAI-style backend for your own models”**
-
-than a traditional ML demo.
+The old app directory has been fully removed and replaced by the modern, scalable src/llm_server layout.
 
 ---
 
-### 2. Inference Layer
+## Endpoints
 
-The runtime supports:
+- GET /health — basic liveness
+- GET /readyz — model readiness
+- POST /v1/generate — text completion
+- POST /v1/stream — streaming completion
+- GET /metrics — Prometheus metrics
 
-- Streaming token generation
-- Standard completion
-- Chat-style input
-- Model configuration (temperature, max tokens, etc.)
-- GPU optimization (if available)
+Example request
 
-Designed to support models such as:
+POST /v1/generate  
+Header: X-API-Key: your_api_key  
+Body (application/json):
 
-- Mistral
-- LLaMA
-- Phi
-- DeepSeek
-- Custom HuggingFace models
+    {
+      "prompt": "Explain transformers in one sentence.",
+      "max_new_tokens": 50
+    }
+
+Example response:
+
+    {
+      "model": "your-model-id",
+      "output": "...",
+      "cached": false
+    }
 
 ---
 
-### 3. Observability
+## Running locally
 
-Integrated metrics include:
+### Install
 
-- Total requests
-- Tokens generated
-- Latency (p95 / p99 ready)
-- Errors by type
-- Active clients
-- Quota usage
+Choose ONE backend:
 
-These feed into:
+    uv sync --extra mps      (Apple Silicon)
+    uv sync --extra cpu      (CPU)
+    uv sync --extra cuda121  (NVIDIA CUDA 12.1)
 
-- Prometheus
-- Grafana dashboards
+### Run the server
 
-This is a rare and valuable feature in portfolio projects.
+    uv run serve
+
+The server will start on:
+
+    http://127.0.0.1:8000
 
 ---
 
 ## Testing
 
-Tests are written using Pytest and focus on:
+Tests are fully integrated with the FastAPI lifespan and use a dummy LLM to avoid real model downloads.
+
+    uv run pytest
+
+The test suite covers:
 
 - API key validation
-- Quota enforcement
-- Rate limiting
-- Request contracts
-- Edge cases
+- Quota logic
+- Rate and concurrency limits
+- Generate and stream endpoints
+- Health and metrics
+- Cache and request logging
 
-To run tests:
-
-    pytest
-
-This project intentionally includes tests because production systems are not notebooks.
+This confirms the system behaves like a real production service.
 
 ---
+
+## Model System
+
+Models are managed by:
+
+    src/llm_server/services/llm.py
+
+The ModelManager:
+
+- Lazily loads the model
+- Supports generate() and stream()
+- Works on MPS, CPU, and GPU
+- Can be replaced with:
+  - Remote API clients
+  - Multi-model routing
+  - Load-balanced replicas
+
+The provider abstraction lives in:
+
+    src/llm_server/providers/
+
+This allows you to extend the system into:
+
+- Hybrid deployments
+- Multi-model switching
+- RAG pipelines
+- Central model hubs
+
+---
+
+## Observability
+
+- Prometheus metrics exposed at /metrics
+- Structured logging per request
+- Latency tracking
+- Cache hit tracking
+- Ready for Grafana dashboards
+
+This is rarely present in portfolio projects and mirrors real platform standards.
+
+---
+
+## Roadmap (Revised)
+
+### Phase 0 – Stability and architecture (completed)
+
+- src-based layout
+- Lifespan setup
+- Dummy LLM in tests
+- All tests passing
+- Local ModelManager
+
+### Phase 1 – Deployment hardening
+
+- Finalize Dockerfile.api
+- Environment profiles (dev / test / prod)
+- Startup validations
+- CI pipeline
+
+### Phase 2 – Performance and scalability
+
+- Global concurrency control
+- Per-model queueing
+- Redis-backed job system
+- Multi-model selection
+
+### Phase 3 – Observability and productization
+
+- Dashboards
+- Admin UI
+- Model management API
+- Documentation site
+
+---
+
+This project is intended to grow into:
+
+A self-hosted, open-source LLM platform backend that mirrors the design patterns of OpenAI and Anthropic, but runs under your control.
