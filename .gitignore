@@ -82,6 +82,8 @@ data/cache/
 *.duckdb
 *.sqlite
 *.sqlite3
+*.json
+*.csv
 
 # =========================
 # Logs

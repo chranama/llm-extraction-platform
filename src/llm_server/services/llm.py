@@ -91,7 +91,7 @@ class ModelManager:
         max_new_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.95,
-        top_k: int = 0,
+        top_k: int | None = 0,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
     ) -> str:
@@ -105,13 +105,18 @@ class ModelManager:
 
         inputs = tok(prompt, return_tensors="pt").to(self._device)
 
+        # Normalize sampling params so they’re safe
+        use_top_k = top_k if (top_k is not None and top_k > 0) else None
+        use_temperature = temperature if (temperature is not None and temperature > 0) else 0.0
+        use_top_p = top_p if top_p is not None else 0.95
+
         output_ids = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            do_sample=temperature > 0,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k if top_k > 0 else None,
+            do_sample=use_temperature > 0,
+            temperature=use_temperature,
+            top_p=use_top_p,
+            top_k=use_top_k,
             repetition_penalty=repetition_penalty,
             eos_token_id=tok.eos_token_id,
             pad_token_id=tok.pad_token_id,
@@ -121,6 +126,7 @@ class ModelManager:
         tail = text[len(prompt):]
         return self._truncate_on_stop(tail, stops)
 
+
     # ------------- streaming -------------
     def stream(
         self,
@@ -128,7 +134,7 @@ class ModelManager:
         max_new_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.95,
-        top_k: int = 0,
+        top_k: int | None = 0,
         repetition_penalty: float = 1.0,
         stop: Optional[List[str]] = None,
     ) -> Iterator[str]:
@@ -148,20 +154,24 @@ class ModelManager:
             skip_special_tokens=True,
         )
 
+        # Normalize sampling params so they’re safe
+        use_top_k = top_k if (top_k is not None and top_k > 0) else None
+        use_temperature = temperature if (temperature is not None and temperature > 0) else 0.0
+        use_top_p = top_p if top_p is not None else 0.95
+
         gen_kwargs = dict(
             **inputs,
             max_new_tokens=max_new_tokens,
-            do_sample=temperature > 0,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k if top_k > 0 else None,
+            do_sample=use_temperature > 0,
+            temperature=use_temperature,
+            top_p=use_top_p,
+            top_k=use_top_k,
             repetition_penalty=repetition_penalty,
             eos_token_id=tok.eos_token_id,
             pad_token_id=tok.pad_token_id,
             streamer=streamer,
         )
 
-        import threading
         t = threading.Thread(target=model.generate, kwargs=gen_kwargs)
         t.start()
 
