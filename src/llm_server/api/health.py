@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,13 +26,14 @@ async def healthz():
 
 @router.get("/readyz")
 async def readyz(
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     """
     Readiness probe used by tests.
 
     - Checks DB connectivity (SELECT 1).
-    - Checks that the LLM is "loadable" via get_llm().ensure_loaded().
+    - Checks that the LLM is "loadable" via get_llm(request).ensure_loaded().
     """
     # DB check
     db_ok = True
@@ -44,8 +45,12 @@ async def readyz(
 
     # LLM check
     try:
-        llm = get_llm()
-        llm.ensure_loaded()
+        llm = get_llm(request)
+
+        # Both ModelManager and MultiModelManager expose ensure_loaded()
+        if hasattr(llm, "ensure_loaded"):
+            llm.ensure_loaded()
+
         llm_status = "ready"
     except Exception:  # pragma: no cover
         llm_status = "not ready"

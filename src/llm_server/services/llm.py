@@ -1,17 +1,25 @@
-# app/services/llm.py
+# src/llm_server/services/llm.py
 from __future__ import annotations
 
+import os
 import threading
-from typing import Iterator, Optional, List
+from typing import Iterator, Optional, List, Dict, Any
 
 import torch
+import yaml
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     TextIteratorStreamer,
 )
 
-from llm_server.core.config import settings  # <-- central config import
+from llm_server.core.config import settings
+from llm_server.services.llm_api import HttpLLMClient
+
+
+# -----------------------------------
+# Configuration helpers
+# -----------------------------------
 
 # Map strings to torch dtypes
 DTYPE_MAP = {
@@ -20,19 +28,189 @@ DTYPE_MAP = {
     "float32": torch.float32,
 }
 
-# Device selection (Apple Silicon MPS or CPU as fallback)
-DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
+# Device selection
+# - If settings.model_device is set, prefer that.
+# - Otherwise use MPS if available, else CPU.
+if settings.model_device:
+    DEVICE = settings.model_device
+else:
+    DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
 
 # Default stops to avoid the model continuing a new user turn
 DEFAULT_STOPS: List[str] = ["\nUser:", "\nuser:", "User:", "###"]
 
 
+# ===================================
+# MULTI MODEL MANAGER
+# ===================================
+
+class MultiModelManager:
+    """
+    Holds and routes between many LLM backends.
+
+    Backends can be:
+    - Local ModelManager
+    - HttpLLMClient
+    - DummyModelManager (tests)
+
+    All must expose: generate(...) and stream(...)
+    """
+
+    def __init__(self, models: Dict[str, Any], default_id: str):
+        self._models = models
+        self.default_id = default_id
+
+    @property
+    def models(self) -> Dict[str, Any]:
+        return self._models
+
+    def get(self, model_id: str) -> Any:
+        return self._models[model_id]
+
+    def __getitem__(self, model_id: str) -> Any:
+        return self._models[model_id]
+
+    def __contains__(self, model_id: object) -> bool:
+        return model_id in self._models
+
+    def list_models(self) -> List[str]:
+        return list(self._models.keys())
+
+    def ensure_loaded(self) -> None:
+        """
+        Used by /readyz health check.
+
+        Only ensures the *default* model is loaded so you don't blow up VRAM
+        by loading everything at once.
+        """
+        if self.default_id in self._models:
+            mgr = self._models[self.default_id]
+            if hasattr(mgr, "ensure_loaded"):
+                mgr.ensure_loaded()
+
+    def load_all(self) -> None:
+        """
+        Eagerly load all models. Use with care (VRAM!).
+        """
+        for mgr in self._models.values():
+            if hasattr(mgr, "ensure_loaded"):
+                mgr.ensure_loaded()
+
+
+# ------------------------------------------------------------
+# YAML-based model config loader
+# ------------------------------------------------------------
+
+def _load_models_from_yaml() -> tuple[str, List[str]] | None:
+    """
+    Try to load default_model + models list from models.yaml (or custom path).
+
+    Returns:
+        (default_model_id, all_model_ids) or None on any issue.
+    """
+    path = getattr(settings, "models_config_path", None) or "models.yaml"
+
+    if not path or not os.path.exists(path):
+        return None
+
+    try:
+        with open(path, "r") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception:
+        # If YAML is malformed, just fall back to env-based config
+        return None
+
+    default_model = data.get("default_model")
+    models_list = data.get("models") or []
+
+    # Extract ids
+    ids: List[str] = []
+    for m in models_list:
+        if isinstance(m, dict) and "id" in m:
+            ids.append(str(m["id"]))
+        elif isinstance(m, str):
+            ids.append(m)
+
+    if not ids and not default_model:
+        return None
+
+    # If default_model not provided, use first id
+    if not default_model:
+        default_model = ids[0]
+
+    if default_model not in ids:
+        ids.insert(0, default_model)
+
+    return default_model, ids
+
+
+def build_llm_from_settings() -> Any:
+    """
+    Creates the appropriate LLM backend(s) from config.
+
+    Returns either:
+    - ModelManager (single model)
+    - OR MultiModelManager (local + remote mix)
+
+    Priority:
+    1) If models.yaml (or models_config_path) exists and is valid:
+       - Use it to define default + allowed models.
+    2) Else fall back to SETTINGS:
+       - settings.model_id + settings.allowed_models
+    """
+
+    # 1) Try to load from models.yaml
+    yaml_cfg = _load_models_from_yaml()
+    if yaml_cfg is not None:
+        primary_id, all_ids = yaml_cfg
+
+        # Sync settings so generate.py resolve_model sees the same IDs
+        settings.model_id = primary_id
+        settings.allowed_models = all_ids
+    else:
+        # 2) Fall back to environment-based config
+        primary_id = settings.model_id
+        all_ids = settings.all_model_ids
+
+    # --- Only one model → just use local ModelManager ---
+    if len(all_ids) == 1:
+        # local single model
+        return ModelManager.from_settings(settings)
+
+    # --- Multiple models → route ---
+    models: Dict[str, Any] = {}
+
+    # Local primary model
+    local = ModelManager.from_settings(settings)
+    # Ensure the local manager uses the selected primary id
+    local.model_id = primary_id
+    models[primary_id] = local
+
+    # Remote models via HTTP for the others
+    for mid in all_ids:
+        if mid == primary_id:
+            continue
+
+        models[mid] = HttpLLMClient(
+            base_url=settings.llm_service_url,
+            model_id=mid,
+            timeout=settings.http_client_timeout,
+        )
+
+    return MultiModelManager(models, default_id=primary_id)
+
+
+# ===================================
+# LOCAL MODEL MANAGER
+# ===================================
+
 class ModelManager:
     """
-    Singleton-ish manager for tokenizer/model with:
+    Local HuggingFace model backend
+
     - Lazy loading
-    - Non-streaming generation (return full text)
-    - Streaming generation (yield chunks)
+    - Non-streaming generation
+    - Streaming generation
     """
 
     model_id: str = settings.model_id
@@ -41,21 +219,30 @@ class ModelManager:
     _device = DEVICE
     _dtype = DTYPE_MAP.get(settings.model_dtype, torch.float16)
 
-    # ------------- factory used by main.py & tests -------------
+    # ---------- factory ----------
     @classmethod
-    def from_settings(cls, settings) -> "ModelManager":
+    def from_settings(cls, cfg) -> "ModelManager":
         """
-        Factory used by the FastAPI startup hook.
-        In tests, this method is monkeypatched to return DummyModelManager.
+        Build a ModelManager from Settings.
+
+        Uses:
+        - cfg.model_id
+        - cfg.model_dtype
+        - cfg.model_device (if set) or the global DEVICE
         """
         instance = cls()
-        # Allow overriding model configuration from settings if needed
-        instance.model_id = settings.model_id
-        instance._dtype = DTYPE_MAP.get(getattr(settings, "model_dtype", "float16"), torch.float16)
-        # _device already set from global DEVICE, but you could override here if you ever add a setting
+        instance.model_id = cfg.model_id
+        instance._dtype = DTYPE_MAP.get(
+            getattr(cfg, "model_dtype", "float16"),
+            torch.float16,
+        )
+        if getattr(cfg, "model_device", None):
+            instance._device = cfg.model_device
+        else:
+            instance._device = DEVICE
         return instance
 
-    # ------------- lifecycle -------------
+    # ---------- lifecycle ----------
     def ensure_loaded(self) -> None:
         if self._tokenizer is None:
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_id, use_fast=True)
@@ -71,7 +258,7 @@ class ModelManager:
             self._model.to(self._device)
             self._model.eval()
 
-    # ------------- helpers -------------
+    # ---------- helpers ----------
     @staticmethod
     def _truncate_on_stop(text: str, stop: Optional[List[str]]) -> str:
         if not stop:
@@ -83,7 +270,7 @@ class ModelManager:
                 return text[:cut]
         return text
 
-    # ------------- non-streaming -------------
+    # ---------- non-streaming ----------
     @torch.inference_mode()
     def generate(
         self,
@@ -97,6 +284,7 @@ class ModelManager:
     ) -> str:
         """Return the full completion as a single string."""
         self.ensure_loaded()
+
         tok = self._tokenizer
         model = self._model
 
@@ -124,10 +312,10 @@ class ModelManager:
 
         text = tok.decode(output_ids, skip_special_tokens=True)
         tail = text[len(prompt):]
+
         return self._truncate_on_stop(tail, stops)
 
-
-    # ------------- streaming -------------
+    # ---------- streaming ----------
     def stream(
         self,
         prompt: str,
@@ -140,6 +328,7 @@ class ModelManager:
     ) -> Iterator[str]:
         """Yield text chunks as they are generated using TextIteratorStreamer."""
         self.ensure_loaded()
+
         tok = self._tokenizer
         model = self._model
 

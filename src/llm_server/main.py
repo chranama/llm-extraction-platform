@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import orjson
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,13 +11,14 @@ from llm_server.core.config import settings
 from llm_server.core import logging as logging_config
 from llm_server.core import metrics, limits
 from llm_server.core.redis import init_redis, close_redis
-from llm_server.services.llm import ModelManager
+from llm_server.services.llm import build_llm_from_settings  # <--- new import
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ---------- startup ----------
     import logging
+
     logging.getLogger("uvicorn.error").info(
         "CORS allow_origins=%s | env=%s | debug=%s | redis_enabled=%s",
         settings.cors_allowed_origins,
@@ -32,10 +34,15 @@ async def lifespan(app: FastAPI):
         logging.getLogger("uvicorn.error").exception("Redis init failed: %s", e)
         app.state.redis = None
 
-    # init llm
+    # init LLM (single or multi-model, depending on config / models.yaml)
     try:
-        app.state.llm = ModelManager()
-        app.state.llm.ensure_loaded()
+        llm = build_llm_from_settings()
+        # Make it visible to dependencies (generate.py, health.py, etc.)
+        app.state.llm = llm
+
+        # For readiness: ensure the default/local model can be loaded
+        if hasattr(llm, "ensure_loaded"):
+            llm.ensure_loaded()
     except Exception as e:
         logging.getLogger("uvicorn.error").exception("LLM init failed: %s", e)
         app.state.llm = None
@@ -71,9 +78,11 @@ def create_app() -> FastAPI:
     metrics.setup(app)
 
     # --- Routers ---
-    from llm_server.api import health, generate
+    from llm_server.api import health, generate, models
+
     app.include_router(health.router)
     app.include_router(generate.router)
+    app.include_router(models.router)
 
     return app
 

@@ -7,15 +7,16 @@ import json
 import time
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from llm_server.db.models import InferenceLog, CompletionCache
 from llm_server.db.session import async_session_maker
 from llm_server.core.config import settings
 from llm_server.api.deps import get_api_key
+from llm_server.services.llm import build_llm_from_settings, MultiModelManager
 
 router = APIRouter()
 
@@ -24,8 +25,16 @@ router = APIRouter()
 # Schemas
 # -------------------------------
 
+
 class GenerateRequest(BaseModel):
     prompt: str
+
+    # Optional override to pick a non-default model (when multi-model is enabled)
+    model: str | None = Field(
+        default=None,
+        description="Optional model id override for multi-model routing",
+    )
+
     max_new_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -38,40 +47,89 @@ class StreamRequest(GenerateRequest):
 
 
 # -------------------------------
-# LLM dependency
+# LLM dependency + routing
 # -------------------------------
+
 
 def get_llm(request: Request) -> Any:
     """
     Accessor used as a FastAPI dependency and imported by health.py.
 
-    The test suite may override this dependency to inject DummyModelManager.
+    - If app.state.llm is already set (from lifespan startup), just return it.
+    - If it's None (e.g. startup failed or was bypassed), lazily build it
+      from settings so the API can still serve requests.
     """
-    return getattr(request.app.state, "llm", None)
+    llm = getattr(request.app.state, "llm", None)
+
+    if llm is None:
+        # Lazy fallback initialization (no arguments; uses global settings)
+        llm = build_llm_from_settings()
+        request.app.state.llm = llm
+
+    return llm
+
+
+def resolve_model(request: Request, llm: Any, model_override: str | None) -> tuple[str, Any]:
+    allowed = settings.all_model_ids
+
+    if model_override is None:
+        model_id = settings.model_id
+    else:
+        model_id = model_override
+        if model_id not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model_id}' not allowed. Allowed: {allowed}",
+            )
+
+    # Multi-model: MultiModelManager
+    if isinstance(llm, MultiModelManager):
+        if model_id not in llm:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model '{model_id}' not found in LLM registry",
+            )
+        return model_id, llm[model_id]
+
+    # (optional) Multi-model: dict (if you ever use that form)
+    if isinstance(llm, dict):
+        if model_id not in llm:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model '{model_id}' not found in LLM registry",
+            )
+        return model_id, llm[model_id]
+
+    # Single-model mode
+    return model_id, llm
 
 
 # -------------------------------
 # Helpers
 # -------------------------------
 
+
 def hash_prompt(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:32]
 
 
 def fingerprint_params(body: GenerateRequest) -> str:
-    params = body.model_dump(exclude={"prompt"}, exclude_none=True)
+    """
+    Fingerprint all generation params except:
+    - prompt (handled separately)
+    - model (we key by model_id in the DB, so no need to double-encode it)
+
+    Cache key is effectively:
+        (model_id, prompt_hash, params_fingerprint)
+    """
+    params = body.model_dump(exclude={"prompt", "model"}, exclude_none=True)
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:32]
-
-
-def get_model_id(llm: Any) -> str:
-    if llm is not None and hasattr(llm, "model_id"):
-        return getattr(llm, "model_id")
-    return getattr(settings, "llm_model", None) or "unknown"
 
 
 # -------------------------------
 # Generate endpoint
 # -------------------------------
+
 
 @router.post("/v1/generate")
 async def generate(
@@ -80,7 +138,8 @@ async def generate(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
-    model_id = get_model_id(llm)
+    # Resolve which logical model id this request should use
+    model_id, model = resolve_model(request, llm, body.model)
 
     prompt_hash = hash_prompt(body.prompt)
     params_fp = fingerprint_params(body)
@@ -88,7 +147,6 @@ async def generate(
     start = time.time()
 
     async with async_session_maker() as session:
-
         # ---- 1. Check cache ----
         cached = await session.execute(
             select(CompletionCache).where(
@@ -108,7 +166,10 @@ async def generate(
                 route="/v1/generate",
                 client_host=request.client.host if request.client else None,
                 model_id=model_id,
-                params_json=body.model_dump(exclude={"prompt"}, exclude_none=True),
+                params_json=body.model_dump(
+                    exclude={"prompt", "model"},
+                    exclude_none=True,
+                ),
                 prompt=body.prompt,
                 output=output,
                 latency_ms=latency,
@@ -124,7 +185,7 @@ async def generate(
             }
 
         # ---- 2. Run model ----
-        result = llm.generate(
+        result = model.generate(
             prompt=body.prompt,
             max_new_tokens=body.max_new_tokens,
             temperature=body.temperature,
@@ -134,7 +195,6 @@ async def generate(
         )
 
         output = result if isinstance(result, str) else str(result)
-
         latency = (time.time() - start) * 1000
 
         # ---- 3. Save cache ----
@@ -153,7 +213,10 @@ async def generate(
             route="/v1/generate",
             client_host=request.client.host if request.client else None,
             model_id=model_id,
-            params_json=body.model_dump(exclude={"prompt"}, exclude_none=True),
+            params_json=body.model_dump(
+                exclude={"prompt", "model"},
+                exclude_none=True,
+            ),
             prompt=body.prompt,
             output=output,
             latency_ms=latency,
@@ -173,8 +236,15 @@ async def generate(
 # Stream endpoint
 # -------------------------------
 
-async def _sse_event_generator(llm: Any, body: StreamRequest) -> AsyncGenerator[str, None]:
-    for chunk in llm.stream(
+
+async def _sse_event_generator(
+    model: Any,
+    body: StreamRequest,
+) -> AsyncGenerator[str, None]:
+    """
+    Wrap the model.stream(...) iterator into an SSE stream.
+    """
+    for chunk in model.stream(
         prompt=body.prompt,
         max_new_tokens=body.max_new_tokens,
         temperature=body.temperature,
@@ -194,7 +264,11 @@ async def stream(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
-    generator = _sse_event_generator(llm, body)
+    # We still resolve the model here (even though we don't cache streams yet)
+    model_id, model = resolve_model(request, llm, body.model)
+
+    # (Optionally: you could later log streaming requests keyed by model_id)
+    generator = _sse_event_generator(model, body)
 
     return StreamingResponse(
         generator,

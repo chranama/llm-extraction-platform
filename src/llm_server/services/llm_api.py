@@ -1,79 +1,127 @@
-# app/services/llm_api.py
+# src/llm_server/services/llm_api.py
 from __future__ import annotations
 
-from typing import Iterator, Optional, List
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from typing import Any, Dict, Iterator, Optional
 
-from llm_server.services.llm import ModelManager, DEFAULT_STOPS
+import httpx
 
-app = FastAPI(title="LLM Runtime (host)", version="0.1.0")
-_llm = ModelManager()
+from llm_server.core.config import settings
 
 
-class GenerateRequest(BaseModel):
-    prompt: str
-    max_new_tokens: int = 256
-    temperature: float = 0.7
-    top_p: float = 0.95
-    top_k: int = 0
-    repetition_penalty: float = 1.0
-    stop: Optional[List[str]] = None
+class HttpLLMClient:
+    """
+    Simple HTTP client for calling an external LLM service.
 
+    This is used when `settings.model_mode == "remote"` in combination with
+    `settings.llm_service_url`.
 
-class GenerateResponse(BaseModel):
-    output: str
-    model: str
+    It is intentionally *decoupled* from the local `ModelManager` in
+    `llm_server.services.llm` to avoid circular imports.  It presents a
+    compatible interface:
 
+        - .model_id attribute
+        - .generate(prompt=..., max_new_tokens=..., temperature=..., ...)
+        - optional .stream(...) for future use
+    """
 
-@app.get("/healthz")
-async def healthz():
-    return {"status": "ok"}
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        model_id: Optional[str] = None,
+        timeout: Optional[int] = None,
+    ) -> None:
+        # Base URL of the remote LLM service (NOT the FastAPI gateway)
+        self.base_url: str = base_url or settings.llm_service_url
+        # Logical model identifier, used for logging / metrics
+        self.model_id: str = model_id or settings.model_id
+        # Per-request timeout in seconds
+        self.timeout: int = timeout or settings.http_client_timeout
 
+    # ------------------------------------------------------------
+    # Non-streaming generate
+    # ------------------------------------------------------------
+    def generate(
+        self,
+        prompt: str,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        stop: Optional[list[str]] = None,
+    ) -> str:
+        """
+        Call the remote LLM service's /v1/generate endpoint.
 
-@app.get("/readyz")
-async def readyz():
-    try:
-        _llm.ensure_loaded()
-        return {"status": "ready", "model": _llm.model_id}
-    except Exception:
-        return {"status": "not ready"}
+        The remote service is expected to implement a JSON API similar to
+        this gateway's /v1/generate:
 
+            POST {base_url}/v1/generate
+            {
+                "prompt": "...",
+                "max_new_tokens": ...,
+                "temperature": ...,
+                "top_p": ...,
+                "top_k": ...,
+                "stop": ["..."]
+            }
 
-@app.post("/generate", response_model=GenerateResponse)
-async def generate(body: GenerateRequest):
-    stops = body.stop if (body.stop and len(body.stop) > 0) else DEFAULT_STOPS
-    _llm.ensure_loaded()
-    out = _llm.generate(
-        prompt=body.prompt,
-        max_new_tokens=body.max_new_tokens,
-        temperature=body.temperature,
-        top_p=body.top_p,
-        top_k=body.top_k,
-        repetition_penalty=body.repetition_penalty,
-        stop=stops,
-    )
-    return GenerateResponse(output=out, model=_llm.model_id)
+            -> { "model": "...", "output": "completion text", ... }
+        """
+        url = f"{self.base_url.rstrip('/')}/v1/generate"
 
+        payload: Dict[str, Any] = {
+            "prompt": prompt,
+        }
+        if max_new_tokens is not None:
+            payload["max_new_tokens"] = max_new_tokens
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if top_p is not None:
+            payload["top_p"] = top_p
+        if top_k is not None:
+            payload["top_k"] = top_k
+        if stop:
+            payload["stop"] = stop
 
-@app.post("/stream")
-def stream(body: GenerateRequest) -> StreamingResponse:
-    stops = body.stop if (body.stop and len(body.stop) > 0) else DEFAULT_STOPS
+        with httpx.Client(timeout=self.timeout) as client:
+            resp = client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
 
-    def sse_lines() -> Iterator[bytes]:
-        try:
-            for chunk in _llm.stream(
-                prompt=body.prompt,
-                max_new_tokens=body.max_new_tokens,
-                temperature=body.temperature,
-                top_p=body.top_p,
-                top_k=body.top_k,
-                repetition_penalty=body.repetition_penalty,
-                stop=stops,
-            ):
-                yield f"data: {chunk}\n\n".encode("utf-8")
-        finally:
-            yield b"data: [DONE]\n\n"
+        # Expect the remote service to return {"output": "..."}.
+        output = data.get("output", "")
+        if not isinstance(output, str):
+            output = str(output)
+        return output
 
-    return StreamingResponse(sse_lines(), media_type="text/event-stream")
+    # ------------------------------------------------------------
+    # Streaming generate (optional / stub)
+    # ------------------------------------------------------------
+    def stream(
+        self,
+        prompt: str,
+        max_new_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        stop: Optional[list[str]] = None,
+    ) -> Iterator[str]:
+        """
+        Optional streaming interface.
+
+        If your remote service exposes a streaming endpoint (e.g. SSE at
+        /v1/stream), you can implement chunked iteration here. For now,
+        this provides a simple non-streaming fallback by calling
+        `generate()` and yielding the whole answer once.
+        """
+        # Simple fallback: one-shot generate
+        text = self.generate(
+            prompt=prompt,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            stop=stop,
+        )
+        if text:
+            yield text

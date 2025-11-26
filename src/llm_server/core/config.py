@@ -25,29 +25,45 @@ class Settings(BaseSettings):
     )
 
     # --- CORS ---
-    # Note: we accept Any here and normalize in a validator to avoid
-    # pydantic raising on weird env/.env formats.
     cors_allowed_origins: Any = Field(default_factory=lambda: ["*"])
 
     # --- model config ---
+    # Default model served by the runtime
     model_id: str = Field(default="mistralai/Mistral-7B-v0.1")
+
+    # Optional whitelist of allowed models for routing.
+    # If this list is empty AND models.yaml is not present,
+    # `model_id` is treated as the only allowed model.
+    allowed_models: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional list of allowed model IDs for routing. "
+            "If empty, only `model_id` is accepted (unless models.yaml is used)."
+        ),
+    )
+
+    # Optional path to models.yaml (relative or absolute).
+    models_config_path: Optional[str] = Field(
+        default="models.yaml",
+        description="Optional path to a YAML file with model routing config.",
+    )
+
     model_dtype: Literal["float16", "bfloat16", "float32"] = Field(default="float16")
     model_device: Optional[str] = Field(
         default=None
     )  # 'cuda', 'mps', 'cpu' or None for auto-detect
 
     # --- Redis ---
-# --- Redis ---
-    redis_url: Optional[str] = Field(default=None)  # e.g. "redis://localhost:6379/0"
+    redis_url: Optional[str] = Field(default=None)
     redis_enabled: bool = Field(
         default=False,
-        description="Set to True to require Redis in health/ready checks; False in tests/dev."
+        description="Set to True to require Redis in health/ready checks; False in tests/dev.",
     )
 
     # --- LLM service ---
     llm_service_url: str = Field(
         default="http://127.0.0.1:9001",
-        description="URL of the LLM service (can be overridden with LLM_SERVICE_URL env var)",
+        description="URL of the LLM service (used for remote HTTP backends).",
     )
     http_client_timeout: int = Field(
         default=60,
@@ -63,62 +79,49 @@ class Settings(BaseSettings):
     # --- API key cache ---
     api_key_cache_ttl_seconds: int = 10
 
-    # ----------- Validators -----------
+    # ----------- Convenience properties -----------
+
+    @property
+    def all_model_ids(self) -> List[str]:
+        """
+        Effective list of allowed model IDs.
+
+        - If allowed_models is non-empty, return that.
+        - Otherwise, just [model_id].
+        """
+        return self.allowed_models or [self.model_id]
 
     @field_validator("cors_allowed_origins", mode="after")
     @classmethod
     def normalize_cors_origins(cls, v: Any) -> List[str]:
-        """
-        Normalize CORS origins to a list[str].
-
-        Accepts:
-        - list[str] (already parsed)
-        - JSON array in env: '["http://foo","http://bar"]'
-        - Comma separated string: 'http://foo,http://bar'
-        - "*" or empty string
-        - Any other junk -> falls back to ["*"]
-        """
+        # ... your existing CORS normalization ...
         if v is None:
             return ["*"]
-
-        # Already a list
         if isinstance(v, list):
             return [str(item).strip() for item in v if str(item).strip()]
-
-        # String from env/.env
         if isinstance(v, str):
             s = v.strip()
             if not s:
                 return ["*"]
-
-            # "*" means wildcard
             if s == "*":
                 return ["*"]
-
-            # Try JSON list first
             try:
                 parsed = json.loads(s)
                 if isinstance(parsed, list):
                     return [str(item).strip() for item in parsed if str(item).strip()]
             except json.JSONDecodeError:
                 pass
-
-            # Fallback: comma separated
             values = [item.strip() for item in s.split(",") if item.strip()]
             return values or ["*"]
-
-        # Anything else -> stringify and wrap
         try:
             return [str(v).strip()] if str(v).strip() else ["*"]
         except Exception:
             return ["*"]
 
-    # ----------- Settings config -----------
-
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
-        extra="ignore",  # prevents crashing on unknown env keys
+        extra="ignore",
     )
 
 
