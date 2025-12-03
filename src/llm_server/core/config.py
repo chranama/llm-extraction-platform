@@ -54,10 +54,13 @@ class Settings(BaseSettings):
     )  # 'cuda', 'mps', 'cpu' or None for auto-detect
 
     # --- Redis ---
-    redis_url: Optional[str] = Field(default=None)
+    redis_url: Optional[str] = Field(default=None,
+        validation_alias="REDIS_URL",
+    )
     redis_enabled: bool = Field(
         default=False,
         description="Set to True to require Redis in health/ready checks; False in tests/dev.",
+        validation_alias="REDIS_ENABLED",
     )
 
     # --- LLM service ---

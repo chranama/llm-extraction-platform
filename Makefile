@@ -123,7 +123,7 @@ migrate-docker: ## Run Alembic migrations inside the API container
 seed-key: ## Insert 'admin' role + API key into Postgres (requires API_KEY=...)
 	@if [ -z "$(API_KEY)" ]; then echo '❌ Provide API_KEY, e.g. make seed-key API_KEY=$$(openssl rand -hex 24)'; exit 1; fi
 	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
-	  -c "DO $$$$ BEGIN IF NOT EXISTS (SELECT 1 FROM roles WHERE name='admin') THEN INSERT INTO roles (name) VALUES ('admin'); END IF; END $$$$;"
+	  -c "INSERT INTO roles (name) SELECT 'admin' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'admin');"
 	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
 	  -c "INSERT INTO api_keys (key, label, active, role_id, quota_used, quota_monthly, quota_reset_at) SELECT '$(API_KEY)', 'bootstrap', TRUE, r.id, 0, NULL, NULL FROM roles r WHERE r.name = 'admin' ON CONFLICT (key) DO NOTHING;"
 	@echo "✅ Seeded API key: $(API_KEY)"

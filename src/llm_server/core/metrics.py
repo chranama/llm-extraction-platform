@@ -1,114 +1,122 @@
 # src/llm_server/core/metrics.py
-import time
-from fastapi import APIRouter, Request, Response
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from __future__ import annotations
 
-# -----------------------------
-# Prometheus metrics
-# -----------------------------
+from typing import Callable
 
-REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status"],
-)
+from fastapi import FastAPI, Request
+from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import REGISTRY
+from starlette.middleware.base import BaseHTTPMiddleware
 
-REQUEST_LATENCY = Histogram(
-    "http_request_duration_seconds",
-    "Latency of HTTP requests",
-    ["method", "endpoint"],
-)
+from llm_server.core.config import settings
 
-LLM_REQUESTS = Counter(
-    "llm_requests_total",
-    "Total LLM requests (generate/stream) by route, model, and cache status.",
-    ["route", "model_id", "cached"],
-)
 
+# -----------------------------------------
+# LLM Token Counters
+# -----------------------------------------
 LLM_TOKENS = Counter(
     "llm_tokens_total",
-    "Total LLM tokens by direction (prompt/completion) and model.",
+    "Total tokens processed",
     ["direction", "model_id"],
 )
 
-LLM_LATENCY = Histogram(
-    "llm_request_latency_ms",
-    "LLM request latency in milliseconds, by route and model.",
-    ["route", "model_id"],
-    buckets=(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800),
+# -----------------------------------------
+# Request Metrics (existing)
+# -----------------------------------------
+REQUEST_LATENCY = Histogram(
+    "llm_api_request_latency_seconds",
+    "Request latency in seconds",
+    ["route", "model_id", "cached"],
 )
 
-# -----------------------------
-# /metrics endpoint
-# -----------------------------
+REQUEST_COUNT = Counter(
+    "llm_api_request_total",
+    "Total requests",
+    ["route", "model_id", "cached"],
+)
 
-router = APIRouter()
+# -----------------------------------------
+# NEW Redis Metrics
+# -----------------------------------------
+
+# Hits: Redis returned a cached value
+LLM_REDIS_HITS = Counter(
+    "llm_redis_hits_total",
+    "Redis cache hits",
+    ["model_id", "kind"],   # kind = "single" or "batch"
+)
+
+# Misses: Redis returned nothing (None)
+LLM_REDIS_MISSES = Counter(
+    "llm_redis_misses_total",
+    "Redis cache misses",
+    ["model_id", "kind"],
+)
+
+# Latency to call Redis GET operations
+LLM_REDIS_LATENCY = Histogram(
+    "llm_redis_latency_seconds",
+    "Latency of Redis cache GET operations",
+    ["model_id", "kind"],
+)
+
+# Redis enabled status (0 or 1)
+LLM_REDIS_ENABLED = Gauge(
+    "llm_redis_enabled",
+    "Whether Redis caching is enabled (1=yes, 0=no)",
+)
+# Set this at import time
+LLM_REDIS_ENABLED.set(1 if settings.redis_enabled else 0)
 
 
-@router.get("/metrics")
-def metrics():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
-
-# -----------------------------
-# Middleware wiring
-# -----------------------------
-
-def setup(app) -> None:
-    """Add latency/count middleware and mount /metrics route."""
-
-    @app.middleware("http")
-    async def prometheus_metrics(request: Request, call_next):
-        start = time.time()
-        response: Response = await call_next(request)
-        duration = time.time() - start  # seconds
-
-        endpoint = request.url.path
-        method = request.method
-        status = response.status_code
-
-        # Basic HTTP metrics
-        REQUEST_COUNT.labels(
-            method=method,
-            endpoint=endpoint,
-            status=str(status),
-        ).inc()
-
-        REQUEST_LATENCY.labels(
-            method=method,
-            endpoint=endpoint,
-        ).observe(duration)
-
-        # -------------------------
-        # LLM-specific metrics
-        # -------------------------
-        # These are populated by the LLM handlers (e.g. /v1/generate, /v1/stream)
-        route = getattr(request.state, "route", endpoint)
+# -----------------------------------------
+# Middleware to record request metrics
+# -----------------------------------------
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable):
+        route = getattr(request.state, "route", "unknown")
         model_id = getattr(request.state, "model_id", "unknown")
-        cached_val = getattr(request.state, "cached", None)
+        cached = getattr(request.state, "cached", False)
 
-        if cached_val is True:
-            cached = "true"
-        elif cached_val is False:
-            cached = "false"
-        else:
-            cached = "unknown"
+        # Convert boolean → "true"/"false"
+        cached_label = "true" if cached else "false"
 
-        # Only record LLM metrics for LLM routes
-        if route in ("/v1/generate", "/v1/stream"):
-            # Count of LLM requests
-            LLM_REQUESTS.labels(
-                route=route,
-                model_id=model_id or "unknown",
-                cached=cached,
-            ).inc()
+        with REQUEST_LATENCY.labels(
+            route=route,
+            model_id=model_id,
+            cached=cached_label,
+        ).time():
+            response = await call_next(request)
 
-            # Latency in ms for LLM calls
-            LLM_LATENCY.labels(
-                route=route,
-                model_id=model_id or "unknown",
-            ).observe(duration * 1000.0)
+        REQUEST_COUNT.labels(
+            route=route,
+            model_id=model_id,
+            cached=cached_label,
+        ).inc()
 
         return response
 
-    app.include_router(router)
+
+# -----------------------------------------
+# Setup entry point for main.py
+# -----------------------------------------
+def setup(app: FastAPI):
+    """
+    Register Prometheus collectors and install middleware.
+    """
+    # Prevent duplicate registration during reloads
+    for collector in [
+        LLM_TOKENS,
+        REQUEST_LATENCY,
+        REQUEST_COUNT,
+        LLM_REDIS_HITS,
+        LLM_REDIS_MISSES,
+        LLM_REDIS_LATENCY,
+        LLM_REDIS_ENABLED,
+    ]:
+        try:
+            REGISTRY.register(collector)
+        except ValueError:
+            pass
+
+    app.add_middleware(MetricsMiddleware)

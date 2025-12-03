@@ -136,3 +136,4 @@ scratch/
 debug/
 notes.txt
 .todo
+*.zip

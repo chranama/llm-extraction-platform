@@ -13,3 +13,6 @@ async def init_redis() -> Optional[Redis]:
 async def close_redis(client: Optional[Redis]) -> None:
     if client is not None:
         await client.aclose()
+
+def get_redis_from_request(request: Request) -> Optional[Redis]:
+    return getattr(request.app.state, "redis", None)
