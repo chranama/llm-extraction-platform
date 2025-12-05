@@ -69,6 +69,10 @@ credentials.json
 tokens.json
 api_keys.yaml
 
+
+# Allow example env template
+!.env.example
+
 # =========================
 # Data
 # =========================

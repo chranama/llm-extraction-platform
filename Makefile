@@ -28,12 +28,33 @@ API_KEY       ?=
 
 # ====== Phony targets ======
 .PHONY: \
+  init init-env bootstrap \
   dev-local dev-cpu dev-tmux \
-  up-local up-cpu down restart ps status \
+  up-local up-cpu up down restart ps status \
   logs logs-nginx logs-postgres logs-redis \
-  migrate revision seed-key \
+  migrate revision migrate-docker seed-key seed-key-from-env \
   api-local curl test env \
   clean clean-volumes nuke
+
+# ====== Golden path (recommended for new users) ======
+# 1) make init
+# 2) make up
+# 3) make seed-key-from-env
+# 4) make curl API_KEY=<optional override>
+init: init-env ## One-shot setup: ensure .env exists
+init-env:
+	@if [ -f .env ]; then \
+		echo "✔ .env already exists (using $(ENV_FILE))"; \
+	elif [ -f .env.example ]; then \
+		echo "📄 Creating .env from .env.example"; \
+		cp .env.example .env; \
+	else \
+		echo "❌ .env.example not found; create .env manually."; \
+		exit 1; \
+	fi
+	@echo "✅ Env file ready: .env"
+
+bootstrap: init up seed-key-from-env ## Convenience: init → up → seed-key-from-env
 
 # ====== One-shot developer experience ======
 dev-local: ENV_FILE=.env.local ## Local dev: MPS LLM on host + Docker infra
@@ -46,7 +67,7 @@ dev-local: up-local
 dev-cpu: ENV_FILE=.env ## Dev: CPU LLM in container + infra
 dev-cpu: up-cpu migrate-docker
 	@echo "✅ Infra + API container are up and DB is migrated (CPU mode)."
-	@echo "👉 Seed an API key: make seed-key API_KEY=$$(openssl rand -hex 24)"
+	@echo "👉 Seed an API key from .env: make seed-key-from-env"
 	@echo "👉 Then test via Nginx: make curl API_KEY=<your-key>"
 
 # Optional: auto-run API (local) + logs in tmux panes (local mode)
@@ -72,6 +93,10 @@ up-local: ## Start docker services for LOCAL mode (no API container)
 
 # CPU mode: API + LLM run in the `api` container
 up-cpu: ## Start docker services for CPU mode (API container + infra)
+	@if [ ! -f $(ENV_FILE) ]; then \
+		echo "❌ $(ENV_FILE) not found. Run 'make init' first."; \
+		exit 1; \
+	fi
 	docker compose up -d postgres redis api prometheus grafana pgadmin nginx
 	@echo "⏳ Waiting for Postgres @ $(PG_HOST):$(PG_PORT) ..."
 	@for i in $$(seq 1 30); do \
@@ -80,8 +105,8 @@ up-cpu: ## Start docker services for CPU mode (API container + infra)
 	done || (echo "❌ Postgres not ready on $(PG_HOST):$(PG_PORT)"; exit 1)
 	@echo "✅ Docker services (CPU mode) are up."
 
-# Keep the old 'up' as an alias to CPU mode if you like
-up: up-cpu
+# Keep the old 'up' as an alias to CPU mode
+up: up-cpu ## Golden path: containerized stack (CPU mode)
 
 down: ## Stop docker services (keep volumes)
 	docker compose down
@@ -127,6 +152,15 @@ seed-key: ## Insert 'admin' role + API key into Postgres (requires API_KEY=...)
 	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
 	  -c "INSERT INTO api_keys (key, label, active, role_id, quota_used, quota_monthly, quota_reset_at) SELECT '$(API_KEY)', 'bootstrap', TRUE, r.id, 0, NULL, NULL FROM roles r WHERE r.name = 'admin' ON CONFLICT (key) DO NOTHING;"
 	@echo "✅ Seeded API key: $(API_KEY)"
+
+seed-key-from-env: ## Seed API key using API_KEY from $(ENV_FILE)
+	@$(dotenv); \
+	if [ -z "$$API_KEY" ]; then \
+		echo "❌ API_KEY not set in $(ENV_FILE). Edit the file then re-run 'make seed-key-from-env'."; \
+		exit 1; \
+	fi; \
+	echo "🔑 Seeding API key from $(ENV_FILE) ..."; \
+	API_KEY="$$API_KEY" $(MAKE) seed-key
 
 # ====== Local runner (host: MPS mode) ======
 api-local: ENV_FILE=.env.local ## Run the App API (FastAPI) on $(API_PORT) using local MPS config
