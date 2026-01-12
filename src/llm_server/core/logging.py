@@ -113,7 +113,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "cached": cached,
                 },
             )
-            raise exc
+            raise
 
         latency_ms = (time.time() - start) * 1000.0
 

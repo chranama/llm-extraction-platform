@@ -122,7 +122,6 @@ class Settings(BaseSettings):
             return ["*"]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         case_sensitive=False,
         extra="ignore",
     )

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sroie_receipt_v1.json",
+  "title": "SROIE Receipt Extraction v1",
+  "description": "Schema for ICDAR-SROIE style scanned receipts: company, address, date, total.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "company": {
+      "description": "Merchant/company name.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "address": {
+      "description": "Full merchant address text (may include multiple lines).",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "date": {
+      "description": "Receipt date as it appears (various formats allowed).",
+      "type": ["string", "null"],
+      "minLength": 1,
+      "pattern": ".*\\d{1,4}.*"
+    },
+    "total": {
+      "description": "Total amount as it appears (may include currency symbol).",
+      "type": ["string", "null"],
+      "minLength": 1,
+      "pattern": ".*\\d.*"
+    }
+  },
+  "required": ["company", "date", "total"]
+}

@@ -1,12 +1,14 @@
 [project]
 name = "llm_server"
 version = "1.0.0"
-requires-python = ">=3.10"
+requires-python = "==3.12.*"
 dependencies = [
   "fastapi>=0.116",
   "uvicorn[standard]>=0.35",
-  "transformers>=4.55",
+  # ✅ Ministral-3 support requires Transformers v5 prerelease (per Mistral docs)
+  "transformers==5.0.0rc0",
   "accelerate>=1.0.0",
+  "mistral-common>=1.8.6",
   "python-dotenv>=1.0.0",
   "safetensors>=0.4.0",
   "pydantic-settings>=2.0",
@@ -20,16 +22,16 @@ dependencies = [
   "redis>=5.0",
   "httpx>=0.27",
   "typing-extensions>=4.8",
+  "fiftyone>=1.11.0",
+  "jsonschema>=4.21,<5.0",
   "datasets>=2.21",
 ]
 
-# Convenience entry point: `uv run serve`
 [project.scripts]
 serve = "llm_server.cli:serve"
 eval = "llm_server.eval.cli:main"
 
 [project.optional-dependencies]
-# Choose ONE of these at sync time:
 mps = [
   "torch>=2.4",
   "torchvision>=0.19",
@@ -60,7 +62,6 @@ lint = [
 
 # ---------- uv configuration ----------
 
-# Map torch packages to the correct PyTorch indexes by extra
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu",   extra = "mps"     },
@@ -78,20 +79,23 @@ torchaudio = [
   { index = "pytorch-cu121", extra = "cuda121" },
 ]
 
-# Single uv table (merge everything here)
 [tool.uv]
 package = true
+
+# ✅ allow installing rc/pre-release packages like transformers==5.0.0rc0
+prerelease = "allow"
+
 conflicts = [
-  [ { extra = "mps" },   { extra = "cpu" } ],
-  [ { extra = "mps" },   { extra = "cuda121" } ],
-  [ { extra = "cpu" },   { extra = "cuda121" } ],
-]
-dev-dependencies = [
-  "pytest",
-  "asgi-lifespan"
+  [ { extra = "mps" },     { extra = "cpu" } ],
+  [ { extra = "mps" },     { extra = "cuda121" } ],
+  [ { extra = "cpu" },     { extra = "cuda121" } ],
 ]
 
-# Named indexes for PyTorch wheels
+dev-dependencies = [
+  "pytest",
+  "asgi-lifespan",
+]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -111,3 +115,5 @@ where = ["src"]
 include = ["llm_server*"]
 exclude = ["tests*", "scripts*", "data*", "notebooks*"]
 
+[tool.setuptools.package-data]
+llm_server = ["schemas/*.json"]

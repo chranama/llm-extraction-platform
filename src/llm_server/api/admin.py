@@ -3,27 +3,34 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from llm_server.api.deps import get_api_key
-from llm_server.core.config import settings
+from llm_server.core.errors import AppError
 from llm_server.db.models import ApiKey, InferenceLog, RoleTable
 from llm_server.db.session import get_session
+
+import asyncio
+
+from llm_server.core.config import settings
+from llm_server.services.llm import build_llm_from_settings, MultiModelManager
 
 logger = logging.getLogger("llm_server.api.admin")
 
 router = APIRouter(tags=["admin"])
 
+_MODEL_LOAD_LOCK = asyncio.Lock()
 
 # -------------------------------------------------------------------
 # Models for responses
 # -------------------------------------------------------------------
+
 
 class MeUsageResponse(BaseModel):
     api_key: str
@@ -64,6 +71,7 @@ class AdminApiKeyListResponse(BaseModel):
     limit: int
     offset: int
 
+
 class AdminLogEntry(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -90,6 +98,7 @@ class AdminLogsPage(BaseModel):
     offset: int
     items: List[AdminLogEntry]
 
+
 class AdminModelStats(BaseModel):
     model_id: str
     total_requests: int
@@ -107,10 +116,29 @@ class AdminStatsResponse(BaseModel):
     avg_latency_ms: float | None
     per_model: list[AdminModelStats]
 
+class AdminLoadModelRequest(BaseModel):
+    # optional: override default model id for this process
+    model_id: Optional[str] = None
+
+
+class AdminLoadModelResponse(BaseModel):
+    ok: bool
+    already_loaded: bool
+    default_model: str
+    models: list[str]
+
 
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
+
+def _tag_admin_request(request: Request, route: str) -> None:
+    # For metrics/logging middleware consistency
+    request.state.route = route
+    request.state.model_id = "admin"
+    request.state.cached = False
+
 
 async def _ensure_admin(api_key: ApiKey, session: AsyncSession) -> None:
     """
@@ -118,26 +146,32 @@ async def _ensure_admin(api_key: ApiKey, session: AsyncSession) -> None:
     enforce that the caller has the 'admin' role.
     """
     result = await session.execute(
-        select(ApiKey)
-        .options(joinedload(ApiKey.role))
-        .where(ApiKey.id == api_key.id)
+        select(ApiKey).options(joinedload(ApiKey.role)).where(ApiKey.id == api_key.id)
     )
     db_key = result.scalar_one_or_none()
 
     role_name = db_key.role.name if db_key and db_key.role else None
     if role_name != "admin":
-        raise HTTPException(status_code=403, detail="Admin privileges required")
+        raise AppError(
+            code="forbidden",
+            message="Admin privileges required",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
 
 # -------------------------------------------------------------------
 # /v1/me/usage
 # -------------------------------------------------------------------
 
+
 @router.get("/v1/me/usage", response_model=MeUsageResponse)
 async def get_my_usage(
+    request: Request,
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
 ):
+    _tag_admin_request(request, "/v1/me/usage")
+
     # Fetch role name without lazy-loading problems
     role_row = await session.get(RoleTable, api_key.role_id) if api_key.role_id else None
     role_name = role_row.name if role_row else None
@@ -165,11 +199,11 @@ async def get_my_usage(
     return MeUsageResponse(
         api_key=api_key.key,
         role=role_name,
-        total_requests=total_requests or 0,
+        total_requests=int(total_requests or 0),
         first_request_at=first_request_at,
         last_request_at=last_request_at,
-        total_prompt_tokens=total_prompt_tokens or 0,
-        total_completion_tokens=total_completion_tokens or 0,
+        total_prompt_tokens=int(total_prompt_tokens or 0),
+        total_completion_tokens=int(total_completion_tokens or 0),
     )
 
 
@@ -177,11 +211,14 @@ async def get_my_usage(
 # /v1/admin/usage
 # -------------------------------------------------------------------
 
+
 @router.get("/v1/admin/usage", response_model=AdminUsageResponse)
 async def get_admin_usage(
+    request: Request,
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
 ):
+    _tag_admin_request(request, "/v1/admin/usage")
     await _ensure_admin(api_key, session)
 
     # Aggregate stats per api_key
@@ -219,9 +256,9 @@ async def get_admin_usage(
                 api_key=key_value,
                 name=getattr(key_obj, "name", None) if key_obj else None,
                 role=key_obj.role.name if key_obj and key_obj.role else None,
-                total_requests=total_requests or 0,
-                total_prompt_tokens=total_prompt or 0,
-                total_completion_tokens=total_completion or 0,
+                total_requests=int(total_requests or 0),
+                total_prompt_tokens=int(total_prompt or 0),
+                total_completion_tokens=int(total_completion or 0),
                 first_request_at=first_at,
                 last_request_at=last_at,
             )
@@ -234,8 +271,10 @@ async def get_admin_usage(
 # /v1/admin/keys
 # -------------------------------------------------------------------
 
+
 @router.get("/v1/admin/keys", response_model=AdminApiKeyListResponse)
 async def list_api_keys(
+    request: Request,
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
@@ -247,11 +286,13 @@ async def list_api_keys(
     - Admin-only
     - Does NOT return full key values, only a key prefix for identification.
     """
+    _tag_admin_request(request, "/v1/admin/keys")
     await _ensure_admin(api_key, session)
 
     # Total count
     total_stmt = select(func.count(ApiKey.id))
     total = (await session.execute(total_stmt)).scalar_one()
+    total_int = int(total or 0)
 
     # Page of keys, eager-load role to avoid lazy-load issues
     stmt = (
@@ -266,7 +307,6 @@ async def list_api_keys(
 
     results: List[AdminApiKeyInfo] = []
     for k in keys:
-        # Safe prefix only; don't leak full secret
         prefix = k.key[:8] if k.key else ""
         disabled_flag = bool(getattr(k, "disabled_at", None))
 
@@ -282,74 +322,47 @@ async def list_api_keys(
 
     return AdminApiKeyListResponse(
         results=results,
-        total=total or 0,
+        total=total_int,
         limit=limit,
         offset=offset,
     )
 
+
 # -------------------------------------------------------------------
 # /v1/admin/logs
 # -------------------------------------------------------------------
+
+
 @router.get("/v1/admin/logs", response_model=AdminLogsPage)
 async def list_inference_logs(
-    api_key=Depends(get_api_key),
-    session=Depends(get_session),
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
     # Filters
-    model_id: Optional[str] = Query(
-        default=None,
-        description="Filter by model_id",
-    ),
-    key: Optional[str] = Query(
-        default=None,
-        alias="api_key",
-        description="Filter by API key value",
-    ),
-    route: Optional[str] = Query(
-        default=None,
-        description="Filter by route, e.g. /v1/generate",
-    ),
-    from_ts: Optional[datetime] = Query(
-        default=None,
-        description="Filter logs created_at >= this timestamp (ISO8601)",
-    ),
-    to_ts: Optional[datetime] = Query(
-        default=None,
-        description="Filter logs created_at <= this timestamp (ISO8601)",
-    ),
-    limit: int = Query(
-        default=50,
-        ge=1,
-        le=200,
-        description="Max number of rows to return",
-    ),
-    offset: int = Query(
-        default=0,
-        ge=0,
-        description="Offset for pagination",
-    ),
+    model_id: Optional[str] = Query(default=None, description="Filter by model_id"),
+    key: Optional[str] = Query(default=None, alias="api_key", description="Filter by API key value"),
+    route: Optional[str] = Query(default=None, description="Filter by route, e.g. /v1/generate"),
+    from_ts: Optional[datetime] = Query(default=None, description="Filter logs created_at >= this timestamp (ISO8601)"),
+    to_ts: Optional[datetime] = Query(default=None, description="Filter logs created_at <= this timestamp (ISO8601)"),
+    limit: int = Query(default=50, ge=1, le=200, description="Max number of rows to return"),
+    offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ):
     """
     Admin-only: list inference logs with basic filters + pagination.
     """
-
-    # Ensure caller is admin
+    _tag_admin_request(request, "/v1/admin/logs")
     await _ensure_admin(api_key, session)
 
-    # Build filter list once so we can reuse for count + data query
     filters = []
 
     if model_id:
         filters.append(InferenceLog.model_id == model_id)
-
     if key:
         filters.append(InferenceLog.api_key == key)
-
     if route:
         filters.append(InferenceLog.route == route)
-
     if from_ts:
         filters.append(InferenceLog.created_at >= from_ts)
-
     if to_ts:
         filters.append(InferenceLog.created_at <= to_ts)
 
@@ -362,20 +375,17 @@ async def list_inference_logs(
     total = int(total or 0)
 
     # ---- page query ----
-    stmt = (
-        select(InferenceLog)
-        .where(*filters) if filters else select(InferenceLog)
-    )
-    stmt = (
-        stmt.order_by(InferenceLog.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    stmt = select(InferenceLog)
+    if filters:
+        stmt = stmt.where(*filters)
+
+    stmt = stmt.order_by(InferenceLog.created_at.desc()).offset(offset).limit(limit)
 
     result = await session.execute(stmt)
     rows = result.scalars().all()
 
-    items = [AdminLogEntry.from_orm(row) for row in rows]
+    # Pydantic v2
+    items = [AdminLogEntry.model_validate(row) for row in rows]
 
     return AdminLogsPage(
         total=total,
@@ -384,14 +394,18 @@ async def list_inference_logs(
         items=items,
     )
 
+
 # -------------------------------------------------------------------
 # /v1/admin/stats
 # -------------------------------------------------------------------
+
+
 @router.get("/v1/admin/stats", response_model=AdminStatsResponse)
 async def get_admin_stats(
-    window_days: int = 30,
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
-    api_key=Depends(get_api_key),
+    window_days: int = Query(30, ge=1, le=365),
 ):
     """
     Global usage stats over a sliding time window (admin-only).
@@ -399,7 +413,8 @@ async def get_admin_stats(
     - Aggregate totals from `inference_logs`
     - Per-model breakdown
     """
-    _ensure_admin(api_key, session)
+    _tag_admin_request(request, "/v1/admin/stats")
+    await _ensure_admin(api_key, session)
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=window_days)
@@ -415,13 +430,9 @@ async def get_admin_stats(
         .where(InferenceLog.created_at >= since)
     )
 
-    global_row = (await session.execute(global_stmt)).one()
-    (
-        total_requests,
-        total_prompt_tokens,
-        total_completion_tokens,
-        avg_latency_ms,
-    ) = global_row
+    total_requests, total_prompt_tokens, total_completion_tokens, avg_latency_ms = (
+        await session.execute(global_stmt)
+    ).one()
 
     # ---- Per-model aggregates ----
     per_model_stmt = (
@@ -436,16 +447,16 @@ async def get_admin_stats(
         .group_by(InferenceLog.model_id)
     )
 
-    per_model_rows = await session.execute(per_model_stmt)
+    per_model_rows = (await session.execute(per_model_stmt)).all()
     per_model_items: list[AdminModelStats] = []
 
-    for model_id, count, p_tokens, c_tokens, m_avg_latency in per_model_rows:
+    for mid, count, p_tokens, c_tokens, m_avg_latency in per_model_rows:
         per_model_items.append(
             AdminModelStats(
-                model_id=model_id,
-                total_requests=count,
-                total_prompt_tokens=p_tokens or 0,
-                total_completion_tokens=c_tokens or 0,
+                model_id=mid,
+                total_requests=int(count or 0),
+                total_prompt_tokens=int(p_tokens or 0),
+                total_completion_tokens=int(c_tokens or 0),
                 avg_latency_ms=float(m_avg_latency) if m_avg_latency is not None else None,
             )
         )
@@ -453,9 +464,102 @@ async def get_admin_stats(
     return AdminStatsResponse(
         window_days=window_days,
         since=since,
-        total_requests=total_requests or 0,
-        total_prompt_tokens=total_prompt_tokens or 0,
-        total_completion_tokens=total_completion_tokens or 0,
+        total_requests=int(total_requests or 0),
+        total_prompt_tokens=int(total_prompt_tokens or 0),
+        total_completion_tokens=int(total_completion_tokens or 0),
         avg_latency_ms=float(avg_latency_ms) if avg_latency_ms is not None else None,
         per_model=per_model_items,
     )
+
+# -------------------------------------------------------------------
+# /v1/admin/models/load
+# -------------------------------------------------------------------
+
+@router.post("/v1/admin/models/load", response_model=AdminLoadModelResponse)
+async def admin_load_model(
+    request: Request,
+    body: AdminLoadModelRequest,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Admin-only: explicitly load the LLM into app.state.llm.
+
+    Intended for dev: start stack with MODEL_LOAD_MODE=off or lazy, then call this endpoint.
+    """
+    _tag_admin_request(request, "/v1/admin/models/load")
+    await _ensure_admin(api_key, session)
+
+    async with _MODEL_LOAD_LOCK:
+        app = request.app
+
+        # If already loaded and healthy, just report
+        existing = getattr(app.state, "llm", None)
+        model_loaded = bool(getattr(app.state, "model_loaded", False))
+        model_error = getattr(app.state, "model_error", None)
+
+        if existing is not None and model_loaded and not model_error:
+            if isinstance(existing, MultiModelManager):
+                model_ids = list(existing.models.keys())
+                default_model = existing.default_id
+            else:
+                default_model = getattr(existing, "model_id", settings.model_id)
+                model_ids = [default_model]
+
+            return AdminLoadModelResponse(
+                ok=True,
+                already_loaded=True,
+                default_model=default_model,
+                models=model_ids,
+            )
+
+        # Validate optional override (must be allowed by settings/models.yaml)
+        if body.model_id:
+            if body.model_id not in settings.all_model_ids:
+                raise AppError(
+                    code="model_not_allowed",
+                    message=f"Model '{body.model_id}' not allowed.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    extra={"allowed": settings.all_model_ids},
+                )
+            settings.model_id = body.model_id  # type: ignore[attr-defined]
+
+        # Reset authoritative flags before attempting
+        app.state.model_error = None
+        app.state.model_loaded = False
+
+        # NOTE: we intentionally DO NOT change model_load_mode here.
+        # mode=="off" means "no autoload on startup", not "cannot be loaded".
+        try:
+            llm = build_llm_from_settings()
+            app.state.llm = llm
+
+            # "load" endpoint should guarantee weights are in memory
+            if hasattr(llm, "ensure_loaded"):
+                llm.ensure_loaded()
+                app.state.model_loaded = True
+            else:
+                # If backend cannot be loaded, report not loaded
+                app.state.model_loaded = False
+
+        except Exception as e:
+            app.state.model_error = repr(e)
+            app.state.model_loaded = False
+            app.state.llm = None
+            raise
+
+        # Report models
+        llm = app.state.llm
+        if isinstance(llm, MultiModelManager):
+            model_ids = list(llm.models.keys())
+            default_model = llm.default_id
+        else:
+            default_model = getattr(llm, "model_id", settings.model_id)
+            model_ids = [default_model]
+
+        return AdminLoadModelResponse(
+            ok=True,
+            already_loaded=False,
+            default_model=default_model,
+            models=model_ids,
+        )

@@ -1,3 +1,4 @@
+# docker-compose.yml
 services:
   # ==========================
   # Data layer
@@ -10,8 +11,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-llm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm}
       POSTGRES_DB: ${POSTGRES_DB:-llm}
-    ports:
-      - "5433:5432"                    # host:container (kept for dev convenience)
+    # NOTE: production base does NOT publish DB port
+    expose:
+      - "5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,8 +29,9 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"                    # kept for dev convenience
+    # NOTE: production base does NOT publish redis port
+    expose:
+      - "6379"
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 5s
@@ -36,41 +39,42 @@ services:
       retries: 10
 
   # ==========================
-  # API + LLM (CPU container mode)
+  # API (container mode)
   # ==========================
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     container_name: llm_api
-    restart: unless-stopped
-
-    # Use .env for CPU / container mode
-    env_file:
-      - .env
-
+    restart: "no"
+    environment:
+      ENV: prod
+      MODEL_LOAD_MODE: eager
+      WORKERS: "1"
+      UVICORN_RELOAD: "0"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-    # Expose API on host (useful for direct debugging) and to Nginx
-    ports:
-      - "8000:8000"
+    # production base: internal only (nginx talks to it over docker network)
+    expose:
+      - "8000"
 
     volumes:
+      # HF cache is OK in prod too (optional). If you don't want it in prod, remove.
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/readyz || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/modelz || exit 1"]
       interval: 30s
       timeout: 10s
-      start_period: 600s  # allow time for first Llama download
+      start_period: 600s
       retries: 10
 
   # ==========================
-  # Tooling / DB admin
+  # pgAdmin (behind nginx)
   # ==========================
   pgadmin:
     image: dpage/pgadmin4:8
@@ -84,12 +88,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # No direct host port; only Nginx should expose it
     expose:
       - "80"
 
   # ==========================
-  # Observability
+  # Observability (behind nginx)
   # ==========================
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -97,16 +100,13 @@ services:
     restart: unless-stopped
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-      # Public URL where you access it (note trailing slash)
       - "--web.external-url=http://localhost:8080/prometheus/"
-      # Prometheus' own router prefix stays root "/"
       - "--web.route-prefix=/"
     volumes:
       - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       api:
         condition: service_healthy
-    # No host port; Nginx proxies internally
     expose:
       - "9090"
 
@@ -115,7 +115,6 @@ services:
     container_name: llm_grafana
     restart: unless-stopped
     environment:
-      # External URL users hit (via Nginx)
       GF_SERVER_ROOT_URL: "http://localhost:8080/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_SERVER_DOMAIN: "localhost"
@@ -126,41 +125,36 @@ services:
     depends_on:
       prometheus:
         condition: service_started
-    # No host port; only internal to Nginx
     expose:
       - "3000"
 
   # ==========================
-  # UI playground (React + Vite build)
+  # UI (served by its own nginx container, behind front nginx)
   # ==========================
   ui:
     build:
       context: ./ui
       dockerfile: Dockerfile.ui
       args:
-        VITE_API_KEY: ${API_KEY}         # comes from root .env
+        VITE_API_KEY: ${API_KEY}
         VITE_API_BASE_URL: "/api"
     container_name: llm_ui
     restart: unless-stopped
     depends_on:
       api:
         condition: service_started
-    # Only exposed inside the Docker network; Nginx will proxy it.
     expose:
       - "80"
-    # Optional: direct access for debugging
-    # ports:
-    #   - "3001:80"
 
   # ==========================
-  # Nginx front-end
+  # Front Nginx (single public entrypoint)
   # ==========================
   nginx:
     image: nginx:1.27-alpine
     container_name: llm_nginx
     restart: unless-stopped
     ports:
-      - "8080:80"                       # the single public entrypoint
+      - "8080:80"
     volumes:
       - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infra/.htpasswd:/etc/nginx/.htpasswd:ro

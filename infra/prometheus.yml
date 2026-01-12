@@ -4,14 +4,12 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  # Scrape the containerized API (CPU Llama 3.2)
   - job_name: "llm_api_container"
     metrics_path: /metrics
     static_configs:
       - targets: ["api:8000"]
 
-  # You can keep other scrape jobs here (Prometheus itself, etc.)
   - job_name: "prometheus"
-    metrics_path: /prometheus/metrics 
+    metrics_path: /metrics
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ["prometheus:9090"]

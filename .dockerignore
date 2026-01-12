@@ -1,0 +1,65 @@
+# =========================
+# Git
+# =========================
+.git/
+.gitignore
+
+# =========================
+# Python / Virtual Envs
+# =========================
+.venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# pytest cache
+.pytest_cache/
+
+# uv packages
+.uv/
+
+# =========================
+# Local Data / Datasets
+# =========================
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.json
+*.csv
+*.parquet
+
+# =========================
+# Models / LLM Caches
+# =========================
+models/
+checkpoints/
+weights/
+*.safetensors
+*.bin
+*.gguf
+.huggingface/
+.hf/
+
+# =========================
+# Logs + Artifacts
+# =========================
+logs/
+*.log
+
+# =========================
+# Node / Frontend
+# (avoid copying UI deps into API image)
+# =========================
+ui/node_modules/
+ui/dist/
+
+# =========================
+# OS Junk
+# =========================
+.DS_Store
+Thumbs.db

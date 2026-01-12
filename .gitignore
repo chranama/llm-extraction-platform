@@ -53,7 +53,6 @@ wandb/
 mlruns/
 results/
 predictions/
-metrics/
 *.pkl
 *.joblib
 
@@ -80,14 +79,23 @@ data/raw/
 data/processed/
 data/tmp/
 data/cache/
-*.h5
-*.parquet
+
+# Local databases
 *.db
 *.duckdb
 *.sqlite
 *.sqlite3
-*.json
-*.csv
+
+# Columnar / scientific
+*.h5
+*.parquet
+
+# Ignore generated datasets/exports, but allow source-controlled JSON schemas/examples
+# (keep schemas under src/llm_server/schemas/ and examples/ tracked)
+data/**/*.json
+data/**/*.csv
+results/**/*.json
+results/**/*.csv
 
 # =========================
 # Logs
@@ -141,3 +149,20 @@ debug/
 notes.txt
 .todo
 *.zip
+
+# =========================
+# UI (Vite/React)
+# =========================
+ui/node_modules/
+ui/dist/
+ui/.vite/
+
+# Eval outputs living under src (should move to /results)
+src/llm_server/eval/results/
+
+# Build metadata
+llm_server.egg-info/
+src/llm_server.egg-info/
+
+# Local Python version files
+.python-version

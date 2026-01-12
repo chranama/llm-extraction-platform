@@ -1,4 +1,4 @@
-# models.yaml (local dev)
-default_model: meta-llama/Llama-3.1-8B-Instruct
+# models.yaml
+default_model: mistralai/Ministral-3-14B-Instruct-2512-BF16
 models:
-  - id: meta-llama/Llama-3.1-8B-Instruct
+  - id: mistralai/Ministral-3-14B-Instruct-2512-BF16

@@ -1,4 +1,4 @@
-# app/core/errors.py
+# src/llm_server/core/errors.py
 from __future__ import annotations
 
 import logging
@@ -45,7 +45,14 @@ def _to_json_error(
     }
     if extra:
         payload["error"].update(extra)
-    return JSONResponse(payload, status_code=status_code)
+
+    resp = JSONResponse(payload, status_code=status_code)
+
+    rid = _request_id(request)
+    if rid:
+        resp.headers["X-Request-ID"] = rid
+
+    return resp
 
 
 async def handle_fastapi_http_exception(request: Request, exc: FastAPIHTTPException):

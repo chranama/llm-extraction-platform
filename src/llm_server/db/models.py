@@ -1,23 +1,26 @@
-# app/db/models.py
+# src/llm_server/db/models.py
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from typing import Optional, Dict, Any
 import enum
+from datetime import datetime, UTC
+from typing import Any, Dict, Optional
 
 from sqlalchemy import (
-    String,
-    Integer,
-    Float,
+    Boolean,
     DateTime,
-    Text,
-    JSON,
-    UniqueConstraint,
-    Index,
+    Float,
     ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+
+from llm_server.db.session import Base
 
 
 # Optional enum for use in application code (not enforced by DB)
@@ -25,10 +28,6 @@ class Role(str, enum.Enum):
     admin = "admin"
     standard = "standard"
     free = "free"
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 # --------------------------------------------------------------------------
@@ -49,6 +48,7 @@ class RoleTable(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,
@@ -62,26 +62,37 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+
+    # secret
+    key: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+
+    # metadata (admin UI / labeling)
+    # NOTE: If your DB previously used "label", you may need a migration.
+    name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+    # Back-compat if older code/data used "label" (optional but handy)
     label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    active: Mapped[bool] = mapped_column(default=True)
+
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Prefer disabled_at so admin can display "disabled" without deleting records.
+    disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Quotas (optional)
     quota_monthly: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # NULL = unlimited
     quota_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # NEW: link each API key to an optional role row
+    # Link each API key to an optional role row
     role_id: Mapped[Optional[int]] = mapped_column(ForeignKey("roles.id"), nullable=True)
-    role: Mapped[Optional["RoleTable"]] = relationship("RoleTable")
+
+    # async-friendly default: selectin to avoid surprise lazy loads
+    role: Mapped[Optional["RoleTable"]] = relationship("RoleTable", lazy="selectin")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=utc_now,        # Python-side fallback
-        server_default=func.now(),  # DB-side default
+        default=utc_now,
+        server_default=func.now(),
         nullable=False,
         index=True,
     )
@@ -102,15 +113,15 @@ class InferenceLog(Base):
     # request context
     api_key: Mapped[Optional[str]] = mapped_column(String(128), index=True, nullable=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
-    route: Mapped[str] = mapped_column(String(64))  # e.g., /v1/generate or /v1/stream
+    route: Mapped[str] = mapped_column(String(64), nullable=False)
     client_host: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     # model context
-    model_id: Mapped[str] = mapped_column(String(256), index=True)
+    model_id: Mapped[str] = mapped_column(String(256), index=True, nullable=False)
     params_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # payload
-    prompt: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
     output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # metrics
@@ -139,18 +150,18 @@ class CompletionCache(Base):
         index=True,
     )
 
-    model_id: Mapped[str] = mapped_column(String(256), index=True)
+    model_id: Mapped[str] = mapped_column(String(256), index=True, nullable=False)
 
     # full prompt (kept for debugging / analytics)
-    prompt: Mapped[str] = mapped_column(Text)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
 
     # short hash of the prompt (e.g., sha256[:32])
-    prompt_hash: Mapped[str] = mapped_column(String(64), index=True)
+    prompt_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
 
     # hash of the generation params (your fingerprint)
-    params_fingerprint: Mapped[str] = mapped_column(String(128), index=True)
+    params_fingerprint: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
 
-    output: Mapped[str] = mapped_column(Text)
+    output: Mapped[str] = mapped_column(Text, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(

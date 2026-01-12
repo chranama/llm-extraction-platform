@@ -41,7 +41,7 @@ You can explore each section directly:
 ### **6. Multi-Model Infrastructure**  
 [`docs/05-multimodel.md`](docs/05-multimodel.md)
 
-### **7. API Stability and Versioning
+### **7. API Stability and Versioning**  
 [`docs/06-api-versioning.md`](docs/06-api-versioning.md)
 
 ### **8. Project Structure**  
@@ -62,6 +62,12 @@ You can explore each section directly:
 ### **13. Testing Guide**  
 [`docs/12-testing.md`](docs/12-testing.md)
 
+### **14. Extraction Contract (Structured Output API)**  
+[`docs/13-extraction-contract.md`](docs/13-extraction-contract.md)
+
+> **Note:** The Extraction Contract defines the strict input/output guarantees for the `/v1/extract` endpoint.  
+> It formalizes plaintext → schema-validated JSON behavior and is central to the system’s evolution from a
+> generic LLM gateway into a production-grade backend extraction service.
 
 ---
 
@@ -125,6 +131,7 @@ These can be relied on and will not change without a major version bump:
 | Endpoint | Purpose |
 |---------|---------|
 | **POST /v1/generate** | Run inference on the configured model |
+| **POST /v1/extract** | Schema-driven structured data extraction |
 | **GET /v1/healthz** | Liveness probe |
 | **GET /v1/readyz** | Readiness probe |
 | **GET /v1/me/usage** | Usage & quota for the calling API key |
@@ -154,7 +161,8 @@ View specific test files under `tests/` to explore how the system validates:
 - Rate limiting
 - Quotas
 - Generate API behavior
-- Health & metrics endpoints
+- Extraction contract behavior
+- Health & readiness endpoints
 - Integration behavior
 
 ---

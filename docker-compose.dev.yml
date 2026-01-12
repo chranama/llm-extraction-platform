@@ -1,177 +1,49 @@
+# docker-compose.dev.yml
 services:
-  # ==========================
-  # Data layer
-  # ==========================
   postgres:
-    image: postgres:16-alpine
-    container_name: llm_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-llm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm}
-      POSTGRES_DB: ${POSTGRES_DB:-llm}
+    # Dev convenience: expose DB to host
     ports:
       - "5433:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-llm} -d ${POSTGRES_DB:-llm}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 
   redis:
-    image: redis:7-alpine
-    container_name: llm_redis
-    restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    volumes:
-      - redis_data:/data
+    # Dev convenience: expose Redis to host
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 
-  # ==========================
-  # API + LLM (CPU container mode)
-  # ==========================
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
-    container_name: llm_api
-    restart: unless-stopped
-
-    # Use .env for CPU / container mode
-    env_file:
-      - .env
-
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
+    # Dev: expose API directly
     ports:
       - "8000:8000"
-
+    # Dev: bind-mount your repo so /app reflects your working tree
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-
+      - .:/app
+    environment:
+      # Dev default: do NOT block startup on model load
+      MODEL_LOAD_MODE: "off"
+      WORKERS: "1"
+      ENV: dev
+      UVICORN_RELOAD: "0"
+      PYTHONPATH: "/app/src"
+    # Dev: shorter start period since model load is off
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/readyz || exit 1"]
-      interval: 30s
-      timeout: 10s
-      start_period: 600s  # allow time for first Llama download
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
       retries: 10
 
-  # ==========================
-  # Tooling / DB admin
-  # ==========================
   pgadmin:
-    image: dpage/pgadmin4:8
-    container_name: llm_pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-      SCRIPT_NAME: /pgadmin
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # Dev convenience port
     ports:
       - "5050:80"
 
-  # ==========================
-  # Observability
-  # ==========================
   prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: llm_prometheus
-    restart: unless-stopped
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      # Public URL where you access it (note the trailing slash)
-      - "--web.external-url=http://localhost:8080/prometheus/"
-      # Internal router prefix should stay root "/"
-      - "--web.route-prefix=/"
-    volumes:
-      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    depends_on:
-      api:
-        condition: service_healthy
+    # Dev convenience port
     ports:
       - "9090:9090"
 
   grafana:
-    image: grafana/grafana:11.1.0
-    container_name: llm_grafana
-    restart: unless-stopped
-    environment:
-      # Tell Grafana the *external* URL users hit
-      GF_SERVER_ROOT_URL: "http://localhost:8080/grafana/"
-      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      # Optional but nice to be explicit:
-      GF_SERVER_DOMAIN: "localhost"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infra/grafana/provisioning:/etc/grafana/provisioning
-      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
-    depends_on:
-      prometheus:
-        condition: service_started
+    # Dev convenience port
     ports:
       - "3000:3000"
-
-  # ==========================
-  # UI playground (React + Vite build)
-  # ==========================
-  ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile.ui
-      args:
-        VITE_API_KEY: ${API_KEY}         # comes from root .env
-        VITE_API_BASE_URL: "/api"
-    container_name: llm_ui
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_started
-    # Only exposed inside the Docker network; Nginx will proxy it.
-    expose:
-      - "80"
-    # Optional: direct access for debugging
-    # ports:
-    #   - "3001:80"
-
-  # ==========================
-  # Nginx front-end
-  # ==========================
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: llm_nginx
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-    volumes:
-      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/.htpasswd:/etc/nginx/.htpasswd:ro
-    depends_on:
-      grafana:
-        condition: service_started
-      prometheus:
-        condition: service_started
-      pgadmin:
-        condition: service_started
-      ui:
-        condition: service_started
-
-volumes:
-  pg_data:
-  grafana_data:
-  redis_data:

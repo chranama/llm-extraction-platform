@@ -1,28 +1,29 @@
 # src/llm_server/db/session.py
 from __future__ import annotations
 
-import os
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
 
+from llm_server.core.config import settings
+
 # ----------------------------------------------------------------------
-# Database configuration
+# Database configuration (Phase: settings-driven, single source of truth)
 # ----------------------------------------------------------------------
 
-# Use DATABASE_URL from environment, with a sensible default.
-# In tests, this is overridden to sqlite+aiosqlite:///./data/test_app.db
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
+DATABASE_URL: str = settings.database_url
 
-# Async engine (works for both Postgres and SQLite async URLs)
-engine = create_async_engine(
+# Create one async engine per process
+engine: AsyncEngine = create_async_engine(
     DATABASE_URL,
     echo=False,
+    pool_pre_ping=True,
     future=True,
 )
 
@@ -33,41 +34,34 @@ async_session_maker = async_sessionmaker(
     class_=AsyncSession,
 )
 
-# Base class for ORM models
+# Base class for ORM models (kept for backwards compatibility)
 Base = declarative_base()
 
 
 # ----------------------------------------------------------------------
-# FastAPI dependencies
+# FastAPI dependency
 # ----------------------------------------------------------------------
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    Yield an AsyncSession for use as a FastAPI dependency.
+    Yield an AsyncSession for FastAPI dependencies.
 
-    Typical usage:
-
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from llm_server.db.session import get_session
-
-        @router.get("/healthz")
-        async def healthz(db: AsyncSession = Depends(get_session)):
-            ...
-
-    Tests and routes can both depend on this.
+    Prefer injecting this in routes/services:
+        session: AsyncSession = Depends(get_session)
     """
     async with async_session_maker() as session:
         try:
             yield session
         finally:
+            # In SQLAlchemy 2.x, the context manager handles closing,
+            # but we keep this explicit for clarity and backwards safety.
             await session.close()
 
 
 # Backwards-compatible alias for older imports & tests
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    Backwards-compatible alias to get_session(), kept so older code/tests that
-    import `get_async_session` still work.
+    Backwards-compatible alias to get_session().
     """
     async for s in get_session():
         yield s

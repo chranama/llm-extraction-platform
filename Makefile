@@ -1,47 +1,47 @@
+# Makefile for llm-server project
 # ====== Config ======
-# Default: container/CPU mode uses .env
 ENV_FILE ?= .env
-
-# Project name used by docker-compose (for hard nuke)
 PROJECT_NAME ?= llm-server
 
-# helper to load .env vars in recipes
 define dotenv
 	set -a; \
 	[ -f $(ENV_FILE) ] && . $(ENV_FILE); \
 	set +a;
 endef
 
-# FastAPI app (host)
-API_PORT      ?= 8000
-# public entry
-NGINX_PORT    ?= 8080
-PG_HOST       ?= 127.0.0.1
-PG_PORT       ?= 5433
-PG_USER       ?= llm
-PG_DB         ?= llm
-REDIS_HOST    ?= 127.0.0.1
-REDIS_PORT    ?= 6379
+API_PORT   ?= 8000
+NGINX_PORT ?= 8080
 
-# You can pass API_KEY on the command line: make seed-key API_KEY=sk_live_...
-API_KEY       ?=
+PG_HOST ?= 127.0.0.1
+PG_PORT ?= 5433
+PG_USER ?= llm
+PG_DB   ?= llm
 
-# ====== Phony targets ======
+REDIS_HOST ?= 127.0.0.1
+REDIS_PORT ?= 6379
+
+API_KEY ?=
+
+# ====== Compose commands (DELTAS) ======
+COMPOSE_BASE  := COMPOSE_PROJECT_NAME=$(PROJECT_NAME) docker compose
+COMPOSE_PROD  := $(COMPOSE_BASE) -f docker-compose.yml
+COMPOSE_DEV   := $(COMPOSE_BASE) -f docker-compose.yml -f docker-compose.dev.yml
+COMPOSE_LOCAL := $(COMPOSE_BASE) -f docker-compose.yml -f docker-compose.local.yml
+
 .PHONY: \
   init init-env bootstrap \
   dev-local dev-cpu dev-tmux \
-  up-local up-cpu up down restart ps status \
+  up up-cpu up-local up-prod \
+  down down-local down-prod restart ps status \
   logs logs-nginx logs-postgres logs-redis \
+  config config-dev config-local config-prod \
   migrate revision migrate-docker seed-key seed-key-from-env \
   api-local curl test env \
   clean clean-volumes nuke
 
-# ====== Golden path (recommended for new users) ======
-# 1) make init
-# 2) make up
-# 3) make seed-key-from-env
-# 4) make curl API_KEY=<optional override>
-init: init-env ## One-shot setup: ensure .env exists
+# ====== Setup ======
+init: init-env
+
 init-env:
 	@if [ -f .env ]; then \
 		echo "✔ .env already exists (using $(ENV_FILE))"; \
@@ -54,23 +54,30 @@ init-env:
 	fi
 	@echo "✅ Env file ready: .env"
 
-bootstrap: init up seed-key-from-env ## Convenience: init → up → seed-key-from-env
+bootstrap: init up seed-key-from-env
 
-# ====== One-shot developer experience ======
-dev-local: ENV_FILE=.env.local ## Local dev: MPS LLM on host + Docker infra
-dev-local: up-local
-	@echo "✅ Infra (postgres/redis/prom/grafana/nginx) is up for LOCAL mode."
-	@echo "👉 In another terminal: ENV_FILE=.env.local make api-local"
-	@echo "👉 If you need to run migrations: ENV_FILE=.env.local make migrate"
-	@echo "👉 Then test via Nginx: make curl API_KEY=<your-key>"
+# ====== Sanity checks ======
+config: config-dev
+config-dev:
+	@$(COMPOSE_DEV) config >/dev/null && echo "✅ compose config (DEV) OK"
+config-local:
+	@$(COMPOSE_LOCAL) config >/dev/null && echo "✅ compose config (LOCAL) OK"
+config-prod:
+	@$(COMPOSE_PROD) config >/dev/null && echo "✅ compose config (PROD) OK"
 
-dev-cpu: ENV_FILE=.env ## Dev: CPU LLM in container + infra
+# ====== Golden paths ======
+dev-cpu: ENV_FILE=.env
 dev-cpu: up-cpu migrate-docker
-	@echo "✅ Infra + API container are up and DB is migrated (CPU mode)."
-	@echo "👉 Seed an API key from .env: make seed-key-from-env"
-	@echo "👉 Then test via Nginx: make curl API_KEY=<your-key>"
+	@echo "✅ Dev container stack is up and DB migrated."
+	@echo "👉 Seed key: make seed-key-from-env"
+	@echo "👉 Test: make curl API_KEY=<your-key>"
 
-# Optional: auto-run API (local) + logs in tmux panes (local mode)
+dev-local: ENV_FILE=.env.local
+dev-local: up-local
+	@echo "✅ Local infra is up."
+	@echo "👉 Run API on host: ENV_FILE=.env.local make api-local"
+	@echo "👉 Migrate on host:  ENV_FILE=.env.local make migrate"
+
 dev-tmux: ENV_FILE=.env.local
 dev-tmux: up-local migrate
 	@command -v tmux >/dev/null || (echo "tmux not found. Install it or use 'make dev-local'." && exit 1)
@@ -79,97 +86,106 @@ dev-tmux: up-local migrate
 	tmux select-pane -t 0
 	tmux attach-session -t llmdev
 
-# ====== Containers ======
-# Local MPS mode: API runs on host, Docker runs infra + Nginx/Prometheus/Grafana
-up-local: ## Start docker services for LOCAL mode (no API container)
-	docker compose -f docker-compose.yml -f docker-compose.local.yml up -d \
-	  postgres redis prometheus grafana pgadmin nginx
-	@echo "⏳ Waiting for Postgres @ $(PG_HOST):$(PG_PORT) ..."
-	@for i in $$(seq 1 30); do \
-		pg_isready -h $(PG_HOST) -p $(PG_PORT) -d $(PG_DB) -U $(PG_USER) >/dev/null 2>&1 && break; \
-		sleep 1; \
-	done || (echo "❌ Postgres not ready on $(PG_HOST):$(PG_PORT)"; exit 1)
-	@echo "✅ Docker services (LOCAL mode) are up."
-
-# CPU mode: API + LLM run in the `api` container
-up-cpu: ## Start docker services for CPU mode (API container + infra)
+# ====== Compose up/down ======
+up: up-cpu ## default: DEV container stack
+up-cpu:
 	@if [ ! -f $(ENV_FILE) ]; then \
 		echo "❌ $(ENV_FILE) not found. Run 'make init' first."; \
 		exit 1; \
 	fi
-	docker compose up -d postgres redis api prometheus grafana pgadmin nginx
+	$(COMPOSE_DEV) up -d --build
 	@echo "⏳ Waiting for Postgres @ $(PG_HOST):$(PG_PORT) ..."
 	@for i in $$(seq 1 30); do \
 		pg_isready -h $(PG_HOST) -p $(PG_PORT) -d $(PG_DB) -U $(PG_USER) >/dev/null 2>&1 && break; \
 		sleep 1; \
 	done || (echo "❌ Postgres not ready on $(PG_HOST):$(PG_PORT)"; exit 1)
-	@echo "✅ Docker services (CPU mode) are up."
+	@echo "✅ DEV container stack is up."
 
-# Keep the old 'up' as an alias to CPU mode
-up: up-cpu ## Golden path: containerized stack (CPU mode)
+up-local:
+	$(COMPOSE_LOCAL) up -d --build --scale api=0
+	@echo "⏳ Waiting for Postgres @ $(PG_HOST):$(PG_PORT) ..."
+	@for i in $$(seq 1 30); do \
+		pg_isready -h $(PG_HOST) -p $(PG_PORT) -d $(PG_DB) -U $(PG_USER) >/dev/null 2>&1 && break; \
+		sleep 1; \
+	done || (echo "❌ Postgres not ready on $(PG_HOST):$(PG_PORT)"; exit 1)
+	@echo "✅ LOCAL infra stack is up."
 
-down: ## Stop docker services (keep volumes)
-	docker compose down
+up-prod:
+	@if [ ! -f $(ENV_FILE) ]; then \
+		echo "❌ $(ENV_FILE) not found. Run 'make init' first."; \
+		exit 1; \
+	fi
+	$(COMPOSE_PROD) up -d --build
+	@echo "✅ PROD stack is up."
 
-restart: down up ## Restart services (CPU mode by default)
+down:
+	$(COMPOSE_DEV) down --remove-orphans
 
-ps: ## List compose services
-	docker compose ps
+down-local:
+	$(COMPOSE_LOCAL) down --remove-orphans
 
-status: ps ## Alias
+down-prod:
+	$(COMPOSE_PROD) down --remove-orphans
 
-logs: ## Tail all docker logs
-	docker compose logs -f
+restart: down up
+
+ps:
+	$(COMPOSE_DEV) ps
+
+status: ps
+
+logs:
+	$(COMPOSE_DEV) logs -f --tail=200
 
 logs-nginx:
-	docker compose logs -f nginx
+	$(COMPOSE_DEV) logs -f --tail=200 nginx
 
 logs-postgres:
-	docker compose logs -f postgres
+	$(COMPOSE_DEV) logs -f --tail=200 postgres
 
 logs-redis:
-	docker compose logs -f redis
+	$(COMPOSE_DEV) logs -f --tail=200 redis
 
 # ====== DB Migrations ======
-# Uses ENV_FILE to load DATABASE_URL before running alembic
-migrate: ## Alembic upgrade to head (uses ENV_FILE’s DATABASE_URL)
+migrate:
 	@$(dotenv) \
 	uv run python -m alembic upgrade head
 
-revision: ## Autogenerate a new migration (edit message: make revision m="msg")
+revision:
 	@if [ -z "$(m)" ]; then echo 'Usage: make revision m="your message"'; exit 1; fi
 	@$(dotenv) \
 	uv run python -m alembic revision --autogenerate -m "$(m)"
 
-migrate-docker: ## Run Alembic migrations inside the API container
-	docker compose exec api python -m alembic upgrade head
+migrate-docker:
+	$(COMPOSE_DEV) exec api python -m alembic upgrade head
 
-# ====== Seed admin API key ======
-seed-key: ## Insert 'admin' role + API key into Postgres (requires API_KEY=...)
+# ====== Seed API key ======
+seed-key:
 	@if [ -z "$(API_KEY)" ]; then echo '❌ Provide API_KEY, e.g. make seed-key API_KEY=$$(openssl rand -hex 24)'; exit 1; fi
 	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
 	  -c "INSERT INTO roles (name) SELECT 'admin' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'admin');"
 	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
-	  -c "INSERT INTO api_keys (key, label, active, role_id, quota_used, quota_monthly, quota_reset_at) SELECT '$(API_KEY)', 'bootstrap', TRUE, r.id, 0, NULL, NULL FROM roles r WHERE r.name = 'admin' ON CONFLICT (key) DO NOTHING;"
+	  -c "INSERT INTO api_keys (key, name, label, active, role_id, quota_used, quota_monthly, quota_reset_at) \
+	      SELECT '$(API_KEY)', 'bootstrap', 'bootstrap', TRUE, r.id, 0, NULL, NULL \
+	      FROM roles r WHERE r.name = 'admin' \
+	      ON CONFLICT (key) DO NOTHING;"
 	@echo "✅ Seeded API key: $(API_KEY)"
 
-seed-key-from-env: ## Seed API key using API_KEY from $(ENV_FILE)
+seed-key-from-env:
 	@$(dotenv); \
 	if [ -z "$$API_KEY" ]; then \
-		echo "❌ API_KEY not set in $(ENV_FILE). Edit the file then re-run 'make seed-key-from-env'."; \
+		echo "❌ API_KEY not set in $(ENV_FILE)."; \
 		exit 1; \
 	fi; \
-	echo "🔑 Seeding API key from $(ENV_FILE) ..."; \
 	API_KEY="$$API_KEY" $(MAKE) seed-key
 
-# ====== Local runner (host: MPS mode) ======
-api-local: ENV_FILE=.env.local ## Run the App API (FastAPI) on $(API_PORT) using local MPS config
+# ====== Local API runner ======
 api-local:
 	@$(dotenv) \
 	ENV=dev PORT=$(API_PORT) uv run serve
 
 # ====== Quick checks ======
-curl: ## Example request via Nginx (requires API_KEY to be seeded)
+curl:
 	@if [ -z "$(API_KEY)" ]; then echo 'Tip: make curl API_KEY=<your-key>'; fi
 	@url="http://localhost:$(NGINX_PORT)/api/v1/generate"; \
 	echo "➡️  Requesting $$url"; \
@@ -179,81 +195,34 @@ curl: ## Example request via Nginx (requires API_KEY to be seeded)
 	  -d '{ "prompt": "Write a haiku about autumn leaves.", "max_new_tokens": 32, "temperature": 0.7, "top_p": 0.95 }' \
 	  | jq .
 
-test: ## Sanity: hit API directly; then via Nginx (needs API_KEY)
-	@if [ -n "$(API_KEY)" ]; then \
-	  echo "➡️  Direct API:"; \
-	  curl -s http://127.0.0.1:$(API_PORT)/v1/generate \
-	    -H "Content-Type: application/json" \
-	    -H "X-API-Key: $(API_KEY)" \
-	    -d '{ "prompt": "ping", "max_new_tokens": 4 }' | jq . ; \
-	  echo "➡️  Through Nginx:"; \
-	  curl -s http://localhost:$(NGINX_PORT)/api/v1/generate \
-	    -H "Content-Type: application/json" \
-	    -H "X-API-Key: $(API_KEY)" \
-	    -d '{ "prompt": "ping", "max_new_tokens": 4 }' | jq . ; \
-	else \
-	  echo "⚠️  Set API_KEY to test: make test API_KEY=<key>"; \
-	fi
-
-env: ## Print key env vars (using ENV_FILE)
+env:
 	@$(dotenv) \
 	echo "ENV_FILE=$(ENV_FILE)"; \
-	echo "ENV=$$ENV  DEBUG=$$DEBUG"; \
 	echo "DATABASE_URL=$$DATABASE_URL"; \
 	echo "REDIS_URL=$$REDIS_URL"; \
-	echo "MODEL_ID=$$MODEL_ID MODEL_DEVICE=$$MODEL_DEVICE"; \
-	echo "API_PORT=$(API_PORT)  NGINX_PORT=$(NGINX_PORT)"
+	echo "PROJECT_NAME=$(PROJECT_NAME)"
 
-# ====== Cleanup (careful!) ======
-clean: ## Stop containers & remove orphans (keep volumes)
-	docker compose down --remove-orphans
+# ====== Cleanup ======
+clean:
+	$(COMPOSE_DEV) down --remove-orphans
 
-clean-volumes: ## Stop containers & REMOVE VOLUMES (DB/Redis data LOST)
+clean-volumes:
 	@read -p "This will DELETE volumes (DB/Redis). Are you sure? [y/N] " ans; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-	  docker compose down -v; \
+	  $(COMPOSE_DEV) down -v --remove-orphans; \
 	else \
 	  echo "Aborted."; \
 	fi
 
-nuke: ## Hard nuke: remove containers, networks, volumes for this project (even if compose is broken)
+nuke:
 	@echo "🔨 Hard nuke for Docker resources with project '$(PROJECT_NAME)'"
-	@echo
-
-	@echo "⛔ Stopping & removing containers..."
 	@ids=$$(docker ps -aq --filter "label=com.docker.compose.project=$(PROJECT_NAME)"); \
-	if [ -n "$$ids" ]; then \
-		echo "   Containers: $$ids"; \
-		docker stop $$ids >/dev/null 2>&1 || true; \
-		docker rm -f $$ids >/dev/null 2>&1 || true; \
-	else \
-		echo "   No matching containers found."; \
-	fi
-
-	@echo
-	@echo "🌐 Removing networks..."
+	if [ -n "$$ids" ]; then docker rm -f $$ids >/dev/null 2>&1 || true; fi
 	@net_ids=$$(docker network ls -q --filter "label=com.docker.compose.project=$(PROJECT_NAME)"); \
-	if [ -n "$$net_ids" ]; then \
-		echo "   Networks: $$net_ids"; \
-		docker network rm $$net_ids >/dev/null 2>&1 || true; \
-	else \
-		echo "   No matching networks found."; \
-	fi
-
-	@echo
+	if [ -n "$$net_ids" ]; then docker network rm $$net_ids >/dev/null 2>&1 || true; fi
 	@read -p "❗ Delete volumes for project '$(PROJECT_NAME)' as well? [y/N] " ans; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
-		echo "💥 Removing volumes..."; \
 		vol_ids=$$(docker volume ls -q --filter "label=com.docker.compose.project=$(PROJECT_NAME)"); \
-		if [ -n "$$vol_ids" ]; then \
-			echo "   Volumes: $$vol_ids"; \
-			docker volume rm $$vol_ids >/dev/null 2>&1 || true; \
-		else \
-			echo "   No matching volumes found."; \
-		fi; \
-	else \
-		echo "Skipping volume deletion."; \
+		if [ -n "$$vol_ids" ]; then docker volume rm $$vol_ids >/dev/null 2>&1 || true; fi; \
 	fi
-
-	@echo
-	@echo "✅ Hard nuke complete. You can now safely run 'docker compose up' again."
+	@echo "✅ Hard nuke complete."
