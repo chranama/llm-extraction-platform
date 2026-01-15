@@ -1,4 +1,3 @@
-# Makefile for llm-server project
 # ====== Config ======
 ENV_FILE ?= .env
 PROJECT_NAME ?= llm-server
@@ -22,11 +21,22 @@ REDIS_PORT ?= 6379
 
 API_KEY ?=
 
+# ====== Paths ======
+COMPOSE_DIR ?= deploy/compose
+COMPOSE_YML ?= $(COMPOSE_DIR)/docker-compose.yml
+COMPOSE_DEV_YML ?= $(COMPOSE_DIR)/docker-compose.dev.yml
+COMPOSE_LOCAL_YML ?= $(COMPOSE_DIR)/docker-compose.local.yml
+COMPOSE_EVAL_YML ?= $(COMPOSE_DIR)/docker-compose.eval.yml
+
+BACKEND_DIR ?= backend
+EVAL_ARGS ?=
+
 # ====== Compose commands (DELTAS) ======
 COMPOSE_BASE  := COMPOSE_PROJECT_NAME=$(PROJECT_NAME) docker compose
-COMPOSE_PROD  := $(COMPOSE_BASE) -f docker-compose.yml
-COMPOSE_DEV   := $(COMPOSE_BASE) -f docker-compose.yml -f docker-compose.dev.yml
-COMPOSE_LOCAL := $(COMPOSE_BASE) -f docker-compose.yml -f docker-compose.local.yml
+COMPOSE_PROD  := $(COMPOSE_BASE) -f $(COMPOSE_YML)
+COMPOSE_DEV   := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_DEV_YML)
+COMPOSE_LOCAL := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_LOCAL_YML)
+COMPOSE_EVAL := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_EVAL_YML)
 
 .PHONY: \
   init init-env bootstrap \
@@ -37,7 +47,9 @@ COMPOSE_LOCAL := $(COMPOSE_BASE) -f docker-compose.yml -f docker-compose.local.y
   config config-dev config-local config-prod \
   migrate revision migrate-docker seed-key seed-key-from-env \
   api-local curl test env \
-  clean clean-volumes nuke
+  clean clean-volumes nuke \
+  eval-build eval-help eval-run eval-shell eval-up eval-down \
+  int-up int-down int-ps int-logs int-test int-test-api int-test-nginx
 
 # ====== Setup ======
 init: init-env
@@ -146,15 +158,17 @@ logs-postgres:
 logs-redis:
 	$(COMPOSE_DEV) logs -f --tail=200 redis
 
-# ====== DB Migrations ======
+# ====== DB Migrations (host) ======
 migrate:
 	@$(dotenv) \
-	uv run python -m alembic upgrade head
+	cd $(BACKEND_DIR) && \
+	APP_ROOT=.. uv run python -m alembic upgrade head
 
 revision:
 	@if [ -z "$(m)" ]; then echo 'Usage: make revision m="your message"'; exit 1; fi
 	@$(dotenv) \
-	uv run python -m alembic revision --autogenerate -m "$(m)"
+	cd $(BACKEND_DIR) && \
+	APP_ROOT=.. uv run python -m alembic revision --autogenerate -m "$(m)"
 
 migrate-docker:
 	$(COMPOSE_DEV) exec api python -m alembic upgrade head
@@ -182,7 +196,84 @@ seed-key-from-env:
 # ====== Local API runner ======
 api-local:
 	@$(dotenv) \
-	ENV=dev PORT=$(API_PORT) uv run serve
+	cd $(BACKEND_DIR) && \
+	APP_ROOT=.. ENV=dev PORT=$(API_PORT) uv run serve
+
+# ====== Eval (containerized) ======
+
+# Bring up the stack needed for eval (api + deps) using DEV compose,
+# then run eval as an on-demand profile service.
+eval-up: ENV_FILE=.env
+eval-up:
+	@if [ ! -f $(ENV_FILE) ]; then \
+		echo "❌ $(ENV_FILE) not found. Run 'make init' first."; \
+		exit 1; \
+	fi
+	@$(COMPOSE_EVAL) --profile eval up -d --build api postgres redis
+	@echo "✅ Eval dependencies up (api/postgres/redis)."
+
+eval-down:
+	@$(COMPOSE_EVAL) --profile eval down --remove-orphans
+	@echo "✅ Eval stack down."
+
+eval-build:
+	@$(COMPOSE_EVAL) --profile eval build eval
+
+eval-help:
+	@$(COMPOSE_EVAL) --profile eval run --rm eval eval --help
+
+# Usage:
+#   make eval-run EVAL_ARGS="run --config /work/config/eval.yaml"
+#   make eval-run EVAL_ARGS="datasets list"
+eval-run: eval-up
+	@$(COMPOSE_EVAL) --profile eval run --rm eval sh -lc "pip install -e /work/eval && eval $(EVAL_ARGS)"
+
+# Drop into a shell inside the eval image (debug deps/files)
+eval-shell: eval-up
+	@$(COMPOSE_EVAL) --profile eval run --rm --entrypoint sh eval
+
+
+# ====== Integration tests (containerized) ======
+
+# Bring up DEV stack (api exposed on 8000, nginx on 8080)
+int-up: ENV_FILE=.env
+int-up:
+	@if [ ! -f $(ENV_FILE) ]; then \
+		echo "❌ $(ENV_FILE) not found. Run 'make init' first."; \
+		exit 1; \
+	fi
+	$(COMPOSE_DEV) up -d --build
+	@echo "✅ Integration stack up (DEV)."
+
+int-down:
+	$(COMPOSE_DEV) down --remove-orphans
+
+int-ps:
+	$(COMPOSE_DEV) ps
+
+int-logs:
+	$(COMPOSE_DEV) logs -f --tail=200
+
+# Run integration tests through nginx (matches real routing/auth)
+int-test-nginx: ENV_FILE=.env
+int-test-nginx: int-up
+	@echo "🧪 Running integrations against nginx http://localhost:$(NGINX_PORT)/api"
+	@$(dotenv) \
+	INTEGRATION_BASE_URL="http://localhost:$(NGINX_PORT)/api" \
+	uv run --project integrations pytest -q integrations/tests
+	@echo "✅ Integration tests done."
+
+# Run integration tests directly against api (faster)
+int-test-api: ENV_FILE=.env
+int-test-api: int-up
+	@echo "🧪 Running integrations against api http://localhost:$(API_PORT)"
+	@$(dotenv) \
+	INTEGRATION_BASE_URL="http://localhost:$(API_PORT)" \
+	uv run --project integrations pytest -q integrations/tests
+	@echo "✅ Integration tests done."
+
+# Default integration tests: use nginx path for realism
+int-test: int-test-nginx
 
 # ====== Quick checks ======
 curl:
@@ -200,9 +291,9 @@ env:
 	echo "ENV_FILE=$(ENV_FILE)"; \
 	echo "DATABASE_URL=$$DATABASE_URL"; \
 	echo "REDIS_URL=$$REDIS_URL"; \
-	echo "PROJECT_NAME=$(PROJECT_NAME)"
+	echo "PROJECT_NAME=$(PROJECT_NAME)"; \
+	echo "COMPOSE_YML=$(COMPOSE_YML)"
 
-# ====== Cleanup ======
 clean:
 	$(COMPOSE_DEV) down --remove-orphans
 

@@ -1,65 +1,102 @@
 # =========================
-# Git
+# Git / VCS
 # =========================
-.git/
+.git
 .gitignore
+.gitattributes
 
 # =========================
-# Python / Virtual Envs
+# Python
 # =========================
-.venv/
-env/
-ENV/
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.so
+**/*.egg-info
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
 
-# pytest cache
-.pytest_cache/
-
-# uv packages
-.uv/
-
-# =========================
-# Local Data / Datasets
-# =========================
-data/
-*.db
-*.sqlite
-*.sqlite3
-*.json
-*.csv
-*.parquet
+# Virtual environments
+.venv
+venv
+env
+ENV
 
 # =========================
-# Models / LLM Caches
+# Node / UI
 # =========================
-models/
-checkpoints/
-weights/
-*.safetensors
-*.bin
-*.gguf
-.huggingface/
-.hf/
+ui/node_modules
+ui/dist
+ui/.vite
+ui/.turbo
 
 # =========================
-# Logs + Artifacts
-# =========================
-logs/
-*.log
-
-# =========================
-# Node / Frontend
-# (avoid copying UI deps into API image)
-# =========================
-ui/node_modules/
-ui/dist/
-
-# =========================
-# OS Junk
+# OS / Editor
 # =========================
 .DS_Store
 Thumbs.db
+.idea
+.vscode
+*.swp
+*.swo
+
+# =========================
+# Secrets / Local env
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Data / Results / Artifacts
+# =========================
+data
+results
+outputs
+runs
+checkpoints
+logs
+tmp
+cache
+
+# =========================
+# HuggingFace / ML caches
+# =========================
+.cache
+**/.cache
+models
+weights
+
+# =========================
+# Eval artifacts
+# =========================
+eval/data
+eval/results
+eval/outputs
+
+# =========================
+# Test reports
+# =========================
+reports
+coverage
+
+# =========================
+# Docker noise
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Keep important things
+# =========================
+!config
+!schemas
+!migrations
+!alembic.ini
+!backend
+!eval
+!ui
+!deploy

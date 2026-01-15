@@ -1,4 +1,57 @@
-# models.yaml
+# config/models.yaml
 default_model: mistralai/Ministral-3-14B-Instruct-2512-BF16
+
 models:
+
+  # -------------------------
+  # Primary production model
+  # -------------------------
   - id: mistralai/Ministral-3-14B-Instruct-2512-BF16
+    backend: local        # local | remote
+    load_mode: eager      # eager | lazy | off
+    dtype: bfloat16
+    device: auto          # auto | cuda | mps | cpu
+    text_only: false
+    max_context: 32768
+    trust_remote_code: true
+    quantization: null    # e.g. int8, int4, nf4 later
+    notes: "Primary high-quality instruct model"
+
+  # -------------------------
+  # Peer 14B text-only model
+  # -------------------------
+  - id: Qwen/Qwen2.5-14B-Instruct
+    backend: local
+    load_mode: lazy
+    dtype: bfloat16
+    device: auto
+    text_only: true
+    max_context: 32768
+    trust_remote_code: false
+    quantization: null
+    notes: "Peer 14B text-only instruct model"
+
+  # -------------------------
+  # Smaller text-only models
+  # -------------------------
+  - id: mistralai/Mistral-7B-Instruct-v0.3
+    backend: local
+    load_mode: lazy
+    dtype: float16
+    device: auto
+    text_only: true
+    max_context: 8192
+    trust_remote_code: false
+    quantization: null
+    notes: "Lightweight Mistral 7B instruct"
+
+  - id: Qwen/Qwen2.5-7B-Instruct
+    backend: local
+    load_mode: lazy
+    dtype: float16
+    device: auto
+    text_only: true
+    max_context: 8192
+    trust_remote_code: false
+    quantization: null
+    notes: "Lightweight Qwen 7B instruct"

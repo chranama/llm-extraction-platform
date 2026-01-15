@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE="${ENV_FILE:-.env}"
+COMPOSE_DIR="deploy/compose"
+
+docker compose \
+  --env-file "$ENV_FILE" \
+  -f "$COMPOSE_DIR/docker-compose.yml" \
+  -f "$COMPOSE_DIR/docker-compose.eval.yml" \
+  --profile eval \
+  "$@"

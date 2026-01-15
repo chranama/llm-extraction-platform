@@ -1,4 +1,4 @@
-# docker-compose.yml
+# deploy/compose/docker-compose.yml
 services:
   # ==========================
   # Data layer
@@ -11,7 +11,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-llm}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-llm}
       POSTGRES_DB: ${POSTGRES_DB:-llm}
-    # NOTE: production base does NOT publish DB port
     expose:
       - "5432"
     volumes:
@@ -29,7 +28,6 @@ services:
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     volumes:
       - redis_data:/data
-    # NOTE: production base does NOT publish redis port
     expose:
       - "6379"
     healthcheck:
@@ -43,11 +41,12 @@ services:
   # ==========================
   api:
     build:
-      context: .
-      dockerfile: Dockerfile.api
+      context: ../../backend
+      dockerfile: Dockerfile.backend
     container_name: llm_api
     restart: "no"
     environment:
+      APP_ROOT: "/app"
       ENV: prod
       MODEL_LOAD_MODE: eager
       WORKERS: "1"
@@ -57,15 +56,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-    # production base: internal only (nginx talks to it over docker network)
     expose:
       - "8000"
-
     volumes:
-      # HF cache is OK in prod too (optional). If you don't want it in prod, remove.
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-
+      # - ../../config:/app/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/modelz || exit 1"]
       interval: 30s
@@ -103,7 +98,7 @@ services:
       - "--web.external-url=http://localhost:8080/prometheus/"
       - "--web.route-prefix=/"
     volumes:
-      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       api:
         condition: service_healthy
@@ -120,8 +115,8 @@ services:
       GF_SERVER_DOMAIN: "localhost"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./infra/grafana/provisioning:/etc/grafana/provisioning
-      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+      - ../observability/grafana/grafana/provisioning:/etc/grafana/provisioning
+      - ../observability/grafana/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       prometheus:
         condition: service_started
@@ -133,7 +128,7 @@ services:
   # ==========================
   ui:
     build:
-      context: ./ui
+      context: ../../ui
       dockerfile: Dockerfile.ui
       args:
         VITE_API_KEY: ${API_KEY}
@@ -156,8 +151,8 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/.htpasswd:/etc/nginx/.htpasswd:ro
+      - ../observability/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../observability/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     depends_on:
       grafana:
         condition: service_started

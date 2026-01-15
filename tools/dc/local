@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_DIR="deploy/compose"
+
+docker compose \
+  -f "$COMPOSE_DIR/docker-compose.yml" \
+  -f "$COMPOSE_DIR/docker-compose.local.yml" \
+  "$@"

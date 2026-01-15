@@ -1,31 +1,26 @@
-# docker-compose.dev.yml
+# deploy/compose/docker-compose.dev.yml
 services:
   postgres:
-    # Dev convenience: expose DB to host
     ports:
       - "5433:5432"
 
   redis:
-    # Dev convenience: expose Redis to host
     ports:
       - "6379:6379"
 
   api:
-    # Dev: expose API directly
     ports:
       - "8000:8000"
-    # Dev: bind-mount your repo so /app reflects your working tree
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-      - .:/app
+      - ../..:/app
     environment:
-      # Dev default: do NOT block startup on model load
+      APP_ROOT: "/app"
       MODEL_LOAD_MODE: "off"
       WORKERS: "1"
       ENV: dev
       UVICORN_RELOAD: "0"
-      PYTHONPATH: "/app/src"
-    # Dev: shorter start period since model load is off
+      PYTHONPATH: "/app/backend/src"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/readyz || exit 1"]
       interval: 15s
@@ -34,16 +29,13 @@ services:
       retries: 10
 
   pgadmin:
-    # Dev convenience port
     ports:
       - "5050:80"
 
   prometheus:
-    # Dev convenience port
     ports:
       - "9090:9090"
 
   grafana:
-    # Dev convenience port
     ports:
       - "3000:3000"

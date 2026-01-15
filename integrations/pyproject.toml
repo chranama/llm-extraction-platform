@@ -1,0 +1,16 @@
+[project]
+name = "llm_server_integrations"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+package = false

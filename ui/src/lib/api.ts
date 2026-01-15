@@ -234,3 +234,7 @@ export async function getSchema(schemaId: string): Promise<JsonSchema> {
     },
   });
 }
+
+export function getApiBaseUrl(): string {
+  return API_BASE;
+}

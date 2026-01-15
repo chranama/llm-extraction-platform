@@ -1,6 +1,5 @@
-# docker-compose.local.yml
+# deploy/compose/docker-compose.local.yml
 services:
-  # Keep api defined so depends_on stays valid, but don't run the real API
   api:
     image: busybox
     command: ["sh", "-c", "echo 'API disabled in local mode'; sleep infinity"]
@@ -13,17 +12,16 @@ services:
 
   nginx:
     volumes:
-      - ./infra/nginx.local.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/.htpasswd:/etc/nginx/.htpasswd:ro
-    # CRITICAL: override base depends_on so nginx doesn't require api:service_healthy
+      - ../observability/nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - ../observability/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     depends_on: {}
 
   prometheus:
     volumes:
-      - ./infra/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/prometheus/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
-    depends_on: {}   # you already did this
+    depends_on: {}
 
   postgres:
     ports:
