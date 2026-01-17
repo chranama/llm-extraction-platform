@@ -9,7 +9,7 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 import transformers as tf
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.services.llm_api import HttpLLMClient
 from llm_server.services.llm_config import load_models_config
@@ -25,11 +25,6 @@ DTYPE_MAP = {
     "float32": torch.float32,
 }
 
-if settings.model_device:
-    DEVICE = settings.model_device
-else:
-    DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
-
 DEFAULT_STOPS: List[str] = ["\nUser:", "\nuser:", "User:", "###"]
 
 
@@ -40,14 +35,22 @@ def _real_user_home() -> str:
         return os.path.expanduser("~")
 
 
-def _resolve_hf_home() -> str:
-    cfg_val = getattr(settings, "hf_home", None)
+def _device_from_settings(cfg) -> str:
+    # explicit override wins
+    dev = getattr(cfg, "model_device", None)
+    if isinstance(dev, str) and dev.strip():
+        return dev.strip()
+    return "mps" if torch.backends.mps.is_available() else "cpu"
+
+
+def _resolve_hf_home(cfg) -> str:
+    cfg_val = getattr(cfg, "hf_home", None)
     if isinstance(cfg_val, str) and cfg_val.strip():
-        return cfg_val
+        return cfg_val.strip()
 
     env_val = os.environ.get("HF_HOME")
     if env_val and env_val.strip():
-        return env_val
+        return env_val.strip()
 
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg and xdg.strip():
@@ -56,8 +59,8 @@ def _resolve_hf_home() -> str:
     return os.path.join(_real_user_home(), ".cache", "huggingface")
 
 
-def _configure_hf_cache_env() -> dict[str, str]:
-    hf_home = _resolve_hf_home()
+def _configure_hf_cache_env(cfg) -> dict[str, str]:
+    hf_home = _resolve_hf_home(cfg)
     hub_cache = os.environ.get("HF_HUB_CACHE") or os.path.join(hf_home, "hub")
 
     os.environ["HF_HOME"] = hf_home
@@ -105,19 +108,26 @@ class ModelManager:
       - right before generate()
     """
 
-    model_id: str = settings.model_id
-    _tokenizer = None
-    _model = None
-    _device = DEVICE
-    _dtype = DTYPE_MAP.get(settings.model_dtype, torch.float16)
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        device: str,
+        dtype: torch.dtype,
+    ) -> None:
+        self.model_id: str = model_id
+        self._device: str = device
+        self._dtype: torch.dtype = dtype
+        self._tokenizer = None
+        self._model = None
 
     @classmethod
     def from_settings(cls, cfg) -> "ModelManager":
-        instance = cls()
-        instance.model_id = cfg.model_id
-        instance._dtype = DTYPE_MAP.get(getattr(cfg, "model_dtype", "float16"), torch.float16)
-        instance._device = cfg.model_device if getattr(cfg, "model_device", None) else DEVICE
-        return instance
+        dtype_str = getattr(cfg, "model_dtype", "float16")
+        dtype = DTYPE_MAP.get(dtype_str, torch.float16)
+        device = _device_from_settings(cfg)
+        model_id = getattr(cfg, "model_id", "mistralai/Mistral-7B-v0.1")
+        return cls(model_id=model_id, device=device, dtype=dtype)
 
     def _err_ctx(self) -> dict[str, Any]:
         return {
@@ -137,7 +147,8 @@ class ModelManager:
 
     def ensure_loaded(self) -> None:
         try:
-            cache_ctx = _configure_hf_cache_env()
+            cfg = get_settings()
+            cache_ctx = _configure_hf_cache_env(cfg)
             cache_dir = cache_ctx["hf_hub_cache"]
 
             if self._tokenizer is None:
@@ -146,13 +157,14 @@ class ModelManager:
                     use_fast=True,
                     cache_dir=cache_dir,
                 )
-                if self._tokenizer.pad_token is None:
+                if getattr(self._tokenizer, "pad_token", None) is None:
                     self._tokenizer.pad_token = self._tokenizer.eos_token
 
             if self._model is None:
-                cfg = AutoConfig.from_pretrained(self.model_id)
+                hf_cfg = AutoConfig.from_pretrained(self.model_id)
 
                 dtype = self._dtype
+                # MPS + bf16 is generally problematic
                 if str(self._device) == "mps" and dtype == torch.bfloat16:
                     dtype = torch.float16
 
@@ -161,9 +173,10 @@ class ModelManager:
                         self.model_id,
                         torch_dtype=dtype,
                         low_cpu_mem_usage=True,
+                        cache_dir=cache_dir,
                     )
                 except ValueError:
-                    archs = getattr(cfg, "architectures", None) or []
+                    archs = getattr(hf_cfg, "architectures", None) or []
                     if not archs:
                         raise
                     arch = archs[0]
@@ -174,6 +187,7 @@ class ModelManager:
                         self.model_id,
                         torch_dtype=dtype,
                         low_cpu_mem_usage=True,
+                        cache_dir=cache_dir,
                     )
 
                 self._model.to(self._device)
@@ -216,6 +230,8 @@ class ModelManager:
 
             tok = self._tokenizer
             model = self._model
+            if tok is None or model is None:
+                raise RuntimeError("Model not loaded")
 
             stops = stop if (stop and len(stop) > 0) else DEFAULT_STOPS
             inputs = tok(prompt, return_tensors="pt").to(self._device)
@@ -274,12 +290,14 @@ def build_llm_from_settings() -> Any:
     primary_id = cfg.primary_id
     all_ids = cfg.model_ids
 
+    s = get_settings()
+
     if len(all_ids) == 1:
-        mgr = ModelManager.from_settings(settings)
+        mgr = ModelManager.from_settings(s)
         mgr.model_id = primary_id
         return mgr
 
-    if not getattr(settings, "llm_service_url", None):
+    if not getattr(s, "llm_service_url", None):
         raise AppError(
             code="remote_models_require_llm_service_url",
             message="Multiple models configured but llm_service_url is not set",
@@ -290,7 +308,7 @@ def build_llm_from_settings() -> Any:
     models: Dict[str, Any] = {}
     meta: Dict[str, Dict[str, Any]] = {}
 
-    local = ModelManager.from_settings(settings)
+    local = ModelManager.from_settings(s)
     local.model_id = primary_id
     models[primary_id] = local
     meta[primary_id] = {"backend": "local_hf", "load_mode": "lazy(default eager-by-lifespan)"}
@@ -299,9 +317,9 @@ def build_llm_from_settings() -> Any:
         if mid == primary_id:
             continue
         models[mid] = HttpLLMClient(
-            base_url=settings.llm_service_url,
+            base_url=s.llm_service_url,
             model_id=mid,
-            timeout=settings.http_client_timeout,
+            timeout=s.http_client_timeout,
         )
         meta[mid] = {"backend": "http_remote", "load_mode": "remote"}
 

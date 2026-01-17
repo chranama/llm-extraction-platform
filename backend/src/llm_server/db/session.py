@@ -1,67 +1,78 @@
-# src/llm_server/db/session.py
 from __future__ import annotations
 
 from typing import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 
-# ----------------------------------------------------------------------
-# Database configuration (Phase: settings-driven, single source of truth)
-# ----------------------------------------------------------------------
-
-DATABASE_URL: str = settings.database_url
-
-# Create one async engine per process
-engine: AsyncEngine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    future=True,
-)
-
-# Session factory for creating AsyncSession instances
-async_session_maker = async_sessionmaker(
-    bind=engine,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
-
-# Base class for ORM models (kept for backwards compatibility)
 Base = declarative_base()
 
+_ENGINE: AsyncEngine | None = None
+_SESSIONMAKER: async_sessionmaker[AsyncSession] | None = None
+_ENGINE_OWNED: bool = False  # True if we created it in get_engine()
 
-# ----------------------------------------------------------------------
-# FastAPI dependency
-# ----------------------------------------------------------------------
+
+def _database_url() -> str:
+    return get_settings().database_url
+
+
+def get_engine() -> AsyncEngine:
+    global _ENGINE, _ENGINE_OWNED
+    if _ENGINE is None:
+        _ENGINE = create_async_engine(
+            _database_url(),
+            echo=False,
+            pool_pre_ping=True,
+            future=True,
+        )
+        _ENGINE_OWNED = True
+    return _ENGINE
+
+
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    global _SESSIONMAKER
+    if _SESSIONMAKER is None:
+        _SESSIONMAKER = async_sessionmaker(
+            bind=get_engine(),
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+    return _SESSIONMAKER
+
+
+def set_engine_for_tests(engine: AsyncEngine, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+    global _ENGINE, _SESSIONMAKER, _ENGINE_OWNED
+    _ENGINE = engine
+    _SESSIONMAKER = sessionmaker
+    _ENGINE_OWNED = False  # injected, so we don't dispose it here
+
+
+async def dispose_engine() -> None:
+    """
+    Dispose only if we created the engine (production path).
+    Always reset module globals.
+    """
+    global _ENGINE, _SESSIONMAKER, _ENGINE_OWNED
+    if _ENGINE is not None and _ENGINE_OWNED:
+        await _ENGINE.dispose()
+    _ENGINE = None
+    _SESSIONMAKER = None
+    _ENGINE_OWNED = False
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Yield an AsyncSession for FastAPI dependencies.
-
-    Prefer injecting this in routes/services:
-        session: AsyncSession = Depends(get_session)
-    """
-    async with async_session_maker() as session:
-        try:
-            yield session
-        finally:
-            # In SQLAlchemy 2.x, the context manager handles closing,
-            # but we keep this explicit for clarity and backwards safety.
-            await session.close()
+    async with get_sessionmaker()() as session:
+        yield session
 
 
-# Backwards-compatible alias for older imports & tests
+# Backwards-compatible alias (handy during cleanup)
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Backwards-compatible alias to get_session().
-    """
     async for s in get_session():
         yield s
+
+
+# Optional ergonomic helper
+def new_session() -> AsyncSession:
+    return get_sessionmaker()()

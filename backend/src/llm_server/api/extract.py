@@ -10,11 +10,9 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from llm_server.api.deps import get_api_key, get_llm
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.core.metrics import (
     EXTRACTION_CACHE_HITS,
@@ -22,7 +20,7 @@ from llm_server.core.metrics import (
     EXTRACTION_REQUESTS,
     EXTRACTION_VALIDATION_FAILURES,
 )
-from llm_server.core.redis import get_redis_from_request, redis_get, redis_set
+from llm_server.core.redis import get_redis_from_request
 from llm_server.core.schema_registry import (
     SchemaLoadError,
     SchemaNotFoundError,
@@ -34,38 +32,35 @@ from llm_server.core.validation import (
     JSONSchemaValidationError,
     validate_jsonschema,
 )
-from llm_server.db.models import CompletionCache, InferenceLog
-from llm_server.db.session import async_session_maker
+import llm_server.db.session as db_session
+from llm_server.services.inference import (
+    CacheSpec,
+    get_cached_output,
+    set_request_meta,
+    write_cache,
+    write_inference_log,
+)
 from llm_server.services.llm import MultiModelManager
 
 router = APIRouter()
 
 REDIS_TTL_SECONDS = 3600
 
-# Delimiters help good models be deterministic, but we don't rely on them.
 _JSON_BEGIN = "<<<JSON>>>"
 _JSON_END = "<<<END>>>"
-
-
-# -------------------------------
-# Schemas
-# -------------------------------
 
 
 class ExtractRequest(BaseModel):
     schema_id: str = Field(..., description="Schema id (e.g. ticket_v1, invoice_v1, receipt_v1)")
     text: str = Field(..., description="Raw text or OCR text to extract from")
 
-    # Optional model override
     model: str | None = None
 
-    # Generation params
     max_new_tokens: int | None = 512
     temperature: float | None = 0.0
 
-    # Platform behavior
     cache: bool = True
-    repair: bool = True  # one repair attempt if invalid JSON or schema validation fails
+    repair: bool = True
 
 
 class ExtractResponse(BaseModel):
@@ -76,16 +71,12 @@ class ExtractResponse(BaseModel):
     repair_attempted: bool
 
 
-# -------------------------------
-# LLM routing
-# -------------------------------
-
-
 def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
-    allowed = settings.all_model_ids
+    s = get_settings()
+    allowed = s.all_model_ids
 
     if model_override is None:
-        model_id = settings.model_id
+        model_id = s.model_id
     else:
         model_id = model_override
         if model_id not in allowed:
@@ -117,11 +108,6 @@ def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
     return model_id, llm
 
 
-# -------------------------------
-# Helpers
-# -------------------------------
-
-
 def _hash_text(schema_id: str, text: str) -> str:
     payload = f"{schema_id}\n{text}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:32]
@@ -146,16 +132,10 @@ def _strip_wrapping_code_fences(s: str) -> str:
 
 
 def _schema_summary(schema: dict[str, Any]) -> str:
-    """
-    Compact schema representation to avoid prompting with a huge JSON schema.
-    We include:
-      - required fields
-      - for each property: type + enum (if present)
-    """
     required = schema.get("required") or []
     props = schema.get("properties") or {}
 
-    lines = []
+    lines: list[str] = []
     if required:
         lines.append(f"REQUIRED_FIELDS: {', '.join(required)}")
 
@@ -174,11 +154,9 @@ def _schema_summary(schema: dict[str, Any]) -> str:
         if pat:
             pieces.append(f"pattern={pat}")
         if desc:
-            # keep it short; small models tend to echo long text
             pieces.append(f"desc={str(desc)[:80]}")
         lines.append("  " + " | ".join(pieces))
 
-    # also mention additionalProperties if strict
     ap = schema.get("additionalProperties", None)
     if ap is False:
         lines.append("CONSTRAINT: additionalProperties=false (no extra keys).")
@@ -223,11 +201,6 @@ def _build_repair_prompt(
 
 
 def _iter_json_objects(raw: str) -> list[dict[str, Any]]:
-    """
-    Extract ALL JSON objects from a messy string using JSONDecoder.raw_decode.
-
-    This is robust to prompt-echo because we validate candidates against the schema.
-    """
     s = _strip_wrapping_code_fences(raw)
     dec = json.JSONDecoder()
 
@@ -236,7 +209,6 @@ def _iter_json_objects(raw: str) -> list[dict[str, Any]]:
     n = len(s)
 
     while i < n:
-        # find next plausible start of a JSON object
         j = s.find("{", i)
         if j == -1:
             break
@@ -252,21 +224,15 @@ def _iter_json_objects(raw: str) -> list[dict[str, Any]]:
 
 
 def _validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str, Any]:
-    """
-    Try:
-      1) if delimiters exist, decode inside them first
-      2) otherwise scan all objects and choose first that validates
-    """
     if raw_output is None:
         raise AppError(
             code="invalid_json",
             message="Model output was empty.",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
     s = raw_output.strip()
 
-    # 1) Prefer delimited JSON if present (best signal)
     if _JSON_BEGIN in s and _JSON_END in s:
         try:
             inner = s.split(_JSON_BEGIN, 1)[1].split(_JSON_END, 1)[0].strip()
@@ -282,20 +248,18 @@ def _validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[st
             raise AppError(
                 code=e.code,
                 message=e.message,
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 extra={"errors": e.errors, "raw_preview": (raw_output or "")[:500]},
             ) from e
         except Exception:
-            # fall through to scanning
             pass
 
-    # 2) Scan candidates and validate
     candidates = _iter_json_objects(s)
     if not candidates:
         raise AppError(
             code="invalid_json",
             message="Model output did not contain any JSON object.",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             extra={"raw_preview": (raw_output or "")[:500]},
         )
 
@@ -313,7 +277,6 @@ def _validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[st
         except Exception:
             continue
 
-    # No candidate validated
     extra: dict[str, Any] = {"raw_preview": (raw_output or "")[:500], "candidates_found": len(candidates)}
     if last_validation_error is not None:
         extra["errors"] = last_validation_error.errors
@@ -321,27 +284,19 @@ def _validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[st
     raise AppError(
         code="schema_validation_failed",
         message="No JSON object in the model output conformed to the schema.",
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         extra=extra,
     )
 
 
 def _failure_stage_for_app_error(e: AppError, *, is_repair: bool) -> str | None:
-    if getattr(e, "status_code", None) != status.HTTP_422_UNPROCESSABLE_ENTITY:
+    if getattr(e, "status_code", None) != status.HTTP_422_UNPROCESSABLE_CONTENT:
         return None
-
-    # if we never found JSON at all, treat as parse
     if e.code == "invalid_json":
         return "repair_parse" if is_repair else "parse"
     if e.code == "schema_validation_failed":
         return "repair_validate" if is_repair else "validate"
-
     return "repair_validate" if is_repair else "validate"
-
-
-# -------------------------------
-# Routes
-# -------------------------------
 
 
 @router.get("/v1/schemas")
@@ -351,10 +306,6 @@ async def schemas_index(api_key=Depends(get_api_key)):
 
 @router.get("/v1/schemas/{schema_id}", response_model=dict)
 async def schema_detail(schema_id: str, api_key=Depends(get_api_key)):
-    """
-    Return the full JSON schema for a given schema_id.
-    Used by the UI schema inspector + debugging tools.
-    """
     try:
         schema = load_schema(schema_id)
     except SchemaNotFoundError as e:
@@ -372,7 +323,6 @@ async def schema_detail(schema_id: str, api_key=Depends(get_api_key)):
             extra={"schema_id": e.schema_id},
         ) from e
 
-    # Ensure it's JSON-serializable and returned as JSON
     return JSONResponse(content=schema)
 
 
@@ -384,9 +334,8 @@ async def extract(
     llm: Any = Depends(get_llm),
 ):
     model_id, model = resolve_model(llm, body.model)
+    set_request_meta(request, route="/v1/extract", model_id=model_id, cached=False)
 
-    request.state.route = "/v1/extract"
-    request.state.model_id = model_id
     request_id = getattr(request.state, "request_id", None)
 
     EXTRACTION_REQUESTS.labels(schema_id=body.schema_id, model_id=model_id).inc()
@@ -412,120 +361,76 @@ async def extract(
     params_fp = _fingerprint_params(body)
     redis_key = _make_redis_key(model_id, prompt_hash, params_fp)
 
+    cache = CacheSpec(
+        model_id=model_id,
+        prompt=body.text,
+        prompt_hash=prompt_hash,
+        params_fp=params_fp,
+        redis_key=redis_key,
+        redis_ttl_seconds=REDIS_TTL_SECONDS,
+    )
+
     start = time.time()
     redis = get_redis_from_request(request)
 
-    async with async_session_maker() as session:
-        # ---- 0) Redis cache ----
-        if redis is not None and body.cache:
-            raw = await redis_get(redis, redis_key, model_id=model_id, kind="single")
-            if raw is not None:
-                try:
-                    payload = json.loads(raw)
-                    data = payload.get("data")
-                    if not isinstance(data, dict):
-                        raise ValueError("Bad cache payload")
+    async with db_session.get_sessionmaker()() as session:
+        # ---- cache read (redis -> db), stored as JSON string in CompletionCache.output ----
+        cached_out, cached_flag, layer = await get_cached_output(
+            session,
+            redis,
+            cache=cache,
+            kind="single",
+            enabled=bool(body.cache),
+        )
 
-                    validate_jsonschema(schema, data)
+        if isinstance(cached_out, str) and cached_flag:
+            data: dict[str, Any] | None
+            try:
+                data_obj = json.loads(cached_out)
+                if not isinstance(data_obj, dict):
+                    raise ValueError("Expected object")
+                validate_jsonschema(schema, data_obj)
+                data = data_obj
+            except DependencyMissingError as e:
+                raise AppError(code=e.code, message=e.message, status_code=500) from e
+            except (JSONSchemaValidationError, Exception):
+                data = None
 
-                    EXTRACTION_CACHE_HITS.labels(schema_id=body.schema_id, model_id=model_id, layer="redis").inc()
+            if isinstance(data, dict):
+                EXTRACTION_CACHE_HITS.labels(
+                    schema_id=body.schema_id,
+                    model_id=model_id,
+                    layer=(layer or "db"),
+                ).inc()
 
-                    request.state.cached = True
-                    latency_ms = (time.time() - start) * 1000
+                request.state.cached = True
+                latency_ms = (time.time() - start) * 1000
 
-                    session.add(
-                        InferenceLog(
-                            api_key=api_key.key,
-                            request_id=request_id,
-                            route="/v1/extract",
-                            client_host=request.client.host if request.client else None,
-                            model_id=model_id,
-                            params_json={"schema_id": body.schema_id, "cache": True, "repair": body.repair},
-                            prompt=body.text,
-                            output=json.dumps(data, ensure_ascii=False),
-                            latency_ms=latency_ms,
-                            prompt_tokens=None,
-                            completion_tokens=None,
-                        )
-                    )
-                    await session.commit()
-
-                    return ExtractResponse(
-                        schema_id=body.schema_id,
-                        model=model_id,
-                        data=data,
-                        cached=True,
-                        repair_attempted=False,
-                    )
-                except DependencyMissingError as e:
-                    raise AppError(code=e.code, message=e.message, status_code=500) from e
-                except JSONSchemaValidationError:
-                    # schema mismatch => treat as miss
-                    pass
-                except Exception:
-                    pass
-
-        # ---- 1) DB CompletionCache ----
-        if body.cache:
-            res = await session.execute(
-                select(CompletionCache).where(
-                    CompletionCache.model_id == model_id,
-                    CompletionCache.prompt_hash == prompt_hash,
-                    CompletionCache.params_fingerprint == params_fp,
+                await write_inference_log(
+                    session,
+                    api_key=api_key.key,
+                    request_id=request_id,
+                    route="/v1/extract",
+                    client_host=request.client.host if request.client else None,
+                    model_id=model_id,
+                    params_json={"schema_id": body.schema_id, "cache": True, "repair": body.repair},
+                    prompt=body.text,
+                    output=json.dumps(data, ensure_ascii=False),
+                    latency_ms=latency_ms,
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    commit=True,
                 )
-            )
-            cached = res.scalar_one_or_none()
-            if cached is not None:
-                try:
-                    data = json.loads(cached.output)
-                    if not isinstance(data, dict):
-                        raise ValueError("Expected object")
 
-                    validate_jsonschema(schema, data)
+                return ExtractResponse(
+                    schema_id=body.schema_id,
+                    model=model_id,
+                    data=data,
+                    cached=True,
+                    repair_attempted=False,
+                )
 
-                    EXTRACTION_CACHE_HITS.labels(schema_id=body.schema_id, model_id=model_id, layer="db").inc()
-
-                    request.state.cached = True
-                    latency_ms = (time.time() - start) * 1000
-
-                    if redis is not None:
-                        try:
-                            await redis_set(redis, redis_key, json.dumps({"data": data}), ex=REDIS_TTL_SECONDS)
-                        except Exception:
-                            pass
-
-                    session.add(
-                        InferenceLog(
-                            api_key=api_key.key,
-                            request_id=request_id,
-                            route="/v1/extract",
-                            client_host=request.client.host if request.client else None,
-                            model_id=model_id,
-                            params_json={"schema_id": body.schema_id, "cache": True, "repair": body.repair},
-                            prompt=body.text,
-                            output=json.dumps(data, ensure_ascii=False),
-                            latency_ms=latency_ms,
-                            prompt_tokens=None,
-                            completion_tokens=None,
-                        )
-                    )
-                    await session.commit()
-
-                    return ExtractResponse(
-                        schema_id=body.schema_id,
-                        model=model_id,
-                        data=data,
-                        cached=True,
-                        repair_attempted=False,
-                    )
-                except DependencyMissingError as e:
-                    raise AppError(code=e.code, message=e.message, status_code=500) from e
-                except JSONSchemaValidationError:
-                    pass
-                except Exception:
-                    pass
-
-        # ---- 2) Run model ----
+        # ---- run model ----
         prompt = _build_extraction_prompt(body.schema_id, schema, body.text)
         result = model.generate(
             prompt=prompt,
@@ -583,46 +488,32 @@ async def extract(
         latency_ms = (time.time() - start) * 1000
         request.state.cached = False
 
-        # ---- 3) Save cache (DB + Redis) ----
-        if body.cache:
-            session.add(
-                CompletionCache(
-                    model_id=model_id,
-                    prompt=body.text,
-                    prompt_hash=prompt_hash,
-                    params_fingerprint=params_fp,
-                    output=json.dumps(data, ensure_ascii=False),
-                )
-            )
-
-            try:
-                await session.flush()
-            except IntegrityError:
-                await session.rollback()
-
-            if redis is not None:
-                try:
-                    await redis_set(redis, redis_key, json.dumps({"data": data}), ex=REDIS_TTL_SECONDS)
-                except Exception:
-                    pass
-
-        # ---- 4) Save log ----
-        session.add(
-            InferenceLog(
-                api_key=api_key.key,
-                request_id=request_id,
-                route="/v1/extract",
-                client_host=request.client.host if request.client else None,
-                model_id=model_id,
-                params_json={"schema_id": body.schema_id, "cache": body.cache, "repair": body.repair},
-                prompt=body.text,
-                output=json.dumps(data, ensure_ascii=False),
-                latency_ms=latency_ms,
-                prompt_tokens=None,
-                completion_tokens=None,
-            )
+        # ---- cache write: store JSON string in CompletionCache.output, and {"output": "..."} in Redis ----
+        out_json = json.dumps(data, ensure_ascii=False)
+        await write_cache(
+            session,
+            redis,
+            cache=cache,
+            output=out_json,
+            enabled=bool(body.cache),
         )
-        await session.commit()
+
+        # ---- log ----
+        await write_inference_log(
+            session,
+            api_key=api_key.key,
+            request_id=request_id,
+            route="/v1/extract",
+            client_host=request.client.host if request.client else None,
+            model_id=model_id,
+            params_json={"schema_id": body.schema_id, "cache": body.cache, "repair": body.repair},
+            prompt=body.text,
+            output=out_json,
+            latency_ms=latency_ms,
+            prompt_tokens=None,
+            completion_tokens=None,
+            commit=True,
+        )
 
         return ExtractResponse(
             schema_id=body.schema_id,

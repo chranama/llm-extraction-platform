@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
-
 
 # -----------------------------
 # Types / allowed values
@@ -20,9 +20,7 @@ LoadMode = Literal["eager", "lazy", "off"]
 Device = Literal["auto", "cuda", "mps", "cpu"]
 DType = Literal["float16", "bfloat16", "float32"]
 
-# Keep this open-ended, but validate known values.
 Quantization = Optional[str]  # e.g. "int8", "int4", "nf4", None
-
 
 _ALLOWED_BACKENDS = {"local", "remote"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
@@ -34,6 +32,7 @@ _ALLOWED_QUANT = {None, "int8", "int4", "nf4"}  # extend later as you add suppor
 # -----------------------------
 # Normalized config objects
 # -----------------------------
+
 
 @dataclass(frozen=True)
 class ModelSpec:
@@ -72,8 +71,26 @@ class ModelsConfig:
 # Helpers
 # -----------------------------
 
-def _models_yaml_path() -> str:
-    return str(getattr(settings, "models_config_path", None) or "models.yaml")
+
+def _resolve_models_yaml_path() -> str:
+    """
+    Resolve models.yaml relative to APP_ROOT when present, matching config.py behavior.
+
+    - If settings.models_config_path is absolute -> use it
+    - Else resolve relative to APP_ROOT (if set), else cwd
+    """
+    s = get_settings()
+    raw = str(getattr(s, "models_config_path", None) or "config/models.yaml").strip()
+    if not raw:
+        raw = "config/models.yaml"
+
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        return str(p)
+
+    app_root = (os.environ.get("APP_ROOT") or "").strip()
+    base = Path(app_root).expanduser().resolve() if app_root else Path.cwd().resolve()
+    return str((base / p).resolve())
 
 
 def _dedupe_preserve_order(items: List[str]) -> List[str]:
@@ -110,7 +127,6 @@ def _as_opt_int(x: Any, *, field: str, path: str) -> Optional[int]:
     if x is None:
         return None
     if isinstance(x, bool):
-        # bool is int subclass; reject it explicitly
         raise AppError(
             code="models_yaml_invalid",
             message=f"models.yaml {field} must be an integer",
@@ -164,8 +180,15 @@ def _validate_enum(
 
 def _load_yaml(path: str) -> Dict[str, Any]:
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+    except FileNotFoundError:
+        raise AppError(
+            code="models_yaml_missing",
+            message="models.yaml not found",
+            status_code=500,
+            extra={"path": path},
+        )
     except Exception as e:
         raise AppError(
             code="models_yaml_invalid",
@@ -251,7 +274,7 @@ def _normalize_model_entry(
     ) or defaults["device"]
 
     dtype_raw = raw.get("dtype", defaults["dtype"])
-    dtype = None
+    dtype: Optional[DType] = None
     if dtype_raw is not None:
         dtype = _validate_enum(
             dtype_raw,
@@ -268,7 +291,12 @@ def _normalize_model_entry(
             code="models_yaml_invalid",
             message="models.yaml models[].quantization has invalid value",
             status_code=500,
-            extra={"path": path, "field": "models[].quantization", "value": quant, "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None]},
+            extra={
+                "path": path,
+                "field": "models[].quantization",
+                "value": quant,
+                "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None],
+            },
         )
 
     text_only = _as_opt_bool(raw.get("text_only", defaults["text_only"]), field="models[].text_only", path=path)
@@ -289,14 +317,14 @@ def _normalize_model_entry(
 
     return ModelSpec(
         id=mid,
-        backend=backend,               # type: ignore[assignment]
-        load_mode=load_mode,           # type: ignore[assignment]
-        dtype=dtype,                   # type: ignore[assignment]
-        device=device,                 # type: ignore[assignment]
+        backend=backend,  # type: ignore[assignment]
+        load_mode=load_mode,  # type: ignore[assignment]
+        dtype=dtype,  # type: ignore[assignment]
+        device=device,  # type: ignore[assignment]
         text_only=text_only,
         max_context=max_context,
         trust_remote_code=bool(trc),
-        quantization=quant,            # type: ignore[assignment]
+        quantization=quant,  # type: ignore[assignment]
         notes=notes,
     )
 
@@ -305,10 +333,12 @@ def load_models_config() -> ModelsConfig:
     """
     Load model specs from models.yaml if present, otherwise fall back to Settings.
 
-    Also updates settings.model_id and settings.allowed_models best-effort
-    to keep the rest of the app consistent.
+    IMPORTANT: This function must not import a module-level `settings` singleton.
+    It must read through get_settings() so tests can swap config by cache_clear().
     """
-    path = _models_yaml_path()
+    s = get_settings()
+    path = _resolve_models_yaml_path()
+
     if path and os.path.exists(path):
         data = _load_yaml(path)
 
@@ -330,7 +360,6 @@ def load_models_config() -> ModelsConfig:
                 extra={"path": path},
             )
 
-        # Top-level defaults (optional). These apply unless overridden per model.
         defaults: Dict[str, Any] = data.get("defaults") or {}
         if defaults and not isinstance(defaults, dict):
             raise AppError(
@@ -379,17 +408,20 @@ def load_models_config() -> ModelsConfig:
                 code="models_yaml_invalid",
                 message="models.yaml defaults.quantization has invalid value",
                 status_code=500,
-                extra={"path": path, "field": "defaults.quantization", "value": quant_default, "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None]},
+                extra={
+                    "path": path,
+                    "field": "defaults.quantization",
+                    "value": quant_default,
+                    "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None],
+                },
             )
         norm_defaults["quantization"] = quant_default
 
-        # Normalize model entries
         specs: List[ModelSpec] = []
         for raw in models_list:
             specs.append(_normalize_model_entry(raw, path=path, defaults=norm_defaults))
 
-        ids = [m.id for m in specs]
-        ids = _dedupe_preserve_order(ids)
+        ids = _dedupe_preserve_order([m.id for m in specs])
 
         # Determine primary/default id
         if default_model is None:
@@ -403,8 +435,16 @@ def load_models_config() -> ModelsConfig:
             primary_id = ids[0]
         else:
             primary_id = default_model.strip()
+            if not primary_id:
+                raise AppError(
+                    code="models_yaml_invalid",
+                    message="models.yaml default_model must be a non-empty string",
+                    status_code=500,
+                    extra={"path": path},
+                )
+
             if primary_id not in ids:
-                # default must be included in models list for consistency
+                # Keep behavior: allow default_model to be absent from list; add it.
                 ids.insert(0, primary_id)
                 specs.insert(
                     0,
@@ -422,20 +462,19 @@ def load_models_config() -> ModelsConfig:
                     ),
                 )
 
-        # Reorder so primary first (and keep matching specs order)
-        # Build map from id -> first spec occurrence
+        # Reorder so primary first; keep first spec per id.
         spec_map: Dict[str, ModelSpec] = {}
-        for s in specs:
-            if s.id not in spec_map:
-                spec_map[s.id] = s
+        for sp in specs:
+            if sp.id not in spec_map:
+                spec_map[sp.id] = sp
 
         ordered_ids = [primary_id] + [x for x in ids if x != primary_id]
         ordered_specs = [spec_map[mid] for mid in ordered_ids if mid in spec_map]
 
-        # Best-effort update settings for compatibility
+        # Best-effort: keep settings consistent for legacy code paths
         try:
-            settings.model_id = primary_id  # type: ignore[attr-defined]
-            settings.allowed_models = ordered_ids  # type: ignore[attr-defined]
+            s.model_id = primary_id  # type: ignore[attr-defined]
+            s.allowed_models = ordered_ids  # type: ignore[attr-defined]
         except Exception:
             pass
 
@@ -447,10 +486,10 @@ def load_models_config() -> ModelsConfig:
         )
 
     # Fallback to Settings (legacy)
-    primary_id = settings.model_id
-    model_ids = settings.all_model_ids
+    primary_id = getattr(s, "model_id", None)
+    model_ids = list(getattr(s, "all_model_ids", []) or [])
 
-    if not primary_id or not isinstance(primary_id, str):
+    if not primary_id or not isinstance(primary_id, str) or not primary_id.strip():
         raise AppError(
             code="model_config_invalid",
             message="Primary model id is missing or invalid",
@@ -458,18 +497,17 @@ def load_models_config() -> ModelsConfig:
             extra={"primary_id": str(primary_id)},
         )
 
-    model_ids = [str(x) for x in (model_ids or []) if str(x).strip()]
+    model_ids = [str(x) for x in model_ids if str(x).strip()]
     model_ids = _dedupe_preserve_order(model_ids)
     if primary_id not in model_ids:
         model_ids.insert(0, primary_id)
 
     try:
-        settings.model_id = primary_id  # type: ignore[attr-defined]
-        settings.allowed_models = model_ids  # type: ignore[attr-defined]
+        s.model_id = primary_id  # type: ignore[attr-defined]
+        s.allowed_models = model_ids  # type: ignore[attr-defined]
     except Exception:
         pass
 
-    # Create minimal specs from Settings defaults
     specs = [
         ModelSpec(
             id=mid,
@@ -486,4 +524,9 @@ def load_models_config() -> ModelsConfig:
         for mid in model_ids
     ]
 
-    return ModelsConfig(primary_id=str(primary_id), model_ids=[str(x) for x in model_ids], models=specs, defaults={"path": None})
+    return ModelsConfig(
+        primary_id=str(primary_id),
+        model_ids=[str(x) for x in model_ids],
+        models=specs,
+        defaults={"path": None},
+    )

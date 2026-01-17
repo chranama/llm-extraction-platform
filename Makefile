@@ -14,6 +14,7 @@ NGINX_PORT ?= 8080
 PG_HOST ?= 127.0.0.1
 PG_PORT ?= 5433
 PG_USER ?= llm
+PG_PASSWORD ?= llm
 PG_DB   ?= llm
 
 REDIS_HOST ?= 127.0.0.1
@@ -32,11 +33,11 @@ BACKEND_DIR ?= backend
 EVAL_ARGS ?=
 
 # ====== Compose commands (DELTAS) ======
-COMPOSE_BASE  := COMPOSE_PROJECT_NAME=$(PROJECT_NAME) docker compose
+COMPOSE_BASE  := COMPOSE_PROJECT_NAME=$(PROJECT_NAME) docker compose --env-file $(ENV_FILE)
 COMPOSE_PROD  := $(COMPOSE_BASE) -f $(COMPOSE_YML)
 COMPOSE_DEV   := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_DEV_YML)
 COMPOSE_LOCAL := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_LOCAL_YML)
-COMPOSE_EVAL := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_EVAL_YML)
+COMPOSE_EVAL  := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_EVAL_YML)
 
 .PHONY: \
   init init-env bootstrap \
@@ -47,6 +48,7 @@ COMPOSE_EVAL := $(COMPOSE_BASE) -f $(COMPOSE_YML) -f $(COMPOSE_EVAL_YML)
   config config-dev config-local config-prod \
   migrate revision migrate-docker seed-key seed-key-from-env \
   api-local curl test env \
+  test-unit test-integration test-all test-integration-localdb \
   clean clean-volumes nuke \
   eval-build eval-help eval-run eval-shell eval-up eval-down \
   int-up int-down int-ps int-logs int-test int-test-api int-test-nginx
@@ -83,12 +85,14 @@ dev-cpu: up-cpu migrate-docker
 	@echo "✅ Dev container stack is up and DB migrated."
 	@echo "👉 Seed key: make seed-key-from-env"
 	@echo "👉 Test: make curl API_KEY=<your-key>"
+	@echo "👉 Backend tests: make test-all (or test-integration-localdb)"
 
 dev-local: ENV_FILE=.env.local
 dev-local: up-local
 	@echo "✅ Local infra is up."
 	@echo "👉 Run API on host: ENV_FILE=.env.local make api-local"
 	@echo "👉 Migrate on host:  ENV_FILE=.env.local make migrate"
+	@echo "👉 Backend tests:   ENV_FILE=.env.local make test-all"
 
 dev-tmux: ENV_FILE=.env.local
 dev-tmux: up-local migrate
@@ -114,7 +118,7 @@ up-cpu:
 	@echo "✅ DEV container stack is up."
 
 up-local:
-	$(COMPOSE_LOCAL) up -d --build --scale api=0
+	$(COMPOSE_LOCAL) up -d --scale api=0
 	@echo "⏳ Waiting for Postgres @ $(PG_HOST):$(PG_PORT) ..."
 	@for i in $$(seq 1 30); do \
 		pg_isready -h $(PG_HOST) -p $(PG_PORT) -d $(PG_DB) -U $(PG_USER) >/dev/null 2>&1 && break; \
@@ -171,14 +175,14 @@ revision:
 	APP_ROOT=.. uv run python -m alembic revision --autogenerate -m "$(m)"
 
 migrate-docker:
-	$(COMPOSE_DEV) exec api python -m alembic upgrade head
+	$(COMPOSE_DEV) exec -T api python -m alembic upgrade head
 
 # ====== Seed API key ======
 seed-key:
 	@if [ -z "$(API_KEY)" ]; then echo '❌ Provide API_KEY, e.g. make seed-key API_KEY=$$(openssl rand -hex 24)'; exit 1; fi
-	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
+	$(COMPOSE_DEV) exec -T postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
 	  -c "INSERT INTO roles (name) SELECT 'admin' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'admin');"
-	docker exec -i llm_postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
+	$(COMPOSE_DEV) exec -T postgres psql -U $(PG_USER) -d $(PG_DB) -v ON_ERROR_STOP=1 \
 	  -c "INSERT INTO api_keys (key, name, label, active, role_id, quota_used, quota_monthly, quota_reset_at) \
 	      SELECT '$(API_KEY)', 'bootstrap', 'bootstrap', TRUE, r.id, 0, NULL, NULL \
 	      FROM roles r WHERE r.name = 'admin' \
@@ -186,7 +190,7 @@ seed-key:
 	@echo "✅ Seeded API key: $(API_KEY)"
 
 seed-key-from-env:
-	@$(dotenv); \
+	@$(dotenv) \
 	if [ -z "$$API_KEY" ]; then \
 		echo "❌ API_KEY not set in $(ENV_FILE)."; \
 		exit 1; \
@@ -197,12 +201,37 @@ seed-key-from-env:
 api-local:
 	@$(dotenv) \
 	cd $(BACKEND_DIR) && \
-	APP_ROOT=.. ENV=dev PORT=$(API_PORT) uv run serve
+	APP_ROOT=.. PORT=$(API_PORT) uv run serve
+
+# ====== Backend tests (the new smoke test path) ======
+# NOTE: backend integration tests require a host-reachable DATABASE_URL.
+# .env (docker network):  postgresql+asyncpg://...@postgres:5432/...
+# .env.local (host):      postgresql+asyncpg://...@127.0.0.1:5433/...
+test-unit:
+	@$(dotenv) \
+	cd $(BACKEND_DIR) && \
+	PYTHONPATH=src uv run pytest -q -m unit
+
+test-integration:
+	@$(dotenv) \
+	cd $(BACKEND_DIR) && \
+	PYTHONPATH=src uv run pytest -q -m integration
+
+test-all:
+	@$(dotenv) \
+	cd $(BACKEND_DIR) && \
+	PYTHONPATH=src uv run pytest -q
+
+# Convenience: ensure DATABASE_URL points at host-mapped compose Postgres
+test-integration-localdb: ENV_FILE=.env.local
+test-integration-localdb: up-local
+	@$(dotenv); \
+	if [ -z "$$DATABASE_URL" ]; then \
+	  export DATABASE_URL="postgresql+asyncpg://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DB)"; \
+	fi; \
+	cd $(BACKEND_DIR) && PYTHONPATH=src uv run pytest -q -m integration
 
 # ====== Eval (containerized) ======
-
-# Bring up the stack needed for eval (api + deps) using DEV compose,
-# then run eval as an on-demand profile service.
 eval-up: ENV_FILE=.env
 eval-up:
 	@if [ ! -f $(ENV_FILE) ]; then \
@@ -222,20 +251,13 @@ eval-build:
 eval-help:
 	@$(COMPOSE_EVAL) --profile eval run --rm eval eval --help
 
-# Usage:
-#   make eval-run EVAL_ARGS="run --config /work/config/eval.yaml"
-#   make eval-run EVAL_ARGS="datasets list"
 eval-run: eval-up
 	@$(COMPOSE_EVAL) --profile eval run --rm eval sh -lc "pip install -e /work/eval && eval $(EVAL_ARGS)"
 
-# Drop into a shell inside the eval image (debug deps/files)
 eval-shell: eval-up
 	@$(COMPOSE_EVAL) --profile eval run --rm --entrypoint sh eval
 
-
-# ====== Integration tests (containerized) ======
-
-# Bring up DEV stack (api exposed on 8000, nginx on 8080)
+# ====== Integration tests (external harness; runs against running stack) ======
 int-up: ENV_FILE=.env
 int-up:
 	@if [ ! -f $(ENV_FILE) ]; then \
@@ -254,7 +276,6 @@ int-ps:
 int-logs:
 	$(COMPOSE_DEV) logs -f --tail=200
 
-# Run integration tests through nginx (matches real routing/auth)
 int-test-nginx: ENV_FILE=.env
 int-test-nginx: int-up
 	@echo "🧪 Running integrations against nginx http://localhost:$(NGINX_PORT)/api"
@@ -263,7 +284,6 @@ int-test-nginx: int-up
 	uv run --project integrations pytest -q integrations/tests
 	@echo "✅ Integration tests done."
 
-# Run integration tests directly against api (faster)
 int-test-api: ENV_FILE=.env
 int-test-api: int-up
 	@echo "🧪 Running integrations against api http://localhost:$(API_PORT)"
@@ -272,7 +292,6 @@ int-test-api: int-up
 	uv run --project integrations pytest -q integrations/tests
 	@echo "✅ Integration tests done."
 
-# Default integration tests: use nginx path for realism
 int-test: int-test-nginx
 
 # ====== Quick checks ======

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core import logging as logging_config
 from llm_server.core import metrics, limits
 from llm_server.core import errors
@@ -24,7 +24,8 @@ def _model_load_mode() -> str:
       - "eager" : build + ensure_loaded at startup
       - "on"    : alias for "eager"
     """
-    default = "eager" if settings.env.strip().lower() == "prod" else "lazy"
+    s = get_settings()
+    default = "eager" if s.env.strip().lower() == "prod" else "lazy"
     return os.getenv("MODEL_LOAD_MODE", default).strip().lower()
 
 
@@ -42,7 +43,8 @@ def _model_warmup_enabled(mode: str) -> bool:
     if raw is not None:
         return raw.strip().lower() in ("1", "true", "yes", "y", "on")
 
-    is_prod = settings.env.strip().lower() == "prod"
+    s = get_settings()
+    is_prod = s.env.strip().lower() == "prod"
     return is_prod and mode in ("eager", "on")
 
 
@@ -61,14 +63,15 @@ def _warmup_max_new_tokens() -> int:
 async def lifespan(app: FastAPI):
     import logging
 
+    s = get_settings()
     mode = _model_load_mode()
 
     logging.getLogger("uvicorn.error").info(
         "CORS allow_origins=%s | env=%s | debug=%s | redis_enabled=%s | model_load_mode=%s",
-        settings.cors_allowed_origins,
-        settings.env,
-        settings.debug,
-        settings.redis_enabled,
+        s.cors_allowed_origins,
+        s.env,
+        s.debug,
+        s.redis_enabled,
         mode,
     )
 
@@ -97,33 +100,23 @@ async def lifespan(app: FastAPI):
             # "eager"/"on": load at startup
             if mode in ("eager", "on"):
                 if not hasattr(llm, "ensure_loaded"):
-                    # Can't force a load for this backend; treat as not loaded
                     app.state.model_loaded = False
                     app.state.model_error = "LLM backend has no ensure_loaded(); cannot eager load"
                 else:
                     llm.ensure_loaded()
                     app.state.model_loaded = True
 
-                    # Optional warmup smoke test (recommended for cloud readiness)
+                    # Optional warmup smoke test
                     if _model_warmup_enabled(mode):
                         try:
-                            # We want something that touches the actual execution path,
-                            # but is tiny/cheap.
                             prompt = _warmup_prompt()
                             max_new = _warmup_max_new_tokens()
-
-                            # Most of your backends support generate(prompt=..., max_new_tokens=...)
-                            # If some don't, this will raise and we record it.
                             out = llm.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
-
-                            # Don't care about content; only care that it executed.
                             _ = out
                         except Exception as e:
                             app.state.model_loaded = False
                             app.state.model_error = f"warmup_failed: {repr(e)}"
                             logging.getLogger("uvicorn.error").exception("Model warmup failed: %s", e)
-
-                            # In true eager prod, fail fast so readiness never lies.
                             logging.getLogger("uvicorn.error").error("Aborting startup: warmup failed in eager mode")
                             raise
 
@@ -134,12 +127,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             app.state.model_error = repr(e)
 
-            # If you want true "hard eager", crash startup when eager fails.
             if mode in ("eager", "on"):
                 logging.getLogger("uvicorn.error").exception("LLM eager init failed; aborting startup: %s", e)
                 raise
 
-            # In lazy mode, keep API up and report via /modelz
             logging.getLogger("uvicorn.error").exception("LLM init failed (lazy mode continues): %s", e)
             app.state.llm = None
             app.state.model_loaded = False
@@ -153,11 +144,13 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    s = get_settings()
+
     app = FastAPI(
-        title=settings.service_name,
+        title=s.service_name,
         description="Backend service for running LLM inference",
-        version=settings.version,
-        debug=settings.debug,
+        version=s.version,
+        debug=s.debug,
         lifespan=lifespan,
         json_dumps=lambda v, *, default: orjson.dumps(v, default=default).decode(),
         json_loads=orjson.loads,
@@ -165,7 +158,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_allowed_origins,
+        allow_origins=s.cors_allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

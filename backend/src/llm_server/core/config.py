@@ -3,12 +3,18 @@ from __future__ import annotations
 
 import json
 import os
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic_settings.sources import SettingsSourceCallable
+
+try:
+    # Some pydantic-settings versions export this; others don't.
+    from pydantic_settings.sources import SettingsSourceCallable  # type: ignore
+except Exception:  # pragma: no cover
+    SettingsSourceCallable = Callable[..., Dict[str, Any]]  # type: ignore
 
 try:
     import yaml  # pyyaml
@@ -19,7 +25,6 @@ except Exception:  # pragma: no cover
 # =========================
 # Path resolution helpers
 # =========================
-
 def _app_root() -> Path:
     """
     Root of the repository / application.
@@ -227,13 +232,24 @@ class Settings(BaseSettings):
         dotenv_settings: SettingsSourceCallable,
         file_secret_settings: SettingsSourceCallable,
     ):
-        def yaml_settings(settings: BaseSettings) -> Dict[str, Any]:
-            # Use the *init* value for app_config_path if provided, else default.
-            path = getattr(settings, "app_config_path", "config/app.yaml")
+        def yaml_settings() -> Dict[str, Any]:
+            # Read from env directly (env still overrides later via env_settings).
+            path = os.getenv("APP_CONFIG_PATH", "config/app.yaml")
             return _load_app_yaml(path)
 
         # Order matters: defaults -> YAML -> env -> dotenv -> secrets
         return (init_settings, yaml_settings, env_settings, dotenv_settings, file_secret_settings)
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """
+    Canonical settings accessor.
+
+    IMPORTANT:
+    - Cached for performance and deterministic behavior.
+    - Tests that change APP_ROOT / APP_CONFIG_PATH / env vars must call:
+        get_settings.cache_clear()
+      before creating the FastAPI app (create_app()).
+    """
+    return Settings()

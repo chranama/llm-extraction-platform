@@ -3,48 +3,39 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from functools import lru_cache
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from transformers import AutoTokenizer
 
 from llm_server.api.deps import get_api_key, get_llm
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
-from llm_server.core.metrics import LLM_TOKENS
-from llm_server.core.redis import get_redis_from_request, redis_get, redis_set
-from llm_server.db.models import CompletionCache, InferenceLog
-from llm_server.db.session import async_session_maker
+from llm_server.core.redis import get_redis_from_request
+import llm_server.db.session as db_session  # module import so tests can patch session wiring
+from llm_server.services.inference import (
+    CacheSpec,
+    get_cached_output,
+    record_token_metrics,
+    set_request_meta,
+    write_cache,
+    write_inference_log,
+)
 from llm_server.services.llm import MultiModelManager
 
 router = APIRouter()
 
-# How long Redis entries should live, in seconds
 REDIS_TTL_SECONDS = 3600
-
-
-# -------------------------------
-# Schemas
-# -------------------------------
 
 
 class GenerateRequest(BaseModel):
     prompt: str
-
-    # Optional override to pick a non-default model (when multi-model is enabled)
-    model: str | None = Field(
-        default=None,
-        description="Optional model id override for multi-model routing",
-    )
-
-    # allow disabling caching for single-generate
+    model: str | None = Field(default=None, description="Optional model id override for multi-model routing")
     cache: bool = True
-
     max_new_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -53,26 +44,17 @@ class GenerateRequest(BaseModel):
 
 
 class BatchGenerateRequest(BaseModel):
-    """
-    Batch of generate requests.
-
-    For v1, we keep this simple: same generation params for all prompts.
-    """
-
     prompts: List[str]
-
-    # Optional model override, applied to all prompts
     model: str | None = Field(
         default=None,
         description="Optional model id override for multi-model routing (applies to all prompts in the batch)",
     )
-
     max_new_tokens: int = 512
     temperature: float = 0.7
     top_p: float = 0.95
     top_k: int | None = None
     stop: list[str] | None = None
-    cache: bool = True  # reuse existing caching semantics
+    cache: bool = True
 
 
 class BatchGenerateResult(BaseModel):
@@ -87,16 +69,12 @@ class BatchGenerateResponse(BaseModel):
     results: List[BatchGenerateResult]
 
 
-# -------------------------------
-# LLM dependency + routing
-# -------------------------------
-
-
 def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
-    allowed = settings.all_model_ids
+    s = get_settings()
+    allowed = s.all_model_ids
 
     if model_override is None:
-        model_id = settings.model_id
+        model_id = s.model_id
     else:
         model_id = model_override
         if model_id not in allowed:
@@ -107,7 +85,6 @@ def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
                 extra={"allowed": allowed},
             )
 
-    # Multi-model: MultiModelManager
     if isinstance(llm, MultiModelManager):
         if model_id not in llm:
             raise AppError(
@@ -117,7 +94,6 @@ def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
             )
         return model_id, llm[model_id]
 
-    # (optional) Multi-model: dict
     if isinstance(llm, dict):
         if model_id not in llm:
             raise AppError(
@@ -127,13 +103,7 @@ def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
             )
         return model_id, llm[model_id]
 
-    # Single-model mode
     return model_id, llm
-
-
-# -------------------------------
-# Helpers
-# -------------------------------
 
 
 def hash_prompt(prompt: str) -> str:
@@ -141,23 +111,11 @@ def hash_prompt(prompt: str) -> str:
 
 
 def fingerprint_params(body: GenerateRequest) -> str:
-    """
-    Fingerprint all generation params except:
-    - prompt (handled separately)
-    - model (we key by model_id in the DB, so no need to double-encode it)
-
-    Cache key is effectively:
-        (model_id, prompt_hash, params_fingerprint)
-    """
     params = body.model_dump(exclude={"prompt", "model", "cache"}, exclude_none=True)
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:32]
 
 
 def fingerprint_batch_params(body: BatchGenerateRequest) -> str:
-    """
-    Same idea as fingerprint_params, but for the batch request:
-    - Excludes 'prompts' and 'model'; the model_id is already part of the key.
-    """
     params = body.model_dump(exclude={"prompts", "model"}, exclude_none=True)
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:32]
 
@@ -166,37 +124,28 @@ def make_redis_key(model_id: str, prompt_hash: str, params_fp: str) -> str:
     return f"llm:cache:{model_id}:{prompt_hash}:{params_fp}"
 
 
-# -------------------------------
-# Token counting helpers
-# -------------------------------
-
-
 @lru_cache(maxsize=16)
 def _get_tokenizer(model_id: str):
     return AutoTokenizer.from_pretrained(model_id, use_fast=True)
 
 
 def count_tokens(model_id: str, prompt: str, completion: str | None) -> tuple[int | None, int | None]:
+    # Hard off-switch (tests can set TOKEN_COUNTING=0)
+    if os.getenv("TOKEN_COUNTING", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return None, None
+
     try:
         tok = _get_tokenizer(model_id)
-
         prompt_ids = tok(prompt, add_special_tokens=False).input_ids
         prompt_tokens = len(prompt_ids)
-
         if completion:
             completion_ids = tok(completion, add_special_tokens=False).input_ids
             completion_tokens = len(completion_ids)
         else:
             completion_tokens = 0
-
         return prompt_tokens, completion_tokens
     except Exception:
         return None, None
-
-
-# -------------------------------
-# Generate endpoint (single)
-# -------------------------------
 
 
 @router.post("/v1/generate")
@@ -207,10 +156,7 @@ async def generate(
     llm: Any = Depends(get_llm),
 ):
     model_id, model = resolve_model(llm, body.model)
-
-    request.state.route = "/v1/generate"
-    request.state.model_id = model_id
-    request.state.cached = False
+    set_request_meta(request, route="/v1/generate", model_id=model_id, cached=False)
 
     request_id = getattr(request.state, "request_id", None)
 
@@ -218,101 +164,53 @@ async def generate(
     params_fp = fingerprint_params(body)
     redis_key = make_redis_key(model_id, prompt_hash, params_fp)
 
+    cache = CacheSpec(
+        model_id=model_id,
+        prompt=body.prompt,
+        prompt_hash=prompt_hash,
+        params_fp=params_fp,
+        redis_key=redis_key,
+        redis_ttl_seconds=REDIS_TTL_SECONDS,
+    )
+
     start = time.time()
     redis = get_redis_from_request(request)
 
-    async with async_session_maker() as session:
-        # ---- 0) Redis cache (if enabled AND cache=True) ----
-        if redis is not None and body.cache:
-            raw = await redis_get(redis, redis_key, model_id=model_id, kind="single")
-            if raw is not None:
-                output: str | None = None
-                try:
-                    payload = json.loads(raw)
-                    output = payload.get("output")
-                    if output is None:
-                        raise ValueError("Missing 'output' in Redis payload")
-                except Exception:
-                    output = None
+    async with db_session.get_sessionmaker()() as session:
+        # ---- cache read (redis -> db) ----
+        cached_out, cached_flag, _layer = await get_cached_output(
+            session,
+            redis,
+            cache=cache,
+            kind="single",
+            enabled=bool(body.cache),
+        )
 
-                if output is not None:
-                    latency_ms = (time.time() - start) * 1000
-                    request.state.cached = True
+        if isinstance(cached_out, str) and cached_flag:
+            latency_ms = (time.time() - start) * 1000
+            request.state.cached = True
 
-                    prompt_tokens, completion_tokens = count_tokens(model_id, body.prompt, output)
-                    if prompt_tokens is not None:
-                        LLM_TOKENS.labels(direction="prompt", model_id=model_id).inc(prompt_tokens)
-                    if completion_tokens is not None:
-                        LLM_TOKENS.labels(direction="completion", model_id=model_id).inc(completion_tokens)
+            prompt_tokens, completion_tokens = count_tokens(model_id, body.prompt, cached_out)
+            record_token_metrics(model_id, prompt_tokens, completion_tokens)
 
-                    session.add(
-                        InferenceLog(
-                            api_key=api_key.key,
-                            request_id=request_id,
-                            route="/v1/generate",
-                            client_host=request.client.host if request.client else None,
-                            model_id=model_id,
-                            params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
-                            prompt=body.prompt,
-                            output=output,
-                            latency_ms=latency_ms,
-                            prompt_tokens=prompt_tokens,
-                            completion_tokens=completion_tokens,
-                        )
-                    )
-                    await session.commit()
-
-                    return {"model": model_id, "output": output, "cached": True}
-
-        # ---- 1) DB CompletionCache (if cache=True) ----
-        if body.cache:
-            cached_row = await session.execute(
-                select(CompletionCache).where(
-                    CompletionCache.model_id == model_id,
-                    CompletionCache.prompt_hash == prompt_hash,
-                    CompletionCache.params_fingerprint == params_fp,
-                )
+            await write_inference_log(
+                session,
+                api_key=api_key.key,
+                request_id=request_id,
+                route="/v1/generate",
+                client_host=request.client.host if request.client else None,
+                model_id=model_id,
+                params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
+                prompt=body.prompt,
+                output=cached_out,
+                latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                commit=True,
             )
-            cached = cached_row.scalar_one_or_none()
+            return {"model": model_id, "output": cached_out, "cached": True}
 
-            if cached is not None:
-                output = cached.output
-                latency_ms = (time.time() - start) * 1000
-                request.state.cached = True
-
-                prompt_tokens, completion_tokens = count_tokens(model_id, body.prompt, output)
-                if prompt_tokens is not None:
-                    LLM_TOKENS.labels(direction="prompt", model_id=model_id).inc(prompt_tokens)
-                if completion_tokens is not None:
-                    LLM_TOKENS.labels(direction="completion", model_id=model_id).inc(completion_tokens)
-
-                # Backfill Redis
-                if redis is not None:
-                    try:
-                        await redis_set(redis, redis_key, json.dumps({"output": output}), ex=REDIS_TTL_SECONDS)
-                    except Exception:
-                        pass
-
-                session.add(
-                    InferenceLog(
-                        api_key=api_key.key,
-                        request_id=request_id,
-                        route="/v1/generate",
-                        client_host=request.client.host if request.client else None,
-                        model_id=model_id,
-                        params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
-                        prompt=body.prompt,
-                        output=output,
-                        latency_ms=latency_ms,
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                    )
-                )
-                await session.commit()
-
-                return {"model": model_id, "output": output, "cached": True}
-
-        # ---- 2) Run model ----
+        # ---- run model ----
         result = model.generate(
             prompt=body.prompt,
             max_new_tokens=body.max_new_tokens,
@@ -321,64 +219,41 @@ async def generate(
             top_k=body.top_k,
             stop=body.stop,
         )
-
         output = result if isinstance(result, str) else str(result)
+
         latency_ms = (time.time() - start) * 1000
         request.state.cached = False
 
         prompt_tokens, completion_tokens = count_tokens(model_id, body.prompt, output)
-        if prompt_tokens is not None:
-            LLM_TOKENS.labels(direction="prompt", model_id=model_id).inc(prompt_tokens)
-        if completion_tokens is not None:
-            LLM_TOKENS.labels(direction="completion", model_id=model_id).inc(completion_tokens)
+        record_token_metrics(model_id, prompt_tokens, completion_tokens)
 
-        # ---- 3) Save cache (DB + Redis) if cache=True ----
-        if body.cache:
-            session.add(
-                CompletionCache(
-                    model_id=model_id,
-                    prompt=body.prompt,
-                    prompt_hash=prompt_hash,
-                    params_fingerprint=params_fp,
-                    output=output,
-                )
-            )
-
-            try:
-                await session.flush()
-            except IntegrityError:
-                await session.rollback()
-
-            if redis is not None:
-                try:
-                    await redis_set(redis, redis_key, json.dumps({"output": output}), ex=REDIS_TTL_SECONDS)
-                except Exception:
-                    pass
-
-        # ---- 4) Save log ----
-        session.add(
-            InferenceLog(
-                api_key=api_key.key,
-                request_id=request_id,
-                route="/v1/generate",
-                client_host=request.client.host if request.client else None,
-                model_id=model_id,
-                params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
-                prompt=body.prompt,
-                output=output,
-                latency_ms=latency_ms,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
+        # ---- cache write ----
+        await write_cache(
+            session,
+            redis,
+            cache=cache,
+            output=output,
+            enabled=bool(body.cache),
         )
-        await session.commit()
+
+        # ---- log ----
+        await write_inference_log(
+            session,
+            api_key=api_key.key,
+            request_id=request_id,
+            route="/v1/generate",
+            client_host=request.client.host if request.client else None,
+            model_id=model_id,
+            params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
+            prompt=body.prompt,
+            output=output,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            commit=True,
+        )
 
         return {"model": model_id, "output": output, "cached": False}
-
-
-# -------------------------------
-# Batch generate endpoint
-# -------------------------------
 
 
 @router.post("/v1/generate/batch", response_model=BatchGenerateResponse)
@@ -389,10 +264,7 @@ async def generate_batch(
     llm: Any = Depends(get_llm),
 ):
     model_id, model = resolve_model(llm, body.model)
-
-    request.state.route = "/v1/generate/batch"
-    request.state.model_id = model_id
-    request.state.cached = False  # will be set at end
+    set_request_meta(request, route="/v1/generate/batch", model_id=model_id, cached=False)
 
     request_id = getattr(request.state, "request_id", None)
 
@@ -400,62 +272,34 @@ async def generate_batch(
     redis = get_redis_from_request(request)
 
     results: list[BatchGenerateResult] = []
-
-    # If cache is disabled, the request is never "cached"
     all_cached = True if body.cache else False
 
-    async with async_session_maker() as session:
+    async with db_session.get_sessionmaker()() as session:
         for prompt in body.prompts:
             item_start = time.time()
             prompt_hash = hash_prompt(prompt)
             redis_key = make_redis_key(model_id, prompt_hash, params_fp)
 
-            output: str | None = None
-            cached_flag = False
+            cache = CacheSpec(
+                model_id=model_id,
+                prompt=prompt,
+                prompt_hash=prompt_hash,
+                params_fp=params_fp,
+                redis_key=redis_key,
+                redis_ttl_seconds=REDIS_TTL_SECONDS,
+            )
 
-            # ---- 0) Redis lookup (if enabled AND cache=True) ----
-            if redis is not None and body.cache:
-                raw = await redis_get(redis, redis_key, model_id=model_id, kind="batch")
-                if raw is not None:
-                    try:
-                        payload = json.loads(raw)
-                        output = payload.get("output")
-                        if output is None:
-                            raise ValueError("Missing 'output' in Redis payload")
-                        cached_flag = True
-                    except Exception:
-                        output = None
-                        cached_flag = False
+            out, cached_flag, _layer = await get_cached_output(
+                session,
+                redis,
+                cache=cache,
+                kind="batch",
+                enabled=bool(body.cache),
+            )
 
-            # ---- 1) DB cache (CompletionCache) ----
-            if output is None and body.cache:
-                cached_row = await session.execute(
-                    select(CompletionCache).where(
-                        CompletionCache.model_id == model_id,
-                        CompletionCache.prompt_hash == prompt_hash,
-                        CompletionCache.params_fingerprint == params_fp,
-                    )
-                )
-                cached = cached_row.scalar_one_or_none()
-
-                if cached is not None:
-                    output = cached.output
-                    cached_flag = True
-
-                    # Backfill Redis
-                    if redis is not None:
-                        try:
-                            await redis_set(
-                                redis,
-                                redis_key,
-                                json.dumps({"output": output}),
-                                ex=REDIS_TTL_SECONDS,
-                            )
-                        except Exception:
-                            pass
-
-            # ---- 2) Run model if still no output ----
-            if output is None:
+            if isinstance(out, str) and cached_flag:
+                output = out
+            else:
                 result = model.generate(
                     prompt=prompt,
                     max_new_tokens=body.max_new_tokens,
@@ -466,72 +310,46 @@ async def generate_batch(
                 )
                 output = result if isinstance(result, str) else str(result)
                 cached_flag = False
-                all_cached = False  # any model call makes the request non-cached
+                all_cached = False
 
-                if body.cache:
-                    session.add(
-                        CompletionCache(
-                            model_id=model_id,
-                            prompt=prompt,
-                            prompt_hash=prompt_hash,
-                            params_fingerprint=params_fp,
-                            output=output,
-                        )
-                    )
+                await write_cache(
+                    session,
+                    redis,
+                    cache=cache,
+                    output=output,
+                    enabled=bool(body.cache),
+                )
 
-                    try:
-                        await session.flush()
-                    except IntegrityError:
-                        await session.rollback()
-
-                    if redis is not None:
-                        try:
-                            await redis_set(
-                                redis,
-                                redis_key,
-                                json.dumps({"output": output}),
-                                ex=REDIS_TTL_SECONDS,
-                            )
-                        except Exception:
-                            pass
-
-            # If cache is enabled, AND the per-item result was not cached, the whole request isn't cached.
             if body.cache and not cached_flag:
                 all_cached = False
 
             latency_ms = (time.time() - item_start) * 1000
 
             prompt_tokens, completion_tokens = count_tokens(model_id, prompt, output)
-            prompt_tokens_int = int(prompt_tokens or 0)
-            completion_tokens_int = int(completion_tokens or 0)
+            record_token_metrics(model_id, prompt_tokens, completion_tokens)
 
-            if prompt_tokens is not None:
-                LLM_TOKENS.labels(direction="prompt", model_id=model_id).inc(prompt_tokens)
-            if completion_tokens is not None:
-                LLM_TOKENS.labels(direction="completion", model_id=model_id).inc(completion_tokens)
-
-            session.add(
-                InferenceLog(
-                    api_key=api_key.key,
-                    request_id=request_id,
-                    route="/v1/generate/batch",
-                    client_host=request.client.host if request.client else None,
-                    model_id=model_id,
-                    params_json=body.model_dump(exclude={"prompts", "model"}, exclude_none=True),
-                    prompt=prompt,
-                    output=output,
-                    latency_ms=latency_ms,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                )
+            await write_inference_log(
+                session,
+                api_key=api_key.key,
+                request_id=request_id,
+                route="/v1/generate/batch",
+                client_host=request.client.host if request.client else None,
+                model_id=model_id,
+                params_json=body.model_dump(exclude={"prompts", "model"}, exclude_none=True),
+                prompt=prompt,
+                output=output,
+                latency_ms=latency_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                commit=False,
             )
 
             results.append(
                 BatchGenerateResult(
                     output=output,
                     cached=cached_flag,
-                    prompt_tokens=prompt_tokens_int,
-                    completion_tokens=completion_tokens_int,
+                    prompt_tokens=int(prompt_tokens or 0),
+                    completion_tokens=int(completion_tokens or 0),
                 )
             )
 

@@ -8,7 +8,7 @@ import logging
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 
 logger = logging.getLogger("llm_server.limits")
 
@@ -18,7 +18,8 @@ HEAVY_PREFIXES = ("/v1/generate", "/v1/extract")
 
 def _max_concurrency() -> int:
     # Backwards compatible: if you haven't added this setting yet, default to 2.
-    return int(getattr(settings, "max_concurrent_requests", 2))
+    s = get_settings()
+    return int(getattr(s, "max_concurrent_requests", 2))
 
 
 class _ConcurrencyMiddleware(BaseHTTPMiddleware):
@@ -38,7 +39,6 @@ class _ConcurrencyMiddleware(BaseHTTPMiddleware):
             t0 = time.time()
             async with self._semaphore:
                 wait_ms = (time.time() - t0) * 1000.0
-                # Only log if we actually waited meaningfully
                 if wait_ms > 5:
                     logger.info(
                         "concurrency_wait",

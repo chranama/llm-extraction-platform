@@ -41,8 +41,8 @@ services:
   # ==========================
   api:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile.backend
+      context: ../..
+      dockerfile: backend/Dockerfile.backend
     container_name: llm_api
     restart: "no"
     environment:

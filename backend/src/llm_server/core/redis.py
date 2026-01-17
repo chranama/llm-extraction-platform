@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import Request
 from redis.asyncio import Redis, from_url
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.metrics import (
     LLM_REDIS_HITS,
     LLM_REDIS_MISSES,
@@ -16,9 +16,10 @@ from llm_server.core.metrics import (
 
 
 async def init_redis() -> Optional[Redis]:
-    if not settings.redis_enabled or not settings.redis_url:
+    s = get_settings()
+    if not bool(s.redis_enabled) or not s.redis_url:
         return None
-    return from_url(settings.redis_url, decode_responses=True)
+    return from_url(s.redis_url, decode_responses=True)
 
 
 async def close_redis(client: Optional[Redis]) -> None:

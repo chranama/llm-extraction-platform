@@ -5,16 +5,24 @@ import time
 from typing import Callable, cast
 
 from fastapi import FastAPI, Request
-from prometheus_client import Counter, Gauge, Histogram, REGISTRY, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    REGISTRY,
+    generate_latest,
+)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
+
 
 def _metrics_handler() -> Response:
-    # generate_latest() returns bytes in the Prometheus text exposition format
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
+
 
 def _existing_collector(name: str):
     mapping = getattr(REGISTRY, "_names_to_collectors", None)
@@ -29,6 +37,7 @@ def _assert_labelnames_match(existing, expected: list[str]) -> None:
     except Exception:
         existing_labels = []
 
+    # If an existing collector is already labeled, enforce exact match.
     if existing_labels and existing_labels != expected:
         raise RuntimeError(
             f"Metric '{getattr(existing, '_name', 'unknown')}' already exists with labels={existing_labels}, "
@@ -79,6 +88,10 @@ def _best_route_label(request: Request) -> str:
     return request.url.path
 
 
+# -----------------------------------------
+# Core API metrics
+# -----------------------------------------
+
 LLM_TOKENS = _get_or_create_counter(
     "llm_tokens_total",
     "Total tokens processed",
@@ -119,8 +132,6 @@ LLM_REDIS_ENABLED = _get_or_create_gauge(
     "llm_redis_enabled",
     "Whether Redis caching is enabled (1=yes, 0=no)",
 )
-
-LLM_REDIS_ENABLED.set(1 if settings.redis_enabled else 0)
 
 # -----------------------------------------
 # Extraction Metrics (Phase 2)
@@ -184,9 +195,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             ).inc()
 
 
-
 def setup(app: FastAPI) -> None:
-    app.add_middleware(MetricsMiddleware)
+    # Set gauge here (not at import time) so tests/env overrides are respected.
+    s = get_settings()
+    LLM_REDIS_ENABLED.set(1 if bool(s.redis_enabled) else 0)
 
-    # Expose metrics at /metrics for Prometheus scrape
+    app.add_middleware(MetricsMiddleware)
     app.add_api_route("/metrics", _metrics_handler, methods=["GET"], include_in_schema=False)

@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from llm_server.core.config import settings
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 
 
@@ -25,16 +25,19 @@ class HttpLLMClient:
         model_id: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> None:
-        self.base_url: str = base_url or settings.llm_service_url
-        self.model_id: str = model_id or settings.model_id
-        self.timeout: int = int(timeout or settings.http_client_timeout)
+        s = get_settings()
+        self.base_url: str = (base_url or s.llm_service_url).rstrip("/")
+        self.model_id: str = model_id or s.model_id
+        self.timeout: int = int(timeout or s.http_client_timeout)
 
     def ensure_loaded(self) -> None:
         # Remote client has nothing to preload; kept for interface parity.
         return None
 
     def _url(self, path: str) -> str:
-        return f"{self.base_url.rstrip('/')}{path}"
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{self.base_url}{path}"
 
     @staticmethod
     def _preview(text: str | None, limit: int = 500) -> str:
@@ -42,6 +45,12 @@ class HttpLLMClient:
             return ""
         t = text.strip()
         return t[:limit]
+
+    @staticmethod
+    def _coerce_output(x: Any) -> str:
+        if x is None:
+            return ""
+        return x if isinstance(x, str) else str(x)
 
     def generate(
         self,
@@ -84,6 +93,7 @@ class HttpLLMClient:
                     },
                 )
 
+            # Parse JSON
             try:
                 data = resp.json()
             except Exception as e:
@@ -99,7 +109,6 @@ class HttpLLMClient:
                     },
                 ) from e
 
-            # Enforce response contract
             if not isinstance(data, dict):
                 raise AppError(
                     code="upstream_bad_response",
@@ -126,14 +135,7 @@ class HttpLLMClient:
                     },
                 )
 
-            output = data.get("output")
-            if output is None:
-                return ""
-
-            if not isinstance(output, str):
-                output = str(output)
-
-            return output
+            return self._coerce_output(data.get("output"))
 
         except AppError:
             raise

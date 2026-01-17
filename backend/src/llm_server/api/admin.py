@@ -1,9 +1,10 @@
 # src/llm_server/api/admin.py
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Any, Dict
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, ConfigDict
@@ -12,13 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from llm_server.api.deps import get_api_key
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.db.models import ApiKey, InferenceLog, RoleTable
 from llm_server.db.session import get_session
-
-import asyncio
-
-from llm_server.core.config import settings
+from llm_server.services.inference import set_request_meta
 from llm_server.services.llm import build_llm_from_settings, MultiModelManager
 
 logger = logging.getLogger("llm_server.api.admin")
@@ -26,6 +25,7 @@ logger = logging.getLogger("llm_server.api.admin")
 router = APIRouter(tags=["admin"])
 
 _MODEL_LOAD_LOCK = asyncio.Lock()
+
 
 # -------------------------------------------------------------------
 # Models for responses
@@ -116,6 +116,7 @@ class AdminStatsResponse(BaseModel):
     avg_latency_ms: float | None
     per_model: list[AdminModelStats]
 
+
 class AdminLoadModelRequest(BaseModel):
     # optional: override default model id for this process
     model_id: Optional[str] = None
@@ -131,13 +132,6 @@ class AdminLoadModelResponse(BaseModel):
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
-
-
-def _tag_admin_request(request: Request, route: str) -> None:
-    # For metrics/logging middleware consistency
-    request.state.route = route
-    request.state.model_id = "admin"
-    request.state.cached = False
 
 
 async def _ensure_admin(api_key: ApiKey, session: AsyncSession) -> None:
@@ -170,7 +164,7 @@ async def get_my_usage(
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
 ):
-    _tag_admin_request(request, "/v1/me/usage")
+    set_request_meta(request, route="/v1/me/usage", model_id="admin", cached=False)
 
     # Fetch role name without lazy-loading problems
     role_row = await session.get(RoleTable, api_key.role_id) if api_key.role_id else None
@@ -218,7 +212,7 @@ async def get_admin_usage(
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
 ):
-    _tag_admin_request(request, "/v1/admin/usage")
+    set_request_meta(request, route="/v1/admin/usage", model_id="admin", cached=False)
     await _ensure_admin(api_key, session)
 
     # Aggregate stats per api_key
@@ -286,7 +280,7 @@ async def list_api_keys(
     - Admin-only
     - Does NOT return full key values, only a key prefix for identification.
     """
-    _tag_admin_request(request, "/v1/admin/keys")
+    set_request_meta(request, route="/v1/admin/keys", model_id="admin", cached=False)
     await _ensure_admin(api_key, session)
 
     # Total count
@@ -350,7 +344,7 @@ async def list_inference_logs(
     """
     Admin-only: list inference logs with basic filters + pagination.
     """
-    _tag_admin_request(request, "/v1/admin/logs")
+    set_request_meta(request, route="/v1/admin/logs", model_id="admin", cached=False)
     await _ensure_admin(api_key, session)
 
     filters = []
@@ -413,7 +407,7 @@ async def get_admin_stats(
     - Aggregate totals from `inference_logs`
     - Per-model breakdown
     """
-    _tag_admin_request(request, "/v1/admin/stats")
+    set_request_meta(request, route="/v1/admin/stats", model_id="admin", cached=False)
     await _ensure_admin(api_key, session)
 
     now = datetime.now(timezone.utc)
@@ -471,9 +465,11 @@ async def get_admin_stats(
         per_model=per_model_items,
     )
 
+
 # -------------------------------------------------------------------
 # /v1/admin/models/load
 # -------------------------------------------------------------------
+
 
 @router.post("/v1/admin/models/load", response_model=AdminLoadModelResponse)
 async def admin_load_model(
@@ -487,8 +483,10 @@ async def admin_load_model(
 
     Intended for dev: start stack with MODEL_LOAD_MODE=off or lazy, then call this endpoint.
     """
-    _tag_admin_request(request, "/v1/admin/models/load")
+    set_request_meta(request, route="/v1/admin/models/load", model_id="admin", cached=False)
     await _ensure_admin(api_key, session)
+
+    s = get_settings()
 
     async with _MODEL_LOAD_LOCK:
         app = request.app
@@ -503,7 +501,7 @@ async def admin_load_model(
                 model_ids = list(existing.models.keys())
                 default_model = existing.default_id
             else:
-                default_model = getattr(existing, "model_id", settings.model_id)
+                default_model = getattr(existing, "model_id", s.model_id)
                 model_ids = [default_model]
 
             return AdminLoadModelResponse(
@@ -515,14 +513,16 @@ async def admin_load_model(
 
         # Validate optional override (must be allowed by settings/models.yaml)
         if body.model_id:
-            if body.model_id not in settings.all_model_ids:
+            if body.model_id not in s.all_model_ids:
                 raise AppError(
                     code="model_not_allowed",
                     message=f"Model '{body.model_id}' not allowed.",
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    extra={"allowed": settings.all_model_ids},
+                    extra={"allowed": s.all_model_ids},
                 )
-            settings.model_id = body.model_id  # type: ignore[attr-defined]
+            # IMPORTANT: settings is cached. Mutating s here only affects this process
+            # and is primarily for dev tooling.
+            s.model_id = body.model_id  # type: ignore[attr-defined]
 
         # Reset authoritative flags before attempting
         app.state.model_error = None
@@ -554,7 +554,7 @@ async def admin_load_model(
             model_ids = list(llm.models.keys())
             default_model = llm.default_id
         else:
-            default_model = getattr(llm, "model_id", settings.model_id)
+            default_model = getattr(llm, "model_id", get_settings().model_id)
             model_ids = [default_model]
 
         return AdminLoadModelResponse(

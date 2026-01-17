@@ -1,46 +1,25 @@
-# backend/Dockerfile.backend
 FROM python:3.12-slim
 
-# ---- system deps ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl wget \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# ---- runtime defaults (can be overridden in compose) ----
-# APP_ROOT makes backend paths stable no matter where the process is started from.
 ENV APP_ROOT=/app
 ENV PYTHONUNBUFFERED=1
 
-# ---- install deps (cache-friendly layer) ----
-# Copy only backend package metadata first so dependency install can be cached.
+# deps
 COPY backend/pyproject.toml ./pyproject.toml
-
-# If you have a uv.lock/requirements lock for backend, copy it here too.
-# (Uncomment if applicable)
-# COPY backend/uv.lock ./uv.lock
-
-# ---- copy source package ----
 COPY backend/src ./src
-
-# Install the backend as a package
 RUN pip install --no-cache-dir .
 
-# ---- runtime assets needed by the backend ----
-# Alembic + migrations live at repo root in your current layout
-COPY alembic.ini ./alembic.ini
-COPY migrations ./migrations
+# migrations (in backend/)
+COPY backend/alembic.ini ./alembic.ini
+COPY backend/migrations ./migrations
 
-# Config + schemas live at repo root in your current layout
+# runtime assets (repo root)
 COPY config ./config
 COPY schemas ./schemas
 
-# (Optional but common) docs are not required at runtime, so omitted.
-
 EXPOSE 8000
-
-# Assumes backend/pyproject.toml defines:
-# [project.scripts]
-# serve = "llm_server.cli:serve"
 CMD ["serve"]

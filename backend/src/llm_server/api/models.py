@@ -7,9 +7,10 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
-from llm_server.core.config import settings
+from llm_server.api.deps import get_llm  # ✅ canonical location
+from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
-from llm_server.api.generate import get_llm
+from llm_server.services.inference import set_request_meta  # ✅ request.state helper
 from llm_server.services.llm import MultiModelManager
 
 router = APIRouter()
@@ -37,21 +38,20 @@ async def list_models(
     If MODEL_LOAD_MODE=off, we avoid touching the model and return the allowed list
     derived from settings.
     """
-    request.state.route = "/v1/models"
-    request.state.cached = False
+    # Canonical request.state instrumentation
+    set_request_meta(request, route="/v1/models", model_id="models", cached=False)
+
+    s = get_settings()
 
     mode = os.getenv("MODEL_LOAD_MODE", "lazy").strip().lower()
     if mode == "off":
         # No model load; just reflect config
-        default_model = settings.model_id
-        request.state.model_id = default_model
+        default_model = s.model_id
+        set_request_meta(request, route="/v1/models", model_id=default_model, cached=False)
 
         return ModelsResponse(
             default_model=default_model,
-            models=[
-                ModelInfo(id=m, default=(m == default_model), backend=None)
-                for m in settings.all_model_ids
-            ],
+            models=[ModelInfo(id=m, default=(m == default_model), backend=None) for m in s.all_model_ids],
         )
 
     if llm is None:
@@ -63,7 +63,7 @@ async def list_models(
 
     # Multi-model setup
     if isinstance(llm, MultiModelManager):
-        request.state.model_id = llm.default_id
+        set_request_meta(request, route="/v1/models", model_id=llm.default_id, cached=False)
 
         items: List[ModelInfo] = []
         for model_id, backend in llm.models.items():
@@ -77,8 +77,8 @@ async def list_models(
         return ModelsResponse(default_model=llm.default_id, models=items)
 
     # Single-model setup
-    model_id = getattr(llm, "model_id", settings.model_id)
-    request.state.model_id = model_id
+    model_id = getattr(llm, "model_id", s.model_id)
+    set_request_meta(request, route="/v1/models", model_id=model_id, cached=False)
 
     return ModelsResponse(
         default_model=model_id,
