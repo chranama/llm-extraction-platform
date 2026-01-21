@@ -12,8 +12,16 @@ api:
   cors_allowed_origins:
     - "*"
 
+capabilities:
+  generate: true
+  extract: true
+
+# ✅ top-level, matches the log label
+model_load_mode: "lazy"
+require_model_ready: false
+token_counting: false
+
 model:
-  # tests patch the LLM builder anyway; keep this benign
   default_id: "fake"
   allowed_models: []
   models_config_path: "config/models.yaml"

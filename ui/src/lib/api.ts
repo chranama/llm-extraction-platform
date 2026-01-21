@@ -59,6 +59,15 @@ export interface SchemaIndexItem {
 export type JsonSchema = Record<string, any>;
 
 // -----------------------------
+// Types: /v1/capabilities
+// -----------------------------
+export interface CapabilitiesResponseBody {
+  generate: boolean;
+  extract: boolean;
+  mode?: string; // e.g. "generate-only" (optional; backend may include)
+}
+
+// -----------------------------
 // Error type
 // -----------------------------
 export class ApiError extends Error {
@@ -79,15 +88,30 @@ export class ApiError extends Error {
     bodyText: string,
     bodyJson: any | null
   ) {
-    // If backend returns a structured error like:
-    // { "code": "...", "message": "...", "extra": {...} }
+    // Supports both:
+    //  (old) { code, message, extra }
+    //  (new) { error: { code, message, ... }, request_id }
     if (bodyJson && typeof bodyJson === "object") {
-      const code = bodyJson.code ? String(bodyJson.code) : null;
-      const msg = bodyJson.message ? String(bodyJson.message) : null;
+      const errObj =
+        bodyJson.error && typeof bodyJson.error === "object"
+          ? bodyJson.error
+          : bodyJson;
+
+      const code = errObj.code ? String(errObj.code) : null;
+      const msg = errObj.message ? String(errObj.message) : null;
+
+      // Optional: include request_id when available (handy for debugging)
+      const rid =
+        bodyJson.request_id != null ? String(bodyJson.request_id) : null;
+
       if (code || msg) {
-        return `HTTP ${status}: ${code ?? "error"}${msg ? ` — ${msg}` : ""}`;
+        const base = `HTTP ${status}: ${code ?? "error"}${
+          msg ? ` — ${msg}` : ""
+        }`;
+        return rid ? `${base} (request_id=${rid})` : base;
       }
     }
+
     return `HTTP ${status}: ${bodyText}`;
   }
 }
@@ -237,4 +261,13 @@ export async function getSchema(schemaId: string): Promise<JsonSchema> {
 
 export function getApiBaseUrl(): string {
   return API_BASE;
+}
+
+export async function getCapabilities(): Promise<CapabilitiesResponseBody> {
+  return requestJson<CapabilitiesResponseBody>("/v1/capabilities", {
+    method: "GET",
+    headers: {
+      ...authHeaders(),
+    },
+  });
 }

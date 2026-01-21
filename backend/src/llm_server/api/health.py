@@ -1,9 +1,8 @@
-# src/llm_server/api/health.py
 from __future__ import annotations
 
-import os
 import logging
-from typing import Tuple
+import os
+from typing import Any, Tuple
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -18,32 +17,48 @@ logger = logging.getLogger("llm_server.api.health")
 router = APIRouter(tags=["health"])
 
 
-def _model_load_mode() -> str:
-    """
-    Controls whether the application *tries* to load a model automatically elsewhere.
-    This endpoint should never trigger loading.
-    """
-    s = get_settings()
-    default = "eager" if s.env.strip().lower() == "prod" else "lazy"
-    return os.getenv("MODEL_LOAD_MODE", default).strip().lower()
+def _settings_from_request(request: Request) -> Any:
+    # Prefer frozen settings from app.state; fallback to global accessor
+    return getattr(request.app.state, "settings", None) or get_settings()
 
 
-def _require_model_loaded_for_readyz() -> bool:
+def _effective_model_load_mode(request: Request) -> str:
+    """
+    Single source of truth for model load mode:
+      1) app.state.model_load_mode (set during lifespan)
+      2) app.state.settings.model_load_mode
+      3) derived default from env (prod=>eager else lazy)
+    """
+    mode = getattr(request.app.state, "model_load_mode", None)
+    if isinstance(mode, str) and mode.strip():
+        return mode.strip().lower()
+
+    s = _settings_from_request(request)
+    raw = getattr(s, "model_load_mode", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+
+    env = str(getattr(s, "env", "dev")).strip().lower()
+    return "eager" if env == "prod" else "lazy"
+
+
+def _require_model_loaded_for_readyz(request: Request) -> bool:
     """
     Cloud-readiness policy:
-      - In prod, require the default model to be loaded for /readyz by default.
-      - Allow override via REQUIRE_MODEL_READY=0/1.
+      - In prod, require default model loaded for /readyz by default.
+      - Allow override via REQUIRE_MODEL_READY=0/1 (env override is fine here;
+        it is *policy*, not core mode).
     """
     raw = os.getenv("REQUIRE_MODEL_READY")
     if raw is not None:
         return raw.strip().lower() in ("1", "true", "yes", "y", "on")
 
-    s = get_settings()
-    return s.env.strip().lower() == "prod"
+    s = _settings_from_request(request)
+    return str(getattr(s, "env", "dev")).strip().lower() == "prod"
 
 
 def get_llm_from_request(request: Request):
-    """Canonical place to grab the LLM instance."""
+    """Canonical place to grab the LLM instance without triggering loading."""
     return getattr(request.app.state, "llm", None)
 
 
@@ -92,8 +107,8 @@ async def _db_readiness(session: AsyncSession) -> Tuple[bool, str]:
 
 
 async def _redis_readiness(request: Request) -> Tuple[bool, str]:
-    s = get_settings()
-    if not s.redis_enabled:
+    s = _settings_from_request(request)
+    if not bool(getattr(s, "redis_enabled", False)):
         return True, "disabled"
 
     try:
@@ -115,13 +130,12 @@ async def _redis_readiness(request: Request) -> Tuple[bool, str]:
 
 def _model_loaded_flag(request: Request) -> bool | None:
     """
-    Prefer the explicit app.state.model_loaded flag if the app sets it during startup/warmup.
-    Returns None if the flag isn't present.
+    Prefer explicit app.state.model_loaded if present.
+    Returns None if absent.
     """
-    app = request.app
-    if hasattr(app.state, "model_loaded"):
+    if hasattr(request.app.state, "model_loaded"):
         try:
-            return bool(getattr(app.state, "model_loaded"))
+            return bool(getattr(request.app.state, "model_loaded"))
         except Exception:
             return None
     return None
@@ -145,14 +159,14 @@ async def readyz(
     db_ok, db_status = await _db_readiness(session)
     redis_ok, redis_status = await _redis_readiness(request)
 
-    mode = _model_load_mode()
+    mode = _effective_model_load_mode(request)
     llm = get_llm_from_request(request)
 
     loaded_flag = _model_loaded_flag(request)
     llm_status = "disabled" if mode == "off" else _llm_state(llm)
     model_loaded = loaded_flag if loaded_flag is not None else (llm_status == "loaded")
 
-    require_model = _require_model_loaded_for_readyz()
+    require_model = _require_model_loaded_for_readyz(request)
 
     model_ok = True
     if require_model:
@@ -175,15 +189,13 @@ async def readyz(
 @router.get("/modelz")
 async def modelz(request: Request):
     """Model readiness: does NOT trigger loading."""
-    app = request.app
-    mode = getattr(app.state, "model_load_mode", None) or _model_load_mode()
+    mode = _effective_model_load_mode(request)
 
-    model_error = getattr(app.state, "model_error", None)
+    model_error = getattr(request.app.state, "model_error", None)
 
     loaded_flag = _model_loaded_flag(request)
     llm = get_llm_from_request(request)
     llm_status = "disabled" if mode == "off" else _llm_state(llm)
-
     model_loaded = loaded_flag if loaded_flag is not None else (llm_status == "loaded")
 
     if model_error:

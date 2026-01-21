@@ -1,4 +1,3 @@
-# src/llm_server/api/generate.py
 from __future__ import annotations
 
 import hashlib
@@ -148,6 +147,20 @@ def count_tokens(model_id: str, prompt: str, completion: str | None) -> tuple[in
         return None, None
 
 
+def _require_generate_enabled() -> None:
+    s = get_settings()
+    if not s.enable_generate:
+        raise AppError(
+            code="capability_disabled",
+            message="Generation is disabled in this deployment mode.",
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            extra={
+                "capability": "generate",
+                "hint": "Set ENABLE_GENERATE=true to enable generation.",
+            },
+        )
+
+
 @router.post("/v1/generate")
 async def generate(
     request: Request,
@@ -155,6 +168,8 @@ async def generate(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
+    _require_generate_enabled()
+
     model_id, model = resolve_model(llm, body.model)
     set_request_meta(request, route="/v1/generate", model_id=model_id, cached=False)
 
@@ -263,6 +278,8 @@ async def generate_batch(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
+    _require_generate_enabled()
+
     model_id, model = resolve_model(llm, body.model)
     set_request_meta(request, route="/v1/generate/batch", model_id=model_id, cached=False)
 

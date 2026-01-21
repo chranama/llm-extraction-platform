@@ -1,16 +1,14 @@
-# src/llm_server/api/models.py
 from __future__ import annotations
 
-import os
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
 
-from llm_server.api.deps import get_llm  # ✅ canonical location
+from llm_server.api.deps import get_llm  # canonical location
 from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
-from llm_server.services.inference import set_request_meta  # ✅ request.state helper
+from llm_server.services.inference import set_request_meta  # request.state helper
 from llm_server.services.llm import MultiModelManager
 
 router = APIRouter()
@@ -27,6 +25,25 @@ class ModelsResponse(BaseModel):
     models: List[ModelInfo]
 
 
+def _settings_from_request(request: Request):
+    return getattr(request.app.state, "settings", None) or get_settings()
+
+
+def _effective_model_load_mode(request: Request) -> str:
+    # Prefer lifespan-computed mode; fallback to settings; fallback derived default
+    mode = getattr(request.app.state, "model_load_mode", None)
+    if isinstance(mode, str) and mode.strip():
+        return mode.strip().lower()
+
+    s = _settings_from_request(request)
+    raw = getattr(s, "model_load_mode", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+
+    env = str(getattr(s, "env", "dev")).strip().lower()
+    return "eager" if env == "prod" else "lazy"
+
+
 @router.get("/v1/models", response_model=ModelsResponse)
 async def list_models(
     request: Request,
@@ -35,17 +52,14 @@ async def list_models(
     """
     Return the list of available models and which one is the default.
 
-    If MODEL_LOAD_MODE=off, we avoid touching the model and return the allowed list
-    derived from settings.
+    If mode == "off", do NOT touch the model. Just reflect settings.
     """
-    # Canonical request.state instrumentation
     set_request_meta(request, route="/v1/models", model_id="models", cached=False)
 
-    s = get_settings()
+    s = _settings_from_request(request)
+    mode = _effective_model_load_mode(request)
 
-    mode = os.getenv("MODEL_LOAD_MODE", "lazy").strip().lower()
     if mode == "off":
-        # No model load; just reflect config
         default_model = s.model_id
         set_request_meta(request, route="/v1/models", model_id=default_model, cached=False)
 

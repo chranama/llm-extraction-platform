@@ -24,6 +24,7 @@ vi.mock("../../../lib/api", () => {
     listSchemas: vi.fn(),
     getSchema: vi.fn(),
     getApiBaseUrl: vi.fn(),
+    getCapabilities: vi.fn(),
     ApiError,
   };
 });
@@ -36,7 +37,14 @@ vi.mock("../utils", async () => {
   };
 });
 
-import { callExtract, callGenerate, listSchemas, getSchema, getApiBaseUrl } from "../../../lib/api";
+import {
+  callExtract,
+  callGenerate,
+  listSchemas,
+  getSchema,
+  getApiBaseUrl,
+  getCapabilities,
+} from "../../../lib/api";
 import { copyToClipboard } from "../utils";
 
 function mockSchemaJson() {
@@ -56,17 +64,6 @@ function mockSchemaJson() {
   };
 }
 
-async function bootstrapWithSchemas() {
-  (listSchemas as any).mockResolvedValueOnce([{ schema_id: "b" }, { schema_id: "a" }]);
-  (getSchema as any).mockResolvedValueOnce(mockSchemaJson());
-
-  render(<Playground />);
-
-  await waitFor(() => expect(listSchemas).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(getSchema).toHaveBeenCalledTimes(1));
-  await waitFor(() => expect(getSchema).toHaveBeenCalledWith("a"));
-}
-
 function getTabButton(label: "Extract" | "Generate") {
   // Tab buttons are rendered before panel action buttons, so index 0 is the tab.
   return screen.getAllByRole("button", { name: label })[0];
@@ -78,10 +75,53 @@ function getActionButton(label: "Extract" | "Generate") {
   return all[all.length - 1];
 }
 
+async function ensureExtractTabVisible(user?: ReturnType<typeof userEvent.setup>) {
+  const tab = getTabButton("Extract");
+  // In generate-only mode this would be disabled; in these tests we set extract=true.
+  expect(tab).not.toBeDisabled();
+  if (user) await user.click(tab);
+  else fireEvent.click(tab);
+  await waitFor(() => {
+    // Extract mode renders the schema combobox
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+  });
+}
+
+async function bootstrapWithSchemas() {
+  // Full mode by default unless overridden in a test
+  (getCapabilities as any).mockResolvedValueOnce({
+    generate: true,
+    extract: true,
+    mode: "full",
+  });
+
+  (listSchemas as any).mockResolvedValueOnce([{ schema_id: "b" }, { schema_id: "a" }]);
+  (getSchema as any).mockResolvedValueOnce(mockSchemaJson());
+
+  render(<Playground />);
+
+  // Capabilities gate happens before schema boot now
+  await waitFor(() => expect(getCapabilities).toHaveBeenCalledTimes(1));
+
+  // Schemas only load when extract is enabled, but Extract UI is only rendered in Extract mode.
+  // So: click Extract tab first, then assert schema boot.
+  fireEvent.click(getTabButton("Extract"));
+
+  await waitFor(() => expect(listSchemas).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(getSchema).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(getSchema).toHaveBeenCalledWith("a"));
+}
+
 describe("Playground integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getApiBaseUrl as any).mockReturnValue("/api");
+    // Default for tests that *don’t* use bootstrapWithSchemas()
+    (getCapabilities as any).mockResolvedValue({
+      generate: true,
+      extract: true,
+      mode: "full",
+    });
   });
 
   afterEach(() => {
@@ -113,6 +153,7 @@ describe("Playground integration", () => {
 
     const user = userEvent.setup();
 
+    // We are already in Extract mode from bootstrapWithSchemas(), so action button is available.
     await user.click(getActionButton("Extract"));
 
     await waitFor(() => expect(callExtract).toHaveBeenCalledTimes(1));
@@ -158,10 +199,15 @@ describe("Playground integration", () => {
     });
   });
 
- 
   it("copy curl toast appears and auto-clears after 1500ms", async () => {
     // IMPORTANT: fake timers before render
     vi.useFakeTimers();
+
+    (getCapabilities as any).mockResolvedValueOnce({
+      generate: true,
+      extract: true,
+      mode: "full",
+    });
 
     (listSchemas as any).mockResolvedValueOnce([{ schema_id: "b" }, { schema_id: "a" }]);
     (getSchema as any).mockResolvedValueOnce(mockSchemaJson());
@@ -179,11 +225,14 @@ describe("Playground integration", () => {
 
     render(<Playground />);
 
-    // let: listSchemas resolve -> schemaId set -> getSchema effect fires/resolves
+    // let capabilities + initial effects settle
+    await flush(4);
+
+    // Ensure we are in Extract mode so the combobox + Copy curl exist
+    fireEvent.click(getTabButton("Extract"));
     await flush(6);
 
     // Sanity: schema select should be populated with "a" and "b"
-    // (and default selected should be "a" since sorted)
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "a" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "b" })).toBeInTheDocument();

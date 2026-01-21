@@ -1,4 +1,3 @@
-# src/llm_server/api/extract.py
 from __future__ import annotations
 
 import hashlib
@@ -106,6 +105,20 @@ def resolve_model(llm: Any, model_override: str | None) -> tuple[str, Any]:
         return model_id, llm[model_id]
 
     return model_id, llm
+
+
+def _require_extract_enabled() -> None:
+    s = get_settings()
+    if not s.enable_extract:
+        raise AppError(
+            code="capability_disabled",
+            message="Extraction is disabled in this deployment mode.",
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            extra={
+                "capability": "extract",
+                "hint": "Set ENABLE_EXTRACT=true (and use an extraction-capable backend) to enable extraction.",
+            },
+        )
 
 
 def _hash_text(schema_id: str, text: str) -> str:
@@ -333,6 +346,8 @@ async def extract(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
+    _require_extract_enabled()
+
     model_id, model = resolve_model(llm, body.model)
     set_request_meta(request, route="/v1/extract", model_id=model_id, cached=False)
 

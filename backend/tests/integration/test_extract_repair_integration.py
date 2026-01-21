@@ -78,5 +78,5 @@ async def test_extract_repair_disabled_returns_422(monkeypatch, tmp_path, client
     )
     assert r.status_code == 422, r.text
     body = r.json()
-    assert body["error"]["code"] in ("invalid_json", "schema_validation_failed")
-    assert "message" in body["error"]
+    assert body["code"] in ("invalid_json", "schema_validation_failed")
+    assert "message" in body

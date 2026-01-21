@@ -5,9 +5,11 @@ import {
   callGenerate,
   listSchemas,
   getSchema,
+  getCapabilities,
   ApiError,
   SchemaIndexItem,
   JsonSchema,
+  CapabilitiesResponseBody,
 } from "../../lib/api";
 
 import type { Mode } from "./types";
@@ -21,7 +23,8 @@ import { GeneratePanel } from "./GeneratePanel";
 import { SchemaInspector } from "./SchemaInspector";
 
 export function Playground() {
-  const [mode, setMode] = useState<Mode>("extract");
+  // Default to Generate so we don't flash an Extract UI that may be disabled.
+  const [mode, setMode] = useState<Mode>("generate");
 
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +37,50 @@ export function Playground() {
     else setGenerateError(msg);
   };
 
+  // -----------------------------
+  // Capabilities gating
+  // -----------------------------
+  const [caps, setCaps] = useState<CapabilitiesResponseBody | null>(null);
+  const extractEnabled = caps?.extract === true;
+
+  useEffect(() => {
+    let canceled = false;
+
+    async function loadCaps() {
+      try {
+        const c = await getCapabilities();
+        if (canceled) return;
+
+        setCaps({
+          generate: Boolean((c as any)?.generate),
+          extract: Boolean((c as any)?.extract),
+          mode: String((c as any)?.mode ?? "unknown"),
+        });
+      } catch {
+        if (canceled) return;
+        // Safe fallback: generate-only UI
+        setCaps({ generate: true, extract: false, mode: "unknown" });
+      }
+    }
+
+    loadCaps();
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  // If Extract is disabled, never allow the Extract tab to remain selected.
+  useEffect(() => {
+    if (caps && !extractEnabled && mode === "extract") {
+      setMode("generate");
+      setExtractError(null);
+    }
+  }, [caps, extractEnabled, mode]);
+
+  // -----------------------------
+  // Schemas (Extract-only)
+  // -----------------------------
   const [schemas, setSchemas] = useState<SchemaIndexItem[]>([]);
   const [schemasLoading, setSchemasLoading] = useState(false);
 
@@ -78,6 +125,9 @@ export function Playground() {
   }, [copyMsg]);
 
   async function loadSchemasOnce() {
+    // Only load schemas if Extract is enabled
+    if (!extractEnabled) return;
+
     setSchemasLoading(true);
     try {
       const items = await listSchemas();
@@ -95,18 +145,27 @@ export function Playground() {
     }
   }
 
+  // Load schemas once *after* we know extract is enabled
   useEffect(() => {
+    if (!caps) return; // wait for capabilities
+    if (!extractEnabled) return;
+
     let canceled = false;
     (async () => {
       if (canceled) return;
       await loadSchemasOnce();
     })();
+
     return () => {
       canceled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caps, extractEnabled]);
 
+  // Load schema json when schemaId changes (extract-only)
   useEffect(() => {
+    if (!extractEnabled) return;
+
     let canceled = false;
 
     async function loadSchemaJson(id: string) {
@@ -138,7 +197,7 @@ export function Playground() {
     return () => {
       canceled = true;
     };
-  }, [schemaId]);
+  }, [schemaId, extractEnabled]);
 
   useEffect(() => {
     setExtractDataLatest(null);
@@ -146,6 +205,11 @@ export function Playground() {
   }, [schemaId]);
 
   const handleRunExtract = async () => {
+    if (!extractEnabled) {
+      setExtractError("Extraction is disabled in this deployment.");
+      return;
+    }
+
     setLoading(true);
     setExtractError(null);
     setExtractOutput("");
@@ -215,13 +279,27 @@ export function Playground() {
     }
   };
 
-  const TabButton = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
+  const TabButton = ({
+    label,
+    active,
+    onClick,
+    disabled,
+    title,
+  }: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    disabled?: boolean;
+    title?: string;
+  }) => (
     <button
       onClick={() => {
+        if (disabled) return;
         onClick();
         setActiveError(null);
       }}
-      disabled={loading}
+      disabled={Boolean(disabled)}
+      title={title}
       style={{
         padding: "0.4rem 0.8rem",
         borderRadius: 999,
@@ -229,14 +307,17 @@ export function Playground() {
         background: active ? "#2563eb" : "white",
         color: active ? "white" : "#0f172a",
         fontWeight: 600,
-        cursor: loading ? "wait" : "pointer",
+        cursor: disabled ? "not-allowed" : loading ? "wait" : "pointer",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {label}
     </button>
   );
 
-  const extractDisabled = loading || schemasLoading || schemaOptions.length === 0 || !schemaId;
+  const extractDisabled =
+    !extractEnabled || loading || schemasLoading || schemaOptions.length === 0 || !schemaId;
+
   const schemaSummary = useMemo(() => summarizeSchema(schemaJson), [schemaJson]);
 
   const handleCopyExtractCurl = async () => {
@@ -271,7 +352,9 @@ export function Playground() {
   };
 
   const handleReloadSchemaJson = async () => {
+    if (!extractEnabled) return;
     if (!schemaId) return;
+
     setSchemaJsonLoading(true);
     setSchemaJsonError(null);
     try {
@@ -312,11 +395,29 @@ export function Playground() {
     setCopyMsg("Baseline set");
   };
 
+  const extractTabDisabled = caps ? !extractEnabled : true;
+  const extractTabTitle = caps
+    ? extractEnabled
+      ? ""
+      : "Extract is disabled in this deployment."
+    : "Loading capabilities…";
+
   return (
     <div style={{ maxWidth: 1180 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-        <TabButton label="Extract" active={mode === "extract"} onClick={() => setMode("extract")} />
-        <TabButton label="Generate" active={mode === "generate"} onClick={() => setMode("generate")} />
+        <TabButton
+          label={extractTabDisabled ? "Extract (disabled)" : "Extract"}
+          active={mode === "extract"}
+          onClick={() => setMode("extract")}
+          disabled={extractTabDisabled || loading}
+          title={extractTabTitle}
+        />
+        <TabButton
+          label="Generate"
+          active={mode === "generate"}
+          onClick={() => setMode("generate")}
+          disabled={loading}
+        />
 
         <div style={{ flex: 1 }} />
 
@@ -353,7 +454,27 @@ export function Playground() {
         </div>
       </div>
 
-      {mode === "extract" && (
+      {/* Optional hint when extract is disabled */}
+      {caps && !extractEnabled && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #cbd5f5",
+            background: "#f8fafc",
+            color: "#0f172a",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Extraction disabled</div>
+          <div style={{ fontSize: 13, color: "#334155" }}>
+            This deployment is running in <span style={{ fontWeight: 700 }}>generate-only</span> mode. Generate remains
+            available.
+          </div>
+        </div>
+      )}
+
+      {mode === "extract" && extractEnabled && (
         <div style={{ display: "grid", gridTemplateColumns: "1.25fr 0.85fr", gap: 16, alignItems: "start" }}>
           <ExtractPanel
             loading={loading}

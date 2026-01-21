@@ -1,7 +1,5 @@
-# src/llm_server/api/deps.py
 from __future__ import annotations
 
-import os
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -10,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from llm_server.core.errors import AppError
+from llm_server.core.config import get_settings
 from llm_server.db.models import ApiKey
 from llm_server.db.session import get_session
 from llm_server.services.llm import build_llm_from_settings
@@ -116,10 +115,31 @@ async def get_api_key(
     return api_key_obj
 
 
+def _effective_model_load_mode_from_request(request: Request) -> str:
+    """
+    Single source of truth for model mode:
+      1) app.state.model_load_mode (set in lifespan)
+      2) app.state.settings / get_settings()
+    """
+    mode = getattr(request.app.state, "model_load_mode", None)
+    if isinstance(mode, str) and mode.strip():
+        return mode.strip().lower()
+
+    s = getattr(request.app.state, "settings", None) or get_settings()
+
+    raw = getattr(s, "model_load_mode", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+
+    env = str(getattr(s, "env", "dev")).strip().lower()
+    return "eager" if env == "prod" else "lazy"
+
+
 def get_llm(request: Request) -> Any:
-    mode = os.getenv("MODEL_LOAD_MODE", "lazy").strip().lower()
+    mode = _effective_model_load_mode_from_request(request)
     llm = getattr(request.app.state, "llm", None)
 
+    # "off" means: do not build lazily on request
     if mode == "off":
         if llm is not None:
             return llm
@@ -129,6 +149,7 @@ def get_llm(request: Request) -> Any:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
+    # lazy/eager/on: ensure llm object exists (loading semantics handled elsewhere)
     if llm is None:
         llm = build_llm_from_settings()
         request.app.state.llm = llm

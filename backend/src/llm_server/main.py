@@ -1,9 +1,9 @@
-# src/llm_server/main.py
 from __future__ import annotations
 
 import os
 import orjson
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,35 +16,41 @@ from llm_server.core.redis import init_redis, close_redis
 from llm_server.services.llm import build_llm_from_settings
 
 
-def _model_load_mode() -> str:
+def _effective_model_load_mode(settings: Any) -> str:
     """
+    Determine effective model load mode from Settings ONLY.
+
     Values:
       - "off"   : never build/load LLM in lifespan
       - "lazy"  : build LLM object, but don't ensure_loaded at startup
       - "eager" : build + ensure_loaded at startup
       - "on"    : alias for "eager"
     """
-    s = get_settings()
-    default = "eager" if s.env.strip().lower() == "prod" else "lazy"
-    return os.getenv("MODEL_LOAD_MODE", default).strip().lower()
+    raw = getattr(settings, "model_load_mode", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+
+    # Derived default: prod => eager, else lazy
+    env = str(getattr(settings, "env", "dev")).strip().lower()
+    return "eager" if env == "prod" else "lazy"
 
 
-def _model_warmup_enabled(mode: str) -> bool:
+def _model_warmup_enabled(settings: Any, mode: str) -> bool:
     """
-    Optional extra safety: after ensure_loaded(), run a tiny generation to confirm
-    the model can actually execute on the configured device.
+    Optional smoke test after ensure_loaded(). This is not part of MODE truth.
+    If you later want to drive this through Settings, add fields there.
 
+    Override with MODEL_WARMUP=0/1.
     Defaults:
       - prod + eager/on => enabled
       - otherwise => disabled
-    Override with MODEL_WARMUP=0/1.
     """
     raw = os.getenv("MODEL_WARMUP")
     if raw is not None:
         return raw.strip().lower() in ("1", "true", "yes", "y", "on")
 
-    s = get_settings()
-    is_prod = s.env.strip().lower() == "prod"
+    env = str(getattr(settings, "env", "dev")).strip().lower()
+    is_prod = env == "prod"
     return is_prod and mode in ("eager", "on")
 
 
@@ -63,15 +69,18 @@ def _warmup_max_new_tokens() -> int:
 async def lifespan(app: FastAPI):
     import logging
 
-    s = get_settings()
-    mode = _model_load_mode()
+    # Freeze settings for this app instance (single source of truth)
+    s = getattr(app.state, "settings", None) or get_settings()
+    app.state.settings = s
+
+    mode = _effective_model_load_mode(s)
 
     logging.getLogger("uvicorn.error").info(
         "CORS allow_origins=%s | env=%s | debug=%s | redis_enabled=%s | model_load_mode=%s",
-        s.cors_allowed_origins,
-        s.env,
-        s.debug,
-        s.redis_enabled,
+        getattr(s, "cors_allowed_origins", ["*"]),
+        getattr(s, "env", "dev"),
+        getattr(s, "debug", False),
+        getattr(s, "redis_enabled", False),
         mode,
     )
 
@@ -107,12 +116,11 @@ async def lifespan(app: FastAPI):
                     app.state.model_loaded = True
 
                     # Optional warmup smoke test
-                    if _model_warmup_enabled(mode):
+                    if _model_warmup_enabled(s, mode):
                         try:
                             prompt = _warmup_prompt()
                             max_new = _warmup_max_new_tokens()
-                            out = llm.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
-                            _ = out
+                            _ = llm.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
                         except Exception as e:
                             app.state.model_loaded = False
                             app.state.model_error = f"warmup_failed: {repr(e)}"
@@ -156,6 +164,9 @@ def create_app() -> FastAPI:
         json_loads=orjson.loads,
     )
 
+    # Freeze settings onto app.state (so deps/routes don't re-read globals/env)
+    app.state.settings = s
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_allowed_origins,
@@ -169,9 +180,10 @@ def create_app() -> FastAPI:
     metrics.setup(app)
     errors.setup(app)
 
-    from llm_server.api import health, generate, models, admin, extract
+    from llm_server.api import health, generate, models, admin, extract, capabilities
 
     app.include_router(health.router)
+    app.include_router(capabilities.router)
     app.include_router(generate.router)
     app.include_router(models.router)
     app.include_router(admin.router)

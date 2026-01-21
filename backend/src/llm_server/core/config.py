@@ -1,4 +1,3 @@
-# backend/src/llm_server/core/config.py
 from __future__ import annotations
 
 import json
@@ -11,7 +10,6 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
-    # Some pydantic-settings versions export this; others don't.
     from pydantic_settings.sources import SettingsSourceCallable  # type: ignore
 except Exception:  # pragma: no cover
     SettingsSourceCallable = Callable[..., Dict[str, Any]]  # type: ignore
@@ -26,12 +24,6 @@ except Exception:  # pragma: no cover
 # Path resolution helpers
 # =========================
 def _app_root() -> Path:
-    """
-    Root of the repository / application.
-
-    If APP_ROOT is set, all relative config paths are resolved from there.
-    Otherwise, resolve from current working directory (backward compatible).
-    """
     v = (os.environ.get("APP_ROOT") or "").strip()
     if v:
         return Path(v).expanduser().resolve()
@@ -39,9 +31,6 @@ def _app_root() -> Path:
 
 
 def _resolve_path(path: str) -> Path:
-    """
-    Resolve a potentially-relative path against APP_ROOT.
-    """
     p = Path(path).expanduser()
     if p.is_absolute():
         return p
@@ -50,12 +39,8 @@ def _resolve_path(path: str) -> Path:
 
 def _load_app_yaml(path: str) -> Dict[str, Any]:
     """
-    Load config/app.yaml and flatten it into Settings fields.
+    Load YAML config and map it to Settings fields.
     Missing file => {}.
-
-    Notes:
-    - Path is resolved relative to APP_ROOT (if set).
-    - Env vars override YAML (handled by Settings source ordering).
     """
     if yaml is None:
         return {}
@@ -102,7 +87,19 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     if (v := g("api", "cors_allowed_origins")) is not None:
         out["cors_allowed_origins"] = v
 
-    # model
+    # capabilities (support both old and new shapes)
+    # New recommended:
+    if (v := g("capabilities", "generate")) is not None:
+        out["enable_generate"] = v
+    if (v := g("capabilities", "extract")) is not None:
+        out["enable_extract"] = v
+    # Backward compatible:
+    if (v := g("capabilities", "enable_generate")) is not None:
+        out["enable_generate"] = v
+    if (v := g("capabilities", "enable_extract")) is not None:
+        out["enable_extract"] = v
+
+    # model (YAML)
     if (v := g("model", "default_id")) is not None:
         out["model_id"] = v
     if (v := g("model", "allowed_models")) is not None:
@@ -113,6 +110,14 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
         out["model_dtype"] = v
     if (v := g("model", "device")) is not None:
         out["model_device"] = v
+
+    # ✅ critical runtime toggles can be expressed in YAML too
+    if (v := g("model", "model_load_mode")) is not None:
+        out["model_load_mode"] = v
+    if (v := g("model", "require_model_ready")) is not None:
+        out["require_model_ready"] = v
+    if (v := g("model", "token_counting")) is not None:
+        out["token_counting"] = v
 
     # redis
     if (v := g("redis", "enabled")) is not None:
@@ -143,6 +148,30 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     return out
 
 
+def _truthy(v: Any) -> str:
+    return "1" if bool(v) else "0"
+
+
+def _sync_runtime_env(s: "Settings") -> None:
+    """
+    Keep runtime env vars coherent with Settings.
+
+    Why: some modules still read os.getenv(...) directly. If Settings are loaded
+    from YAML/.env/monkeypatch, we want those os.getenv reads to see the same values.
+    """
+    os.environ["ENV"] = str(s.env)
+    os.environ["DEBUG"] = _truthy(s.debug)
+
+    os.environ["ENABLE_GENERATE"] = _truthy(s.enable_generate)
+    os.environ["ENABLE_EXTRACT"] = _truthy(s.enable_extract)
+
+    os.environ["REDIS_ENABLED"] = _truthy(s.redis_enabled)
+
+    os.environ["MODEL_LOAD_MODE"] = str(s.model_load_mode)
+    os.environ["REQUIRE_MODEL_READY"] = _truthy(s.require_model_ready)
+    os.environ["TOKEN_COUNTING"] = _truthy(s.token_counting)
+
+
 class Settings(BaseSettings):
     # --- config file path ---
     app_config_path: str = Field(
@@ -162,10 +191,14 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
 
     # --- database ---
-    database_url: str = Field(default="postgresql+asyncpg://llm:llm@postgres:5432/llm")
+    database_url: str = Field(default="postgresql+asyncpg://llm:llm@postgres:5432/llm", validation_alias="DATABASE_URL")
 
     # --- CORS ---
     cors_allowed_origins: Any = Field(default_factory=lambda: ["*"])
+
+    # --- capabilities ---
+    enable_generate: bool = Field(default=True, validation_alias="ENABLE_GENERATE")
+    enable_extract: bool = Field(default=True, validation_alias="ENABLE_EXTRACT")
 
     # --- model config ---
     model_id: str = Field(default="mistralai/Mistral-7B-v0.1")
@@ -173,6 +206,11 @@ class Settings(BaseSettings):
     models_config_path: Optional[str] = Field(default="config/models.yaml")
     model_dtype: Literal["float16", "bfloat16", "float32"] = Field(default="float16")
     model_device: Optional[str] = Field(default=None)
+
+    # --- runtime model behavior toggles (these match your env vars + tests) ---
+    model_load_mode: Literal["off", "lazy", "eager"] = Field(default="lazy", validation_alias="MODEL_LOAD_MODE")
+    require_model_ready: bool = Field(default=True, validation_alias="REQUIRE_MODEL_READY")
+    token_counting: bool = Field(default=True, validation_alias="TOKEN_COUNTING")
 
     # --- Redis ---
     redis_url: Optional[str] = Field(default=None, validation_alias="REDIS_URL")
@@ -233,23 +271,16 @@ class Settings(BaseSettings):
         file_secret_settings: SettingsSourceCallable,
     ):
         def yaml_settings() -> Dict[str, Any]:
-            # Read from env directly (env still overrides later via env_settings).
             path = os.getenv("APP_CONFIG_PATH", "config/app.yaml")
             return _load_app_yaml(path)
 
-        # Order matters: defaults -> YAML -> env -> dotenv -> secrets
-        return (init_settings, yaml_settings, env_settings, dotenv_settings, file_secret_settings)
+        # ✅ IMPORTANT: env must override dotenv, not the other way around.
+        # Order: defaults -> YAML -> dotenv -> env -> secrets
+        return (init_settings, yaml_settings, dotenv_settings, env_settings, file_secret_settings)
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """
-    Canonical settings accessor.
-
-    IMPORTANT:
-    - Cached for performance and deterministic behavior.
-    - Tests that change APP_ROOT / APP_CONFIG_PATH / env vars must call:
-        get_settings.cache_clear()
-      before creating the FastAPI app (create_app()).
-    """
-    return Settings()
+    s = Settings()
+    _sync_runtime_env(s)
+    return s

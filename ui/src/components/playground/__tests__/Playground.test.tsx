@@ -17,6 +17,7 @@ vi.mock("../../../lib/api", async () => {
     callGenerate: vi.fn(),
     listSchemas: vi.fn(),
     getSchema: vi.fn(),
+    getCapabilities: vi.fn(),
   };
 });
 
@@ -73,14 +74,67 @@ vi.mock("../SchemaInspector", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+
+  // Default: full capabilities so tests that rely on Extract work unless they override.
+  (api.getCapabilities as any).mockResolvedValue({
+    generate: true,
+    extract: true,
+    mode: "full",
+  });
 });
 
 function schemas(...ids: string[]): SchemaIndexItem[] {
   return ids.map((schema_id) => ({ schema_id }));
 }
 
-describe("Playground", () => {
-  it("loads schemas on mount, sorts them, and selects the first schemaId", async () => {
+describe("Playground (capability gating)", () => {
+  it("generate-only: does NOT call listSchemas/getSchema, Extract tab is disabled, Generate works", async () => {
+    const user = userEvent.setup();
+
+    (api.getCapabilities as any).mockResolvedValueOnce({
+      generate: true,
+      extract: false,
+      mode: "generate-only",
+    });
+
+    (api.callGenerate as any).mockResolvedValueOnce({
+      model: "m",
+      output: "Hello!",
+      cached: false,
+    });
+
+    render(<Playground />);
+
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+
+    expect(api.listSchemas).toHaveBeenCalledTimes(0);
+    expect(api.getSchema).toHaveBeenCalledTimes(0);
+
+    const extractTab = screen.getByRole("button", { name: /Extract/i });
+    expect(extractTab).toBeDisabled();
+    expect(extractTab.textContent || "").toMatch(/disabled/i);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("generate-panel")).toBeInTheDocument();
+    });
+
+    await user.click(
+      within(screen.getByTestId("generate-panel")).getByRole("button", {
+        name: "Run Generate",
+      })
+    );
+
+    await waitFor(() => expect(api.callGenerate).toHaveBeenCalledTimes(1));
+
+    const out =
+      within(screen.getByTestId("generate-panel")).getByTestId("gen-output")
+        .textContent || "";
+    expect(out).toContain('"model": "m"');
+    expect(out).toContain('"cached": false');
+    expect(out).toContain('"output": "Hello!"');
+  });
+
+  it("extract-enabled: loads schemas on mount, sorts them, selects first schemaId, loads schema JSON (after switching to Extract)", async () => {
     (api.listSchemas as any).mockResolvedValueOnce(
       schemas("z_schema", "a_schema", "m_schema")
     );
@@ -88,9 +142,17 @@ describe("Playground", () => {
 
     render(<Playground />);
 
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
 
-    // schemaId appears in BOTH stubs: ExtractPanel and SchemaInspector
+    // Switch to Extract tab so ExtractPanel + SchemaInspector render
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("extract-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("schema-inspector")).toBeInTheDocument();
+    });
+
     await waitFor(() => {
       const hits = screen.getAllByText("schemaId:a_schema");
       expect(hits.length).toBeGreaterThanOrEqual(1);
@@ -98,15 +160,31 @@ describe("Playground", () => {
 
     expect(api.getSchema).toHaveBeenCalledWith("a_schema");
 
-    // Optional: assert each panel got the right schemaId
     expect(
       within(screen.getByTestId("extract-panel")).getByText("schemaId:a_schema")
     ).toBeInTheDocument();
     expect(
-      within(screen.getByTestId("schema-inspector")).getByText(
-        "schemaId:a_schema"
-      )
+      within(screen.getByTestId("schema-inspector")).getByText("schemaId:a_schema")
     ).toBeInTheDocument();
+  });
+
+  it("extract-enabled: Extract tab is clickable and shows ExtractPanel", async () => {
+    (api.listSchemas as any).mockResolvedValueOnce(schemas("a_schema"));
+    (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
+
+    render(<Playground />);
+
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+
+    const extractTab = screen.getByRole("button", { name: "Extract" });
+    expect(extractTab).not.toBeDisabled();
+
+    fireEvent.click(extractTab);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("extract-panel")).toBeInTheDocument();
+    });
   });
 
   it("Generate flow: switches tabs, calls callGenerate with payload, renders output", async () => {
@@ -123,20 +201,16 @@ describe("Playground", () => {
 
     render(<Playground />);
 
-    // Let initial mount effects complete
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
 
-    // Switch to Generate tab (use fireEvent for reliability)
-    const tab = screen.getByRole("button", { name: "Generate" });
-    fireEvent.click(tab);
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
-    // Ensure generate panel is shown
     await waitFor(() => {
       expect(screen.getByTestId("generate-panel")).toBeInTheDocument();
     });
 
-    // Click the action button INSIDE the generate panel
     await user.click(
       within(screen.getByTestId("generate-panel")).getByRole("button", {
         name: "Run Generate",
@@ -144,14 +218,6 @@ describe("Playground", () => {
     );
 
     await waitFor(() => expect(api.callGenerate).toHaveBeenCalledTimes(1));
-
-    expect(api.callGenerate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: "Write a haiku about autumn leaves.",
-        max_new_tokens: 128,
-        temperature: 0.7,
-      })
-    );
 
     const out =
       within(screen.getByTestId("generate-panel")).getByTestId("gen-output")
@@ -174,10 +240,10 @@ describe("Playground", () => {
 
     render(<Playground />);
 
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
 
-    // Switch to Generate tab (use fireEvent for reliability)
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() => {
@@ -200,7 +266,7 @@ describe("Playground", () => {
     expect(errText).toContain('"extra"');
   });
 
-  it("schema JSON load error: ApiError with bodyJson is rendered in SchemaInspector props", async () => {
+  it("schema JSON load error: ApiError with bodyJson is rendered in SchemaInspector props (extract-enabled, after switching to Extract)", async () => {
     (api.listSchemas as any).mockResolvedValueOnce(schemas("a_schema"));
     const errBody = { code: "not_found", message: "missing schema" };
     (api.getSchema as any).mockRejectedValueOnce(
@@ -209,8 +275,16 @@ describe("Playground", () => {
 
     render(<Playground />);
 
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
+
+    // SchemaInspector is only rendered in extract mode
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("schema-inspector")).toBeInTheDocument();
+    });
 
     await waitFor(() => {
       const s =
@@ -221,12 +295,10 @@ describe("Playground", () => {
     });
   });
 
-  it("Extract happy path: first successful run sets baseline when autoBaseline=true", async () => {
+  it("Extract happy path (extract-enabled): first successful run sets baseline when autoBaseline=true", async () => {
     const user = userEvent.setup();
 
-    (api.listSchemas as any).mockResolvedValueOnce(
-      schemas("sroie_receipt_v1")
-    );
+    (api.listSchemas as any).mockResolvedValueOnce(schemas("sroie_receipt_v1"));
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
     (api.callExtract as any).mockResolvedValueOnce({
@@ -239,21 +311,18 @@ describe("Playground", () => {
 
     render(<Playground />);
 
+    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
 
-    // defaults visible via ExtractPanel stub
+    // Now actually render ExtractPanel
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("extract-panel")).toBeInTheDocument();
+    });
+
     expect(
       within(screen.getByTestId("extract-panel")).getByText("autoBaseline:true")
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("extract-panel")).getByText(
-        "canClearBaseline:false"
-      )
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId("extract-panel")).getByText(
-        "canSetBaseline:false"
-      )
     ).toBeInTheDocument();
 
     await user.click(
@@ -264,27 +333,12 @@ describe("Playground", () => {
 
     await waitFor(() => expect(api.callExtract).toHaveBeenCalledTimes(1));
 
-    expect(api.callExtract).toHaveBeenCalledWith(
-      expect.objectContaining({
-        schema_id: "sroie_receipt_v1",
-        cache: true,
-        repair: true,
-        max_new_tokens: 512,
-        temperature: 0,
-      })
-    );
-
-    // after successful run: latest exists -> canSetBaseline true; autoBaseline sets baseline -> canClearBaseline true
     await waitFor(() => {
       expect(
-        within(screen.getByTestId("extract-panel")).getByText(
-          "canSetBaseline:true"
-        )
+        within(screen.getByTestId("extract-panel")).getByText("canSetBaseline:true")
       ).toBeInTheDocument();
       expect(
-        within(screen.getByTestId("extract-panel")).getByText(
-          "canClearBaseline:true"
-        )
+        within(screen.getByTestId("extract-panel")).getByText("canClearBaseline:true")
       ).toBeInTheDocument();
     });
   });

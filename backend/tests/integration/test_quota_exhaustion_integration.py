@@ -24,4 +24,4 @@ async def test_quota_exhaustion_blocks_subsequent_requests(test_sessionmaker, cl
     r2 = await client.post("/v1/generate", headers=headers, json={"prompt": "hi again", "cache": False})
     assert r2.status_code == 402, r2.text
     body = r2.json()
-    assert body["error"]["code"] == "quota_exhausted"
+    assert body["code"] == "quota_exhausted"
