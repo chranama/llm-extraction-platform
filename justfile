@@ -419,4 +419,262 @@ clean-volumes:
     fi \
   '
 
-# DELAY: "nuke" is sharp; keep as Makefile or a separate script for now
+# -----------------------
+# k8s / kind
+# -----------------------
+K8S_DIR := "deploy/k8s"
+KIND_CFG := K8S_DIR + "/kind/kind-config.yaml"
+KIND_CLUSTER := "llm"
+K8S_NS := "llm"
+
+K8S_OVERLAY_LOCAL_GEN := K8S_DIR + "/overlays/local-generate-only"
+K8S_OVERLAY_PROD_GPU_FULL := K8S_DIR + "/overlays/prod-gpu-full"
+
+K8S_SMOKE := "tools/k8s/k8s_smoke.sh"
+
+# -----------------------
+# kind cluster lifecycle
+# -----------------------
+kind-up:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kind >/dev/null || (echo "❌ kind not installed"; exit 1); \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kind get clusters | grep -qx "{{KIND_CLUSTER}}" || kind create cluster --config "{{KIND_CFG}}"; \
+    kubectl cluster-info >/dev/null; \
+    echo "✅ kind cluster up: {{KIND_CLUSTER}}"; \
+  '
+
+kind-down:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kind >/dev/null || (echo "❌ kind not installed"; exit 1); \
+    kind delete cluster --name "{{KIND_CLUSTER}}" || true; \
+    echo "✅ kind cluster down: {{KIND_CLUSTER}}"; \
+  '
+
+# -----------------------
+# ingress (nginx)
+# -----------------------
+kind-ingress-up:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.0/deploy/static/provider/kind/deploy.yaml; \
+    kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s; \
+    echo "✅ ingress-nginx installed"; \
+  '
+
+# -----------------------
+# images
+# -----------------------
+kind-build-backend:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v docker >/dev/null || (echo "❌ docker not installed"; exit 1); \
+    command -v kind >/dev/null || (echo "❌ kind not installed"; exit 1); \
+    docker build -t llm-backend:dev -f backend/Dockerfile.backend .; \
+    kind load docker-image llm-backend:dev --name "{{KIND_CLUSTER}}"; \
+    echo "✅ loaded llm-backend:dev into kind"; \
+  '
+
+# -----------------------
+# apply / delete overlays
+# -----------------------
+k8s-apply-local-generate-only:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kubectl apply -k "{{K8S_OVERLAY_LOCAL_GEN}}"; \
+    echo "✅ applied overlay: local-generate-only"; \
+  '
+
+k8s-delete-local-generate-only:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kubectl delete -k "{{K8S_OVERLAY_LOCAL_GEN}}" --ignore-not-found; \
+    echo "✅ deleted overlay: local-generate-only"; \
+  '
+
+# NOTE: prod-gpu-full is not runnable on kind (no GPU), but we wire it for real clusters.
+k8s-apply-prod-gpu-full:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kubectl apply -k "{{K8S_OVERLAY_PROD_GPU_FULL}}"; \
+    echo "✅ applied overlay: prod-gpu-full"; \
+  '
+
+k8s-delete-prod-gpu-full:
+  bash -lc '\
+    set -euo pipefail; \
+    command -v kubectl >/dev/null || (echo "❌ kubectl not installed"; exit 1); \
+    kubectl delete -k "{{K8S_OVERLAY_PROD_GPU_FULL}}" --ignore-not-found; \
+    echo "✅ deleted overlay: prod-gpu-full"; \
+  '
+
+# -----------------------
+# wait helpers
+# -----------------------
+k8s-wait:
+  bash -lc '\
+    set -euo pipefail; \
+    ns="{{K8S_NS}}"; \
+    kubectl -n "$$ns" rollout status deployment/api --timeout=240s; \
+    if kubectl -n "$$ns" get job db-migrate >/dev/null 2>&1; then \
+      echo "Waiting for job/db-migrate completion..."; \
+      kubectl -n "$$ns" wait --for=condition=complete job/db-migrate --timeout=240s || true; \
+      if ! kubectl -n "$$ns" get job db-migrate -o jsonpath="{.status.conditions[?(@.type==\"Complete\")].status}" 2>/dev/null | grep -q True; then \
+        echo "⚠️ job/db-migrate not complete (yet). Debug:"; \
+        kubectl -n "$$ns" describe job db-migrate || true; \
+        kubectl -n "$$ns" logs job/db-migrate --tail=200 || true; \
+      fi; \
+    else \
+      echo "ℹ️ job/db-migrate not found (TTL may have cleaned it)."; \
+    fi; \
+    kubectl -n "$$ns" get pods; \
+    echo "✅ k8s wait done"; \
+  '
+
+# -----------------------
+# smoke tests
+# -----------------------
+# Deterministic smoke via port-forward (generate-only contract)
+k8s-smoke:
+  bash -lc '\
+    set -euo pipefail; \
+    if [ ! -x "{{K8S_SMOKE}}" ]; then \
+      echo "❌ {{K8S_SMOKE}} not found or not executable"; exit 1; \
+    fi; \
+    set -a; [ -f "{{ENV_FILE}}" ] && . "{{ENV_FILE}}"; set +a; \
+    API_KEY="${API_KEY:-}" {{K8S_SMOKE}}; \
+  '
+
+# Smoke through ingress (manual/demo-friendly) — generate-only assertions
+k8s-smoke-ingress:
+  bash -lc '\
+    set -euo pipefail; \
+    need(){ command -v "$$1" >/dev/null 2>&1 || { echo "missing $$1"; exit 1; }; }; \
+    need curl; need python; \
+    base="http://localhost:8081/api"; \
+    host="llm.local"; \
+    echo "Hitting ingress via $$base (Host: $$host)"; \
+    set -a; [ -f "{{ENV_FILE}}" ] && . "{{ENV_FILE}}"; set +a; \
+    auth=(); \
+    if [ -n "${API_KEY:-}" ]; then auth=(-H "X-API-Key: ${API_KEY}"); else echo "⚠️  API_KEY not set; /v1/* may 401"; fi; \
+    \
+    echo "1) /healthz"; \
+    curl -fsS -H "Host: $$host" "$$base/healthz" >/dev/null; \
+    echo "OK"; \
+    \
+    echo "2) /v1/models (assert generate-only)"; \
+    tmp=$$(mktemp); \
+    code=$$(curl -sS -o "$$tmp" -w "%{http_code}" -H "Host: $$host" "$${auth[@]}" "$$base/v1/models" || true); \
+    if [ "$$code" != "200" ]; then \
+      echo "FAIL: GET /v1/models returned HTTP $$code"; \
+      sed "s/^/  /" "$$tmp" || true; rm -f "$$tmp"; exit 1; \
+    fi; \
+    python - "$$tmp" <<'\''PY'\'' \
+import json,sys \
+x=json.load(open(sys.argv[1])) \
+dep=x.get("deployment_capabilities") or {} \
+assert dep.get("generate") is True \
+assert dep.get("extract") is False \
+for m in x.get("models") or []: \
+  caps=m.get("capabilities") or {} \
+  assert caps.get("generate") is True and caps.get("extract") is False \
+print("OK: generate-only verified via /v1/models") \
+PY \
+    rm -f "$$tmp"; \
+    \
+    echo "3) POST /v1/generate"; \
+    curl -fsS -X POST -H "Host: $$host" "$${auth[@]}" -H "Content-Type: application/json" \
+      --data "{\"prompt\":\"ping\",\"max_tokens\":8}" "$$base/v1/generate" >/dev/null; \
+    echo "OK"; \
+    \
+    echo "4) POST /v1/extract must NOT succeed"; \
+    code=$$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "Host: $$host" "$${auth[@]}" \
+      -H "Content-Type: application/json" \
+      --data "{\"schema_id\":\"invoice_v1\",\"text\":\"probe\"}" "$$base/v1/extract" || true); \
+    [ "$$code" != "200" ] || (echo "FAIL: extract enabled"; exit 1); \
+    echo "OK: extract disabled (HTTP $$code)"; \
+    \
+    echo "✅ ingress smoke passed"; \
+  '
+
+# Smoke for prod-gpu-full (FULL-capabilities) — for real clusters (not kind)
+# Contract based on config/models.full.yaml:
+# - deployment supports extract (at least one model has extract=true)
+# - at least one model advertises extract=true
+k8s-smoke-prod-gpu-full:
+  bash -lc '\
+    set -euo pipefail; \
+    need(){ command -v "$$1" >/dev/null 2>&1 || { echo "missing $$1"; exit 1; }; }; \
+    need kubectl; need curl; need python; \
+    ns="{{K8S_NS}}"; svc="api"; lp=8000; rp=8000; \
+    set -a; [ -f "{{ENV_FILE}}" ] && . "{{ENV_FILE}}"; set +a; \
+    auth=(); \
+    if [ -n "${API_KEY:-}" ]; then auth=(-H "X-API-Key: ${API_KEY}"); else echo "⚠️  API_KEY not set; /v1/* may 401"; fi; \
+    echo "Port-forward svc/$$svc $$lp:$$rp (ns=$$ns)"; \
+    kubectl -n "$$ns" port-forward "svc/$$svc" "$$lp:$$rp" >/tmp/k8s_pf_prod.log 2>&1 & \
+    pf_pid=$$!; trap "kill $$pf_pid >/dev/null 2>&1 || true" EXIT; \
+    base="http://localhost:$$lp"; \
+    for _ in $$(seq 1 50); do curl -fsS "$$base/healthz" >/dev/null 2>&1 && break || true; sleep 0.2; done; \
+    echo "1) /healthz"; curl -fsS "$$base/healthz" >/dev/null; echo OK; \
+    echo "2) /v1/models (assert: deployment extract=true AND at least one model extract=true)"; \
+    tmp=$$(mktemp); \
+    code=$$(curl -sS -o "$$tmp" -w "%{http_code}" "$$base/v1/models" "$${auth[@]}" || true); \
+    if [ "$$code" != "200" ]; then echo "FAIL: /v1/models HTTP $$code"; sed "s/^/  /" "$$tmp" || true; rm -f "$$tmp"; exit 1; fi; \
+    python - "$$tmp" <<'\''PY'\'' \
+import json,sys \
+x=json.load(open(sys.argv[1], "r", encoding="utf-8")) \
+dep=x.get("deployment_capabilities") or {} \
+gen=dep.get("generate"); ext=dep.get("extract") \
+assert gen is True, f"deployment_capabilities.generate expected True, got {gen}" \
+assert ext is True, f"deployment_capabilities.extract expected True (full), got {ext}" \
+models=x.get("models") or [] \
+assert models, "no models returned" \
+has_extract=False \
+bad=[] \
+for m in models: \
+  caps=m.get("capabilities") or {} \
+  g=caps.get("generate"); e=caps.get("extract") \
+  if e is True: has_extract=True \
+  if e is True and g is not True: bad.append((m.get("id"), caps)) \
+assert not bad, f"invalid caps (extract true but generate not true): {bad}" \
+assert has_extract, "expected at least one model with extract=true in full mode" \
+print("OK: full mode verified via /v1/models (deployment extract=true; >=1 model extract=true)") \
+PY \
+    rm -f "$$tmp"; \
+    echo "✅ prod-gpu-full smoke (models) OK"; \
+  '
+  
+# -----------------------
+# diagnostics
+# -----------------------
+k8s-status:
+  bash -lc '\
+    set -euo pipefail; \
+    kubectl -n "{{K8S_NS}}" get all; \
+    kubectl -n "{{K8S_NS}}" get pods -o wide; \
+  '
+
+k8s-logs-api:
+  bash -lc '\
+    set -euo pipefail; \
+    kubectl -n "{{K8S_NS}}" logs deployment/api --tail=200 -f; \
+  '
+
+# -----------------------
+# one-command demo (kind)
+# -----------------------
+kind-demo-generate-only: \
+  kind-up \
+  kind-ingress-up \
+  kind-build-backend \
+  k8s-apply-local-generate-only \
+  k8s-wait \
+  k8s-smoke
+  @echo "✅ kind demo (generate-only) complete"
+  @echo "Ingress: curl -H \"Host: llm.local\" http://localhost:8081/api/healthz"

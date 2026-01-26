@@ -4,13 +4,15 @@
 # - /v1/extract is disabled at the model level
 # - All models explicitly advertise generate=true, extract=false
 # - No capability inference or fallback behavior
+#
+# Local/kind default: small model so /v1/generate is actually runnable on CPU.
 
-default_model: mistralai/Ministral-3-14B-Instruct-2512-BF16
+default_model: meta-llama/Llama-3.2-1B-Instruct
 
 defaults:
   backend: local
   load_mode: lazy
-  device: auto
+  device: auto          # kind will effectively be CPU
   trust_remote_code: false
   quantization: null
   capabilities:
@@ -18,34 +20,21 @@ defaults:
     extract: false
 
 models:
-  - id: mistralai/Ministral-3-14B-Instruct-2512-BF16
-    backend: local
-    load_mode: eager
-    dtype: bfloat16
-    device: auto
-    text_only: false
-    max_context: 32768
-    trust_remote_code: true
-    quantization: null
-    capabilities:
-      generate: true
-      extract: false
-    notes: "Primary instruct model (generate-only mode)"
-
-  - id: Qwen/Qwen2.5-14B-Instruct
+  - id: meta-llama/Llama-3.2-1B-Instruct
     backend: local
     load_mode: lazy
-    dtype: bfloat16
+    dtype: float16
     device: auto
     text_only: true
-    max_context: 32768
+    max_context: 4096
     trust_remote_code: false
     quantization: null
     capabilities:
       generate: true
       extract: false
-    notes: "Peer 14B text-only instruct (generate-only mode)"
+    notes: "Kind/local default (small, CPU-friendly; generate-only)"
 
+  # Keep your “real” options available but still generate-only.
   - id: mistralai/Mistral-7B-Instruct-v0.3
     backend: local
     load_mode: lazy
@@ -58,7 +47,7 @@ models:
     capabilities:
       generate: true
       extract: false
-    notes: "Lightweight Mistral 7B instruct (generate-only mode)"
+    notes: "Optional local model (heavier; generate-only)"
 
   - id: Qwen/Qwen2.5-7B-Instruct
     backend: local
@@ -72,4 +61,19 @@ models:
     capabilities:
       generate: true
       extract: false
-    notes: "Lightweight Qwen 7B instruct (generate-only mode)"
+    notes: "Optional local model (heavier; generate-only)"
+
+  # Intentionally NOT default for kind; keep for real GPU/full environments.
+  - id: mistralai/Ministral-3-14B-Instruct-2512-BF16
+    backend: local
+    load_mode: lazy
+    dtype: bfloat16
+    device: auto
+    text_only: false
+    max_context: 32768
+    trust_remote_code: true
+    quantization: null
+    capabilities:
+      generate: true
+      extract: false
+    notes: "Not kind-default (large); generate-only"

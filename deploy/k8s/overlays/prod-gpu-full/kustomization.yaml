@@ -1,0 +1,21 @@
+# deploy/k8s/overlays/prod-gpu-full/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - hf-cache-pvc.yaml
+
+# Full-capabilities models config (source of truth from repo config/)
+configMapGenerator:
+  - name: llm-models
+    files:
+      - models.yaml=../../../config/models.full.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patchesStrategicMerge:
+  - api-patch.yaml
+  # optional: tweak hostnames/TLS/etc for prod
+  - ingress-patch.yaml

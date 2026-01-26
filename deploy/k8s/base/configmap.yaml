@@ -1,3 +1,4 @@
+# deploy/k8s/base/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:

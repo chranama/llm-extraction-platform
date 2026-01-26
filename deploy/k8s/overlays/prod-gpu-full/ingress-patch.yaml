@@ -1,20 +1,14 @@
-# deploy/k8s/base/ingress.yaml
+# deploy/k8s/overlays/prod-gpu-full/ingress-patch.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: llm-ingress
   namespace: llm
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    # Route /api/* to the backend, stripping the /api prefix
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
-  ingressClassName: nginx
   rules:
-    - host: llm.local
+    - host: llm.example.com
       http:
         paths:
-          # /api/v1/generate -> backend receives /v1/generate
           - path: /api(/|$)(.*)
             pathType: ImplementationSpecific
             backend:

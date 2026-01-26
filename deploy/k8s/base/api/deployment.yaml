@@ -1,3 +1,4 @@
+# deploy/k8s/base/api/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
