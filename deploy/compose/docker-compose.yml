@@ -89,14 +89,13 @@ services:
       MODEL_LOAD_MODE: ${MODEL_LOAD_MODE:-lazy}
       REQUIRE_MODEL_READY: ${REQUIRE_MODEL_READY:-0}
 
-      CAPABILITIES: ${CAPABILITIES:-}
-
       # infra toggles
       REDIS_ENABLED: ${REDIS_ENABLED:-0}
 
       WORKERS: ${WORKERS:-1}
       UVICORN_RELOAD: ${UVICORN_RELOAD:-0}
 
+      # Capabilities live in the models yaml now
       MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
 
     depends_on:
@@ -136,7 +135,6 @@ services:
 
   # ==========================
   # API (CPU / portable)
-  # Capabilities chosen via models.yaml
   # ==========================
   api:
     <<: *api_base
@@ -150,7 +148,7 @@ services:
       retries: 20
 
   # ==========================
-  # API (GPU / generate-or-extract via models.yaml)
+  # API (GPU)
   # ==========================
   api_gpu:
     <<: *api_base
@@ -163,7 +161,6 @@ services:
       REDIS_ENABLED: ${REDIS_ENABLED:-1}
       UVICORN_RELOAD: "0"
       MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
-      CAPABILITIES: ${CAPABILITIES:-}
     ports: []
     expose:
       - "8000"
@@ -265,6 +262,9 @@ services:
     environment:
       API_BASE_URL: ${API_BASE_URL:-http://api:8000}
       EVAL_ARGS: ${EVAL_ARGS:-}
+    volumes:
+      - ../..:/work:ro
+      - ../../results:/work/results:rw   # ✅ host-visible eval artifacts
 
   eval_host:
     build:
@@ -275,6 +275,9 @@ services:
     environment:
       API_BASE_URL: ${API_BASE_URL:-http://host.docker.internal:${API_PORT:-8000}}
       EVAL_ARGS: ${EVAL_ARGS:-}
+    volumes:
+      - ../..:/work:ro
+      - ../../results:/work/results:rw   # ✅ host-visible eval artifacts
 
 volumes:
   pg_data:

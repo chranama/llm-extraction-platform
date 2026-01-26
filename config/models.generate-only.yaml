@@ -1,0 +1,75 @@
+# config/models.generate-only.yaml
+# ------------------------
+# Guarantees:
+# - /v1/extract is disabled at the model level
+# - All models explicitly advertise generate=true, extract=false
+# - No capability inference or fallback behavior
+
+default_model: mistralai/Ministral-3-14B-Instruct-2512-BF16
+
+defaults:
+  backend: local
+  load_mode: lazy
+  device: auto
+  trust_remote_code: false
+  quantization: null
+  capabilities:
+    generate: true
+    extract: false
+
+models:
+  - id: mistralai/Ministral-3-14B-Instruct-2512-BF16
+    backend: local
+    load_mode: eager
+    dtype: bfloat16
+    device: auto
+    text_only: false
+    max_context: 32768
+    trust_remote_code: true
+    quantization: null
+    capabilities:
+      generate: true
+      extract: false
+    notes: "Primary instruct model (generate-only mode)"
+
+  - id: Qwen/Qwen2.5-14B-Instruct
+    backend: local
+    load_mode: lazy
+    dtype: bfloat16
+    device: auto
+    text_only: true
+    max_context: 32768
+    trust_remote_code: false
+    quantization: null
+    capabilities:
+      generate: true
+      extract: false
+    notes: "Peer 14B text-only instruct (generate-only mode)"
+
+  - id: mistralai/Mistral-7B-Instruct-v0.3
+    backend: local
+    load_mode: lazy
+    dtype: float16
+    device: auto
+    text_only: true
+    max_context: 8192
+    trust_remote_code: false
+    quantization: null
+    capabilities:
+      generate: true
+      extract: false
+    notes: "Lightweight Mistral 7B instruct (generate-only mode)"
+
+  - id: Qwen/Qwen2.5-7B-Instruct
+    backend: local
+    load_mode: lazy
+    dtype: float16
+    device: auto
+    text_only: true
+    max_context: 8192
+    trust_remote_code: false
+    quantization: null
+    capabilities:
+      generate: true
+      extract: false
+    notes: "Lightweight Qwen 7B instruct (generate-only mode)"

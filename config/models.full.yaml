@@ -1,4 +1,4 @@
-# config/models.yaml
+# config/models.full.yaml
 default_model: mistralai/Ministral-3-14B-Instruct-2512-BF16
 
 defaults:
