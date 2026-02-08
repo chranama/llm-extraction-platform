@@ -1,4 +1,4 @@
-# backend/src/llm_server/api/generate.py
+# server/src/llm_server/api/generate.py
 from __future__ import annotations
 
 import os
@@ -20,6 +20,7 @@ from llm_server.api.deps import (
     sha32,
 )
 from llm_server.core.redis import get_redis_from_request
+from llm_server.io.policy_decisions import policy_generate_max_new_tokens_cap
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 from llm_server.services.inference import (
     CacheSpec,
@@ -96,6 +97,39 @@ def count_tokens(model_id: str, prompt: str, completion: str | None) -> tuple[in
         return None, None
 
 
+def _apply_generate_cap(request: Request, *, model_id: str, requested: int | None) -> int | None:
+    """
+    Apply v2 policy clamp to max_new_tokens.
+
+    Behavior:
+      - If no cap => return requested unchanged
+      - If cap exists:
+          - if requested is None: we set effective=cap (so clamp actually clamps)
+          - else effective=min(requested, cap)
+    """
+    cap = policy_generate_max_new_tokens_cap(model_id, request=request)
+    if cap is None:
+        return requested
+
+    try:
+        cap_i = int(cap)
+        if cap_i <= 0:
+            return requested
+    except Exception:
+        return requested
+
+    if requested is None:
+        return cap_i
+
+    try:
+        req_i = int(requested)
+        if req_i <= 0:
+            return cap_i
+        return min(req_i, cap_i)
+    except Exception:
+        return cap_i
+
+
 @router.post("/v1/generate")
 async def generate(
     request: Request,
@@ -109,8 +143,15 @@ async def generate(
 
     request_id = getattr(request.state, "request_id", None)
 
+    # --- apply policy clamp BEFORE fingerprinting / cache keys ---
+    effective_max_new_tokens = _apply_generate_cap(request, model_id=model_id, requested=body.max_new_tokens)
+
     prompt_hash = sha32(body.prompt)
-    params_fp = fingerprint_pydantic(body, exclude={"prompt", "model", "cache"})
+    # exclude prompt/model/cache; fingerprint SHOULD include max_new_tokens (effective)
+    params_fp = fingerprint_pydantic(
+        body.model_copy(update={"max_new_tokens": effective_max_new_tokens}),
+        exclude={"prompt", "model", "cache"},
+    )
     redis_key = make_cache_redis_key(model_id, prompt_hash, params_fp)
 
     cache = CacheSpec(
@@ -149,12 +190,17 @@ async def generate(
                 route="/v1/generate",
                 client_host=request.client.host if request.client else None,
                 model_id=model_id,
-                params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
+                params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True)
+                | {"max_new_tokens": effective_max_new_tokens},
                 prompt=body.prompt,
                 output=cached_out,
                 latency_ms=latency_ms,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                status_code=200,
+                cached=True,
+                error_code=None,
+                error_stage=None,
                 commit=True,
             )
             return {"model": model_id, "output": cached_out, "cached": True}
@@ -162,7 +208,7 @@ async def generate(
         # ---- run model ----
         result = model.generate(
             prompt=body.prompt,
-            max_new_tokens=body.max_new_tokens,
+            max_new_tokens=effective_max_new_tokens,
             temperature=body.temperature,
             top_p=body.top_p,
             top_k=body.top_k,
@@ -193,12 +239,17 @@ async def generate(
             route="/v1/generate",
             client_host=request.client.host if request.client else None,
             model_id=model_id,
-            params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True),
+            params_json=body.model_dump(exclude={"prompt", "model"}, exclude_none=True)
+            | {"max_new_tokens": effective_max_new_tokens},
             prompt=body.prompt,
             output=output,
             latency_ms=latency_ms,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            status_code=200,
+            cached=False,
+            error_code=None,
+            error_stage=None,
             commit=True,
         )
 
@@ -218,7 +269,16 @@ async def generate_batch(
 
     request_id = getattr(request.state, "request_id", None)
 
-    params_fp = fingerprint_pydantic(body, exclude={"prompts", "model"})
+    # Apply clamp once for the batch.
+    # Note: Batch uses required int max_new_tokens; clamp may reduce it.
+    effective_batch_max_new = _apply_generate_cap(request, model_id=model_id, requested=body.max_new_tokens)
+    if effective_batch_max_new is None:
+        effective_batch_max_new = body.max_new_tokens
+
+    params_fp = fingerprint_pydantic(
+        body.model_copy(update={"max_new_tokens": effective_batch_max_new}),
+        exclude={"prompts", "model"},
+    )
     redis = get_redis_from_request(request)
 
     results: list[BatchGenerateResult] = []
@@ -252,7 +312,7 @@ async def generate_batch(
             else:
                 result = model.generate(
                     prompt=prompt,
-                    max_new_tokens=body.max_new_tokens,
+                    max_new_tokens=effective_batch_max_new,
                     temperature=body.temperature,
                     top_p=body.top_p,
                     top_k=body.top_k,
@@ -285,19 +345,24 @@ async def generate_batch(
                 route="/v1/generate/batch",
                 client_host=request.client.host if request.client else None,
                 model_id=model_id,
-                params_json=body.model_dump(exclude={"prompts", "model"}, exclude_none=True),
+                params_json=body.model_dump(exclude={"prompts", "model"}, exclude_none=True)
+                | {"max_new_tokens": effective_batch_max_new},
                 prompt=prompt,
                 output=output,
                 latency_ms=latency_ms,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                status_code=200,
+                cached=bool(cached_flag),
+                error_code=None,
+                error_stage=None,
                 commit=False,
             )
 
             results.append(
                 BatchGenerateResult(
                     output=output,
-                    cached=cached_flag,
+                    cached=bool(cached_flag),
                     prompt_tokens=int(prompt_tokens or 0),
                     completion_tokens=int(completion_tokens or 0),
                 )

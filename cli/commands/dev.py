@@ -5,7 +5,7 @@ import argparse
 import os
 
 from cli.errors import CLIError
-from cli.util.proc import ensure_bins, run, run_bash
+from cli.utils.proc import ensure_bins, run, run_bash
 from cli.types import GlobalConfig  # type: ignore[attr-defined]
 
 
@@ -15,10 +15,10 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     sp = p.add_subparsers(dest="dev_cmd", required=True)
 
-    sp.add_parser("dev-cpu", help="infra+api (cpu) + migrations")
-    sp.add_parser("dev-gpu", help="infra+api-gpu + migrations")
-    sp.add_parser("dev-cpu-generate-only", help="infra+api (generate-only) + migrations")
-    sp.add_parser("dev-gpu-generate-only", help="infra+api-gpu (generate-only) + migrations")
+    sp.add_parser("dev-cpu", help="infra+server (cpu) + migrations")
+    sp.add_parser("dev-gpu", help="infra+server_gpu + migrations")
+    sp.add_parser("dev-cpu-generate-only", help="infra+server (generate-only) + migrations")
+    sp.add_parser("dev-gpu-generate-only", help="infra+server_gpu (generate-only) + migrations")
 
     sp.add_parser("doctor", help="Run tools/compose_doctor.sh")
 
@@ -38,19 +38,22 @@ def _compose(cfg: GlobalConfig, profiles: list[str], args: list[str], verbose: b
 
 
 def _migrate(cfg: GlobalConfig, verbose: bool) -> None:
-    # Try api then api_gpu.
+    """
+    Apply alembic migrations inside the running server container.
+    Tries: server, then server_gpu.
+    """
     env = {"COMPOSE_PROJECT_NAME": cfg.project_name}
     base = ["docker", "compose", "--env-file", str(cfg.env_file), "-f", str(cfg.compose_yml)]
-    # Determine service existence by listing ps services
-    # Keep it simple: just try exec in api then api_gpu.
-    for svc in ["api", "api_gpu"]:
+
+    for svc in ["server", "server_gpu"]:
         try:
             run(base + ["exec", "-T", svc, "python", "-m", "alembic", "upgrade", "head"], env=env, verbose=verbose)
             print("✅ migrations applied (docker)")
             return
         except Exception:
             continue
-    raise CLIError("No running api/api_gpu container found. Start api first.", code=2)
+
+    raise CLIError("No running server/server_gpu container found. Start the server first.", code=2)
 
 
 def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
@@ -59,28 +62,27 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
     c = args.dev_cmd
 
     if c == "dev-cpu":
-        _compose(cfg, ["infra", "api"], ["up", "-d", "--build", "--remove-orphans"], args.verbose)
-        print(f"✅ api up (docker) @ http://localhost:{cfg.api_port}")
+        _compose(cfg, ["infra", "server"], ["up", "-d", "--build", "--remove-orphans"], args.verbose)
+        print(f"✅ server up (docker) @ http://localhost:{cfg.api_port}")
         _migrate(cfg, args.verbose)
         return 0
 
     if c == "dev-gpu":
-        _compose(cfg, ["infra", "api-gpu"], ["up", "-d", "--build", "--remove-orphans"], args.verbose)
-        print(f"✅ api_gpu up (docker) @ http://localhost:{cfg.api_port}")
+        _compose(cfg, ["infra", "server-gpu"], ["up", "-d", "--build", "--remove-orphans"], args.verbose)
+        print(f"✅ server_gpu up (docker) @ http://localhost:{cfg.api_port}")
         _migrate(cfg, args.verbose)
         return 0
 
     if c == "dev-cpu-generate-only":
-        env = {"MODELS_YAML": str(cfg.models_generate_only)}
-        _compose(cfg, ["infra", "api"], ["up", "-d", "--build", "--remove-orphans"], args.verbose)
-        # Note: MODELS_YAML is consumed at container runtime; set it via env-file or export when running compose.
-        # Here, we re-run compose with env override to ensure it reaches docker compose.
+        # Compose already defaults MODELS_YAML to generate-only in your compose,
+        # but we still allow forcing it via env override for determinism.
         run_bash(
             f'export MODELS_YAML="{cfg.models_generate_only}"; '
             f'COMPOSE_PROJECT_NAME="{cfg.project_name}" docker compose --env-file "{cfg.env_file}" -f "{cfg.compose_yml}" '
-            f'--profile infra --profile api up -d --build --remove-orphans',
+            f'--profile infra --profile server up -d --build --remove-orphans',
             verbose=args.verbose,
         )
+        print(f"✅ server up (docker, generate-only) @ http://localhost:{cfg.api_port}")
         _migrate(cfg, args.verbose)
         return 0
 
@@ -88,9 +90,10 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
         run_bash(
             f'export MODELS_YAML="{cfg.models_generate_only}"; '
             f'COMPOSE_PROJECT_NAME="{cfg.project_name}" docker compose --env-file "{cfg.env_file}" -f "{cfg.compose_yml}" '
-            f'--profile infra --profile api-gpu up -d --build --remove-orphans',
+            f'--profile infra --profile server-gpu up -d --build --remove-orphans',
             verbose=args.verbose,
         )
+        print(f"✅ server_gpu up (docker, generate-only) @ http://localhost:{cfg.api_port}")
         _migrate(cfg, args.verbose)
         return 0
 
@@ -124,7 +127,8 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
                 "-lc",
                 f'curl -fsS -X POST "http://localhost:{cfg.api_port}/v1/generate" '
                 f'-H "Content-Type: application/json" -H "X-API-Key: {api_key}" '
-                f'--data \'{{"prompt":"smoke test","max_new_tokens":16,"temperature":0.2}}\' >/dev/null && echo "✅ /v1/generate probe OK"',
+                f'--data \'{{"prompt":"smoke test","max_new_tokens":16,"temperature":0.2}}\' >/dev/null '
+                f'&& echo "✅ /v1/generate probe OK"',
             ],
             verbose=args.verbose,
         )

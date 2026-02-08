@@ -1,15 +1,18 @@
-# src/llm_server/services/llm_config.py
+# server/src/llm_server/services/llm_config.py
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import yaml
 
 from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
+
+logger = logging.getLogger("llm_server.models")
 
 # -----------------------------
 # Types / allowed values
@@ -22,7 +25,6 @@ DType = Literal["float16", "bfloat16", "float32"]
 
 Quantization = Optional[str]  # e.g. "int8", "int4", "nf4", None
 
-# Capabilities are explicit + strictly validated
 Capability = Literal["generate", "extract"]
 CapabilitiesMap = Dict[Capability, bool]
 
@@ -30,7 +32,7 @@ _ALLOWED_BACKENDS = {"local", "remote"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
 _ALLOWED_DEVICES = {"auto", "cuda", "mps", "cpu"}
 _ALLOWED_DTYPES = {"float16", "bfloat16", "float32"}
-_ALLOWED_QUANT = {None, "int8", "int4", "nf4"}  # extend later as you add support
+_ALLOWED_QUANT = {None, "int8", "int4", "nf4"}
 _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 
 
@@ -41,17 +43,10 @@ _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 
 @dataclass(frozen=True)
 class ModelSpec:
-    """
-    Normalized single-model spec.
-    """
-
     id: str
     backend: Backend = "local"
     load_mode: LoadMode = "lazy"
-
-    # Per-model capabilities for API gating
     capabilities: Optional[CapabilitiesMap] = None
-
     dtype: Optional[DType] = None
     device: Device = "auto"
     text_only: Optional[bool] = None
@@ -63,15 +58,6 @@ class ModelSpec:
 
 @dataclass(frozen=True)
 class ModelsConfig:
-    """
-    Normalized model configuration for the service.
-
-    primary_id: the default model id
-    model_ids:  ordered unique model ids, primary first
-    models:     list of ModelSpec in same order as model_ids
-    defaults:   any derived defaults used during normalization (for debugging)
-    """
-
     primary_id: str
     model_ids: List[str]
     models: List[ModelSpec]
@@ -84,47 +70,23 @@ class ModelsConfig:
 
 
 def _app_root() -> Path:
-    """
-    Resolve APP_ROOT (container-friendly). Falls back to cwd.
-    """
     v = (os.environ.get("APP_ROOT") or "").strip()
-    if v:
-        return Path(v).expanduser().resolve()
-    return Path.cwd().resolve()
+    return Path(v).expanduser().resolve() if v else Path.cwd().resolve()
 
 
 def _resolve_path_maybe_relative(path: str) -> Path:
-    """
-    Resolve a path relative to APP_ROOT if not absolute.
-    """
     p = Path(path).expanduser()
-    if p.is_absolute():
-        return p
-    return (_app_root() / p).resolve()
+    return p if p.is_absolute() else (_app_root() / p).resolve()
 
 
 def _resolve_models_yaml_path() -> str:
-    """
-    Resolve models.yaml path with this priority:
-
-      1) MODELS_YAML env var (compose/k8s explicit override)
-      2) Settings.models_config_path (from YAML/server.yaml or env)
-      3) default "config/models.yaml"
-
-    Relative paths are resolved against APP_ROOT if set, else cwd.
-    """
-    # 1) Explicit env override
     env_path = (os.environ.get("MODELS_YAML") or "").strip()
     if env_path:
         return str(_resolve_path_maybe_relative(env_path))
 
-    # 2) Settings (may come from config/server.yaml)
     s = get_settings()
     raw = str(getattr(s, "models_config_path", None) or "config/models.yaml").strip()
-    if not raw:
-        raw = "config/models.yaml"
-
-    return str(_resolve_path_maybe_relative(raw))
+    return str(_resolve_path_maybe_relative(raw or "config/models.yaml"))
 
 
 def _dedupe_preserve_order(items: List[str]) -> List[str]:
@@ -135,6 +97,190 @@ def _dedupe_preserve_order(items: List[str]) -> List[str]:
             out.append(x)
             seen.add(x)
     return out
+
+
+# -----------------------------
+# Merge logic (models-aware)
+# -----------------------------
+
+
+def _deep_merge_dicts(base: Any, overlay: Any) -> Any:
+    """
+    Generic deep merge for dicts: overlay wins.
+    Lists and non-dict types are replaced.
+    """
+    if not isinstance(base, dict) or not isinstance(overlay, dict):
+        return overlay
+    out = dict(base)
+    for k, v in overlay.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_dicts(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _model_id_of(item: Any) -> Optional[str]:
+    if isinstance(item, str):
+        s = item.strip()
+        return s or None
+    if isinstance(item, dict):
+        mid = item.get("id")
+        if isinstance(mid, str) and mid.strip():
+            return mid.strip()
+    return None
+
+
+def _merge_models_list_by_id(base_list: Any, overlay_list: Any) -> Any:
+    """
+    Merge two 'models' lists by id. Overlay can provide partial entries.
+
+    Rules:
+      - Entries are identified by:
+          - dict with 'id'
+          - or a string model id (treated as minimal entry)
+      - For a matching id:
+          - dict+dict => deep merge dicts (overlay wins)
+          - otherwise overlay replaces base
+      - New ids from overlay are appended (preserving overlay order)
+      - Base order is preserved, except where base ids are updated.
+    """
+    if overlay_list is None:
+        return base_list
+    if base_list is None:
+        return overlay_list
+
+    if not isinstance(base_list, list) or not isinstance(overlay_list, list):
+        return overlay_list
+
+    base_order: List[str] = []
+    base_map: Dict[str, Any] = {}
+    base_unknown: List[Any] = []
+
+    for item in base_list:
+        mid = _model_id_of(item)
+        if not mid:
+            base_unknown.append(item)
+            continue
+        if mid not in base_map:
+            base_order.append(mid)
+            base_map[mid] = item
+
+    overlay_order_new: List[str] = []
+    for item in overlay_list:
+        mid = _model_id_of(item)
+        if not mid:
+            continue
+
+        if mid in base_map:
+            a = base_map[mid]
+            b = item
+            if isinstance(a, dict) and isinstance(b, dict):
+                base_map[mid] = _deep_merge_dicts(a, b)
+            else:
+                base_map[mid] = b
+        else:
+            base_map[mid] = item
+            overlay_order_new.append(mid)
+
+    merged: List[Any] = []
+    for mid in base_order:
+        merged.append(base_map[mid])
+    for mid in overlay_order_new:
+        merged.append(base_map[mid])
+    merged.extend(base_unknown)
+    return merged
+
+
+def _deep_merge_models_aware(base: Any, overlay: Any) -> Any:
+    """
+    Deep merge where key 'models' uses merge-by-id semantics.
+    """
+    if not isinstance(base, dict) or not isinstance(overlay, dict):
+        return overlay
+
+    out = dict(base)
+    for k, v in overlay.items():
+        if k == "models":
+            out[k] = _merge_models_list_by_id(out.get(k), v)
+            continue
+
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_models_aware(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _select_profile(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Supports:
+      1) legacy: {default_model, defaults, models}
+      2) profiled: {base, profiles{...}}
+
+    Selection:
+      MODELS_PROFILE env var selects profile (preferred).
+      Fallback to APP_PROFILE, then "host".
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    if "profiles" not in raw and "base" not in raw:
+        return raw  # legacy
+
+    base = raw.get("base") or {}
+    profiles = raw.get("profiles") or {}
+    if not isinstance(base, dict):
+        base = {}
+    if not isinstance(profiles, dict):
+        profiles = {}
+
+    requested = (os.environ.get("MODELS_PROFILE") or "").strip()
+    source = "MODELS_PROFILE"
+    if not requested:
+        requested = (os.environ.get("APP_PROFILE") or "").strip()
+        source = "APP_PROFILE"
+    if not requested:
+        requested = "host"
+        source = "default"
+
+    used = requested
+    overlay = profiles.get(used)
+
+    if overlay is None:
+        fallback = "host" if "host" in profiles else (next(iter(profiles.keys()), "") or "")
+        if fallback:
+            logger.warning(
+                "models: requested profile missing; falling back: requested=%r source=%s fallback=%r available=%s",
+                requested,
+                source,
+                fallback,
+                sorted(list(profiles.keys())),
+            )
+            used = fallback
+            overlay = profiles.get(used) or {}
+        else:
+            logger.warning(
+                "models: requested profile missing and no profiles available; using base only: requested=%r source=%s",
+                requested,
+                source,
+            )
+            used = requested
+            overlay = {}
+
+    if not isinstance(overlay, dict):
+        overlay = {}
+
+    merged = _deep_merge_models_aware(base, overlay)
+    merged["_selected_profile_requested"] = requested
+    merged["_selected_profile_source"] = source
+    merged["_selected_profile_used"] = used
+    return merged
+
+
+# -----------------------------
+# Validation helpers
+# -----------------------------
 
 
 def _as_str(x: Any, *, field: str, path: str) -> str:
@@ -241,25 +387,9 @@ def _load_yaml(path: str) -> Dict[str, Any]:
     return data
 
 
-def _normalize_capabilities(
-    raw_caps: Any,
-    *,
-    path: str,
-    field: str,
-) -> Optional[CapabilitiesMap]:
-    """
-    Accepts:
-      - None
-      - dict like {generate: true, extract: false}
-
-    Strict:
-      - keys limited to {"generate","extract"}
-      - values must be boolean
-    Returns a normalized dict[str,bool] with only allowed keys, or None.
-    """
+def _normalize_capabilities(raw_caps: Any, *, path: str, field: str) -> Optional[CapabilitiesMap]:
     if raw_caps is None:
         return None
-
     if not isinstance(raw_caps, dict):
         raise AppError(
             code="models_yaml_invalid",
@@ -294,27 +424,10 @@ def _normalize_capabilities(
             )
         out[kk] = v
 
-    # Safe cast due to validation above
     return out  # type: ignore[return-value]
 
 
-def _normalize_model_entry(
-    raw: Any,
-    *,
-    path: str,
-    defaults: Dict[str, Any],
-) -> ModelSpec:
-    """
-    Accepts:
-      - "model_id" (string)
-      - {"id": "..."} (minimal)
-      - {"id": "...", backend/load_mode/...} (full)
-
-    Supports per-model capabilities:
-      capabilities:
-        generate: true/false
-        extract: true/false
-    """
+def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> ModelSpec:
     if isinstance(raw, str):
         mid = _as_str(raw, field="models[]", path=path)
         return ModelSpec(
@@ -331,7 +444,7 @@ def _normalize_model_entry(
             notes=None,
         )
 
-    if not isinstance(raw, dict):
+    if not isinstance(raw, dict) or "id" not in raw:
         raise AppError(
             code="models_yaml_invalid",
             message="models.yaml models entries must be strings or objects with an 'id' field",
@@ -339,46 +452,25 @@ def _normalize_model_entry(
             extra={"path": path, "bad_item": str(raw)},
         )
 
-    if "id" not in raw:
-        raise AppError(
-            code="models_yaml_invalid",
-            message="models.yaml models object entries must contain 'id'",
-            status_code=500,
-            extra={"path": path, "bad_item": str(raw)},
-        )
-
     mid = _as_str(raw.get("id"), field="models[].id", path=path)
 
-    backend = _validate_enum(
-        raw.get("backend", defaults["backend"]),
-        field="models[].backend",
-        path=path,
-        allowed=_ALLOWED_BACKENDS,
-    ) or defaults["backend"]
-
-    load_mode = _validate_enum(
-        raw.get("load_mode", defaults["load_mode"]),
-        field="models[].load_mode",
-        path=path,
-        allowed=_ALLOWED_LOAD_MODES,
-    ) or defaults["load_mode"]
-
-    device = _validate_enum(
-        raw.get("device", defaults["device"]),
-        field="models[].device",
-        path=path,
-        allowed=_ALLOWED_DEVICES,
-    ) or defaults["device"]
+    backend = (
+        _validate_enum(raw.get("backend", defaults["backend"]), field="models[].backend", path=path, allowed=_ALLOWED_BACKENDS)
+        or defaults["backend"]
+    )
+    load_mode = (
+        _validate_enum(raw.get("load_mode", defaults["load_mode"]), field="models[].load_mode", path=path, allowed=_ALLOWED_LOAD_MODES)
+        or defaults["load_mode"]
+    )
+    device = (
+        _validate_enum(raw.get("device", defaults["device"]), field="models[].device", path=path, allowed=_ALLOWED_DEVICES)
+        or defaults["device"]
+    )
 
     dtype_raw = raw.get("dtype", defaults["dtype"])
     dtype: Optional[DType] = None
     if dtype_raw is not None:
-        dtype = _validate_enum(
-            dtype_raw,
-            field="models[].dtype",
-            path=path,
-            allowed=_ALLOWED_DTYPES,
-        )
+        dtype = _validate_enum(dtype_raw, field="models[].dtype", path=path, allowed=_ALLOWED_DTYPES)
 
     quant = raw.get("quantization", defaults["quantization"])
     if isinstance(quant, str):
@@ -430,20 +522,69 @@ def _normalize_model_entry(
     )
 
 
-def load_models_config() -> ModelsConfig:
-    """
-    Load model specs from models.yaml if present, otherwise fall back to Settings.
+# -----------------------------
+# Model-driven service capability clamp
+# -----------------------------
 
-    IMPORTANT:
-      - Path resolution honors MODELS_YAML (compose/k8s override) first.
-      - Relative paths resolve against APP_ROOT when set.
-      - Updates Settings (best-effort) for legacy call sites.
+
+def _cap_bool(caps: Optional[CapabilitiesMap], key: str, default: bool) -> bool:
+    if not caps:
+        return default
+    v = caps.get(key)  # type: ignore[arg-type]
+    return bool(v) if isinstance(v, bool) else default
+
+
+def _apply_effective_service_caps_from_primary(
+    *,
+    s: Any,
+    primary: ModelSpec,
+    defaults_caps: Optional[CapabilitiesMap],
+) -> Tuple[bool, bool]:
     """
+    Decide effective ENABLE_GENERATE / ENABLE_EXTRACT based on:
+      - existing Settings toggles (authoritative service-level kill switches)
+      - primary model capabilities (authoritative "is extract actually supported?")
+
+    effective = settings_toggle AND primary_model_capability
+    """
+    gen_default = _cap_bool(defaults_caps, "generate", True)
+    ex_default = _cap_bool(defaults_caps, "extract", False)
+
+    primary_gen = _cap_bool(primary.capabilities, "generate", gen_default)
+    primary_ex = _cap_bool(primary.capabilities, "extract", ex_default)
+
+    settings_gen = bool(getattr(s, "enable_generate", True))
+    settings_ex = bool(getattr(s, "enable_extract", True))
+
+    effective_gen = settings_gen and primary_gen
+    effective_ex = settings_ex and primary_ex
+
+    # Best-effort: update settings object for in-process consumers
+    try:
+        setattr(s, "enable_generate", effective_gen)
+        setattr(s, "enable_extract", effective_ex)
+    except Exception:
+        pass
+
+    # Do not override explicit env/test overrides
+    os.environ.setdefault("ENABLE_GENERATE", "1" if effective_gen else "0")
+    os.environ.setdefault("ENABLE_EXTRACT", "1" if effective_ex else "0")
+
+    return effective_gen, effective_ex
+
+
+# -----------------------------
+# Main loader
+# -----------------------------
+
+
+def load_models_config() -> ModelsConfig:
     s = get_settings()
     path = _resolve_models_yaml_path()
 
     if path and os.path.exists(path):
-        data = _load_yaml(path)
+        raw = _load_yaml(path)
+        data = _select_profile(raw)
 
         default_model = data.get("default_model")
         if default_model is not None and not isinstance(default_model, str):
@@ -472,31 +613,12 @@ def load_models_config() -> ModelsConfig:
                 extra={"path": path},
             )
 
-        # defaults.capabilities
         caps_defaults = _normalize_capabilities(defaults.get("capabilities", None), path=path, field="defaults.capabilities")
 
         norm_defaults: Dict[str, Any] = {
-            "backend": _validate_enum(
-                defaults.get("backend", "local"),
-                field="defaults.backend",
-                path=path,
-                allowed=_ALLOWED_BACKENDS,
-            )
-            or "local",
-            "load_mode": _validate_enum(
-                defaults.get("load_mode", "lazy"),
-                field="defaults.load_mode",
-                path=path,
-                allowed=_ALLOWED_LOAD_MODES,
-            )
-            or "lazy",
-            "device": _validate_enum(
-                defaults.get("device", "auto"),
-                field="defaults.device",
-                path=path,
-                allowed=_ALLOWED_DEVICES,
-            )
-            or "auto",
+            "backend": _validate_enum(defaults.get("backend", "local"), field="defaults.backend", path=path, allowed=_ALLOWED_BACKENDS) or "local",
+            "load_mode": _validate_enum(defaults.get("load_mode", "lazy"), field="defaults.load_mode", path=path, allowed=_ALLOWED_LOAD_MODES) or "lazy",
+            "device": _validate_enum(defaults.get("device", "auto"), field="defaults.device", path=path, allowed=_ALLOWED_DEVICES) or "auto",
             "dtype": None,
             "capabilities": caps_defaults,
             "text_only": defaults.get("text_only", None),
@@ -543,12 +665,11 @@ def load_models_config() -> ModelsConfig:
         norm_defaults["quantization"] = quant_default
 
         specs: List[ModelSpec] = []
-        for raw in models_list:
-            specs.append(_normalize_model_entry(raw, path=path, defaults=norm_defaults))
+        for raw_item in models_list:
+            specs.append(_normalize_model_entry(raw_item, path=path, defaults=norm_defaults))
 
         ids = _dedupe_preserve_order([m.id for m in specs])
 
-        # Determine primary/default id
         if default_model is None:
             if not ids:
                 raise AppError(
@@ -569,7 +690,6 @@ def load_models_config() -> ModelsConfig:
                 )
 
             if primary_id not in ids:
-                # Keep behavior: allow default_model to be absent from list; add it.
                 ids.insert(0, primary_id)
                 specs.insert(
                     0,
@@ -588,7 +708,6 @@ def load_models_config() -> ModelsConfig:
                     ),
                 )
 
-        # Reorder so primary first; keep first spec per id.
         spec_map: Dict[str, ModelSpec] = {}
         for sp in specs:
             if sp.id not in spec_map:
@@ -605,17 +724,44 @@ def load_models_config() -> ModelsConfig:
         except Exception:
             pass
 
+        # ✅ Model-driven service capability clamp: primary model decides extract enablement.
+        try:
+            primary_spec = next((m for m in ordered_specs if m.id == primary_id), None)
+            if primary_spec is not None:
+                _apply_effective_service_caps_from_primary(
+                    s=s,
+                    primary=primary_spec,
+                    defaults_caps=caps_defaults,
+                )
+        except Exception:
+            # Never block startup based on best-effort capability sync
+            pass
+
+        selected_req = data.get("_selected_profile_requested", None)
+        selected_src = data.get("_selected_profile_source", None)
+        selected_used = data.get("_selected_profile_used", None)
+
+        logger.info(
+            "models: loaded path=%s requested_profile=%r source=%r used_profile=%r primary_id=%s model_ids=%d",
+            path,
+            selected_req,
+            selected_src,
+            selected_used,
+            primary_id,
+            len(ordered_ids),
+        )
+
+        selected = data.get("_selected_profile_used", None)
         return ModelsConfig(
             primary_id=str(primary_id),
             model_ids=[str(x) for x in ordered_ids],
             models=ordered_specs,
-            defaults={"path": path, **norm_defaults},
+            defaults={"path": path, "selected_profile": selected, **norm_defaults},
         )
 
-    # Fallback to Settings (legacy)
+    # Fall back to Settings (legacy)
     primary_id = getattr(s, "model_id", None)
     model_ids = list(getattr(s, "all_model_ids", []) or [])
-
     if not primary_id or not isinstance(primary_id, str) or not primary_id.strip():
         raise AppError(
             code="model_config_invalid",
@@ -640,7 +786,7 @@ def load_models_config() -> ModelsConfig:
             id=mid,
             backend="local",
             load_mode="lazy" if mid != primary_id else "eager",
-            capabilities=None,  # legacy path has no per-model caps
+            capabilities=None,
             dtype=None,
             device="auto",
             text_only=None,

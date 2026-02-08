@@ -22,7 +22,7 @@ dependencies = [
   # CLI / config
   "python-dotenv>=1.0.0",
   "pydantic-settings>=2.0",
-  "llm-contracts @ file:../contracts",
+  "llm-contracts",
 ]
 
 [project.scripts]

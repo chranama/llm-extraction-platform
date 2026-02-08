@@ -4,30 +4,56 @@
 # Templates / extension fields
 # ==========================
 
+# ---- Server env (deep-merge safe) ----
+x-server-env: &server_env
+  APP_ROOT: "/app"
+  APP_CONFIG_PATH: "/app/config/server.yaml"
+
+  # ✅ Select config/server.yaml profile for containers
+  APP_PROFILE: ${APP_PROFILE:-docker}
+
+  # ✅ Select config/models.yaml profile (separate from APP_PROFILE)
+  MODELS_PROFILE: ${MODELS_PROFILE:-}
+
+  # ✅ Explicit DB wiring identity for readiness/debug ("docker" | "host" | "itest")
+  # Prefer setting this in compose-defaults.yaml per profile.
+  DB_INSTANCE: ${DB_INSTANCE:-docker}
+
+  # infra toggles + endpoints (compose still owns these because they are wiring)
+  REDIS_ENABLED: ${REDIS_ENABLED:-0}
+  REDIS_URL: ${REDIS_URL:-}
+
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (provided via compose defaults profile or .env override)}
+
+  WORKERS: ${WORKERS:-1}
+  UVICORN_RELOAD: ${UVICORN_RELOAD:-0}
+
+  MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
+
+  POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+  SLO_OUT_DIR: ${SLO_OUT_DIR:-/app/slo_out}
+
+  API_KEY: ${API_KEY:-}
+  HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN}
+
+# ---- GPU server env (deep-merge safe) ----
+x-server-gpu-env: &server_gpu_env
+  <<: *server_env
+  # GPU wiring knobs can stay in compose (or move to server.yaml docker-gpu profile later)
+  MODEL_DEVICE: ${MODEL_DEVICE:-gpu}
+  REDIS_ENABLED: ${REDIS_ENABLED:-1}
+  UVICORN_RELOAD: "0"
+  # For GPU, default to the heavyweight docker profile unless explicitly overridden
+  MODELS_PROFILE: ${MODELS_PROFILE_GPU:-docker}
+
+# ---- Server base (uses env anchor) ----
 x-server-base: &server_base
   build:
     context: ../..
     dockerfile: deploy/docker/Dockerfile.server
   restart: "no"
   environment:
-    APP_ROOT: "/app"
-
-    # Defaults (local/dev)
-    ENV: ${ENV:-dev}
-    MODEL_LOAD_MODE: ${MODEL_LOAD_MODE:-lazy}
-    REQUIRE_MODEL_READY: ${REQUIRE_MODEL_READY:-0}
-
-    # infra toggles
-    REDIS_ENABLED: ${REDIS_ENABLED:-0}
-
-    WORKERS: ${WORKERS:-1}
-    UVICORN_RELOAD: ${UVICORN_RELOAD:-0}
-
-    # Capabilities live in the models yaml now
-    MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
-
-    # Phase 0: canonical policy decision location inside container
-    POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+    <<: *server_env
 
   # IMPORTANT:
   # Dockerized server services are wired to the INTERNAL infra service names:
@@ -146,22 +172,21 @@ services:
     <<: *server_base
     profiles: ["itest"]
     environment:
-      ENV: test
+      <<: *server_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      MODELS_PROFILE: ${MODELS_PROFILE_ITEST:-test}
+
+      # ✅ unambiguous
+      DB_INSTANCE: ${DB_INSTANCE_ITEST:-itest}
+
       MODEL_LOAD_MODE: off
       REQUIRE_MODEL_READY: "0"
-
-      # For integration tests that use DB wiring
+      ENV: test
       DATABASE_URL: ${ITEST_DATABASE_URL:-postgresql+asyncpg://llm:llm@postgres_itest:5432/llm_test}
-
-      # Turn this on if you want cache paths exercised in itest
       REDIS_ENABLED: ${ITEST_REDIS_ENABLED:-1}
       REDIS_URL: ${ITEST_REDIS_URL:-redis://redis_itest:6379/0}
-
-      # Optional: make it explicit that this should never warm models
       MODEL_WARMUP: "0"
-
-      # In itest we still honor the canonical path, but allow override
-      POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+      POLICY_DECISION_PATH: ${ITEST_POLICY_DECISION_PATH:-/app/policy_out/latest.json}
     ports: []
     expose:
       - "8000"
@@ -171,8 +196,8 @@ services:
       redis_itest:
         condition: service_healthy
     volumes:
-      # allow tests to write/read artifacts deterministically if needed
       - ../../policy_out:/app/policy_out:rw
+      - ../../slo_out:/app/slo_out:rw
 
   # ==========================
   # Server (CPU / portable)
@@ -182,10 +207,14 @@ services:
     profiles: ["server"]
     ports:
       - "${API_PORT:-8000}:8000"
+    environment:
+      <<: *server_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      # ✅ default comes from compose-defaults (docker => docker-portable)
+      MODELS_PROFILE: ${MODELS_PROFILE:-}
     volumes:
-      # Phase 0: canonical decision artifact is bind-mounted so policy can write and server can read
       - ../../policy_out:/app/policy_out:rw
-      # Optional: bind-mount config for live edits
+      - ../../slo_out:/app/slo_out:rw
       # - ../../config:/app/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/readyz || exit 1"]
@@ -200,21 +229,15 @@ services:
     <<: *server_base
     profiles: ["server-gpu"]
     environment:
-      ENV: ${ENV:-prod}
-      MODEL_LOAD_MODE: ${MODEL_LOAD_MODE:-eager}
-      REQUIRE_MODEL_READY: ${REQUIRE_MODEL_READY:-1}
-      MODEL_DEVICE: "gpu"
-      REDIS_ENABLED: ${REDIS_ENABLED:-1}
-      UVICORN_RELOAD: "0"
-      MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
-      POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+      <<: *server_gpu_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
     ports: []
     expose:
       - "8000"
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ../../policy_out:/app/policy_out:rw
-      # Optional: bind-mount repo config (if you want live edits)
+      - ../../slo_out:/app/slo_out:rw
       # - ../../config:/app/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/modelz || exit 1"]
@@ -308,17 +331,11 @@ services:
     restart: "no"
     profiles: ["eval"]
     environment:
-      # NOTE: server service name is "server"
       API_BASE_URL: ${API_BASE_URL:-http://server:8000}
       EVAL_ARGS: ${EVAL_ARGS:-}
-
-      # Canonical pointer writing (eval_out)
       EVAL_WRITE_LATEST: ${EVAL_WRITE_LATEST:-1}
-      # If your eval io supports EVAL_OUT_PATH (single file override), set it here.
-      # Otherwise it will write eval_out/<task>/latest.json via llm_contracts default.
       EVAL_OUT_PATH: ${EVAL_OUT_PATH:-}
     volumes:
-      # eval image runs in /work; it needs RW access to results + eval_out
       - ../..:/work:ro
       - ../../results:/work/results:rw
       - ../../eval_out:/work/eval_out:rw
@@ -349,44 +366,37 @@ services:
     restart: "no"
     profiles: ["policy"]
     environment:
-      # Phase 0/1: prefer canonical eval pointer by default
-      # With the updated policy CLI, "latest" means: follow eval_out pointer.
       POLICY_RUN_DIR: ${POLICY_RUN_DIR:-latest}
-
-      POLICY_MODEL_ID: ${POLICY_MODEL_ID:-default}
-
-      # Policy reads/writes models.yaml in the repo view by default
+      POLICY_MODEL_ID: ${POLICY_MODEL_ID:-}
       POLICY_MODELS_YAML: ${POLICY_MODELS_YAML:-/work/config/models.yaml}
-
-      # Thresholds packaged into the image, but you can override to point at repo-mounted thresholds if desired
       POLICY_THRESHOLDS_ROOT: ${POLICY_THRESHOLDS_ROOT:-/app/policy/src/llm_policy/thresholds}
       POLICY_THRESHOLD_PROFILE: ${POLICY_THRESHOLD_PROFILE:-extract/default}
-
-      # Decision artifact path (canonical inside server container); policy writes to host bind-mount
+      POLICY_GENERATE_PROFILE: ${POLICY_GENERATE_PROFILE:-generate/portable}
+      POLICY_GENERATE_SLO_PATH: ${POLICY_GENERATE_SLO_PATH:-/work/slo_out/generate/latest.json}
       POLICY_OUT_PATH: ${POLICY_OUT_PATH:-/work/policy_out/latest.json}
-
-      # Optional: allow policy to locate eval_out pointer directory explicitly
-      # (only used if your policy loader reads env; safe to include)
       EVAL_OUT_PATH: ${EVAL_OUT_PATH:-}
-
-      # Extra args escape hatch
       POLICY_ARGS: ${POLICY_ARGS:-}
+
     volumes:
-      # Policy needs RW access to results + eval_out + policy_out + config
       - ../..:/work:rw
       - ../../results:/work/results:rw
       - ../../config:/work/config:rw
       - ../../eval_out:/work/eval_out:rw
       - ../../policy_out:/work/policy_out:rw
+      - ../../slo_out:/work/slo_out:rw
+
     working_dir: /work
     entrypoint: ["/bin/sh", "-lc"]
     command: >
+      test -n "${POLICY_MODEL_ID}" || (echo "POLICY_MODEL_ID is required for decide-and-patch" >&2; exit 2);
       llm-policy decide-and-patch
       --run-dir "${POLICY_RUN_DIR}"
       --models-yaml "${POLICY_MODELS_YAML}"
       --model-id "${POLICY_MODEL_ID}"
       --threshold-profile "${POLICY_THRESHOLD_PROFILE}"
       --thresholds-root "${POLICY_THRESHOLDS_ROOT}"
+      --generate-threshold-profile "${POLICY_GENERATE_PROFILE}"
+      --generate-slo-path "${POLICY_GENERATE_SLO_PATH}"
       --artifact-out "${POLICY_OUT_PATH}"
       ${POLICY_ARGS}
 

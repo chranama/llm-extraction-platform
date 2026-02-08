@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from cli.errors import CLIError
-from cli.util.proc import ensure_bins, run
+from cli.utils.proc import ensure_bins, run
 from cli.types import GlobalConfig  # type: ignore[attr-defined]
 
 

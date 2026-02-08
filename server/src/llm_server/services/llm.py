@@ -59,6 +59,40 @@ def _resolve_hf_home(cfg) -> str:
     return os.path.join(_real_user_home(), ".cache", "huggingface")
 
 
+def _hf_token() -> Optional[str]:
+    """
+    Canonical token resolution for gated HF repos.
+
+    Preferred env: HUGGINGFACE_HUB_TOKEN
+    Back-compat env: HF_TOKEN
+
+    NOTE: We also set HF_TOKEN from HUGGINGFACE_HUB_TOKEN (if missing)
+    because some codepaths / older libs still look for HF_TOKEN.
+    """
+    tok = os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    if tok and tok.strip():
+        tok = tok.strip()
+        if not (os.environ.get("HF_TOKEN") or "").strip():
+            os.environ["HF_TOKEN"] = tok
+        return tok
+
+    tok2 = os.environ.get("HF_TOKEN")
+    if tok2 and tok2.strip():
+        return tok2.strip()
+
+    return None
+
+
+def _hf_kwargs() -> dict[str, Any]:
+    """
+    Common kwargs for HF Hub auth.
+    We intentionally pass token=... explicitly because relying on env
+    can be inconsistent across versions/call sites.
+    """
+    tok = _hf_token()
+    return {"token": tok} if tok else {}
+
+
 def _configure_hf_cache_env(cfg) -> dict[str, str]:
     hf_home = _resolve_hf_home(cfg)
     hub_cache = os.environ.get("HF_HUB_CACHE") or os.path.join(hf_home, "hub")
@@ -67,6 +101,9 @@ def _configure_hf_cache_env(cfg) -> dict[str, str]:
     os.environ["HF_HUB_CACHE"] = hub_cache
     os.environ["TRANSFORMERS_CACHE"] = os.environ.get("TRANSFORMERS_CACHE") or hub_cache
     os.environ["XDG_CACHE_HOME"] = os.environ.get("XDG_CACHE_HOME") or os.path.dirname(hf_home)
+
+    # Ensure token back-compat env is set if present
+    _hf_token()
 
     try:
         os.makedirs(hf_home, exist_ok=True)
@@ -154,6 +191,7 @@ def _caps_meta(sp: Optional[ModelSpec]) -> Optional[list[str]]:
     out = sorted(set(out))
     return out or None
 
+
 def _make_http_client(*, base_url: str, model_id: str, timeout: int = 60):
     try:
         return HttpLLMClient(base_url=base_url, model_id=model_id, timeout=timeout)
@@ -206,6 +244,7 @@ class ModelManager:
             "TRANSFORMERS_CACHE": os.environ.get("TRANSFORMERS_CACHE"),
             "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
             "real_user_home": _real_user_home(),
+            "has_hf_token": bool(_hf_token()),
         }
 
     def is_loaded(self) -> bool:
@@ -217,12 +256,23 @@ class ModelManager:
             cache_ctx = _configure_hf_cache_env(cfg)
             cache_dir = cache_ctx["hf_hub_cache"]
 
+            # Always pass token explicitly (gated repos)
+            auth_kw = _hf_kwargs()
+
+            # Dtype safety: CPU should default to float32 unless user explicitly configured float32 already.
+            dtype = self._dtype
+            if str(self._device) == "cpu" and dtype in (torch.float16, torch.bfloat16):
+                dtype = torch.float32
+            if str(self._device) == "mps" and dtype == torch.bfloat16:
+                dtype = torch.float16
+
             if self._tokenizer is None:
                 self._tokenizer = AutoTokenizer.from_pretrained(
                     self.model_id,
                     use_fast=True,
                     cache_dir=cache_dir,
                     trust_remote_code=self._trust_remote_code,
+                    **auth_kw,
                 )
                 if getattr(self._tokenizer, "pad_token", None) is None:
                     self._tokenizer.pad_token = self._tokenizer.eos_token
@@ -231,11 +281,8 @@ class ModelManager:
                 hf_cfg = AutoConfig.from_pretrained(
                     self.model_id,
                     trust_remote_code=self._trust_remote_code,
+                    **auth_kw,
                 )
-
-                dtype = self._dtype
-                if str(self._device) == "mps" and dtype == torch.bfloat16:
-                    dtype = torch.float16
 
                 try:
                     self._model = AutoModelForCausalLM.from_pretrained(
@@ -244,8 +291,10 @@ class ModelManager:
                         low_cpu_mem_usage=True,
                         cache_dir=cache_dir,
                         trust_remote_code=self._trust_remote_code,
+                        **auth_kw,
                     )
                 except ValueError:
+                    # fallback for custom architectures
                     archs = getattr(hf_cfg, "architectures", None) or []
                     if not archs:
                         raise
@@ -259,6 +308,7 @@ class ModelManager:
                         low_cpu_mem_usage=True,
                         cache_dir=cache_dir,
                         trust_remote_code=self._trust_remote_code,
+                        **auth_kw,
                     )
 
                 self._model.to(self._device)
@@ -354,11 +404,6 @@ def build_llm_from_settings() -> Any:
     Any model with load_mode == "off" is excluded from the registry entirely.
 
     Per-model capabilities are propagated into registry metadata for API gating/UI.
-
-    IMPORTANT:
-      - meta["capabilities"] is:
-          * None  => unspecified (registry treats as allow-all)
-          * dict  => explicitly specified per-model caps
     """
     cfg = load_models_config()
     primary_id = cfg.primary_id
@@ -440,7 +485,7 @@ def build_llm_from_settings() -> Any:
             meta[mid] = {
                 "backend": "http_remote",
                 "load_mode": "remote",
-                "capabilities": caps,  # None => unspecified; dict => explicit
+                "capabilities": caps,
             }
             continue
 
@@ -456,7 +501,7 @@ def build_llm_from_settings() -> Any:
         meta[mid] = {
             "backend": "local_hf",
             "load_mode": "lazy(default eager-by-lifespan)" if mid == primary_id else "lazy",
-            "capabilities": caps,  # None => unspecified; dict => explicit
+            "capabilities": caps,
         }
 
     return MultiModelManager(models=models, default_id=primary_id, model_meta=meta)

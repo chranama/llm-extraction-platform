@@ -1,3 +1,4 @@
+# pyproject.toml (repo)
 [project]
 name = "llm_platform"
 version = "0.1.0"
@@ -8,16 +9,19 @@ dependencies = [
   "rich>=13.7",
   "python-dotenv>=1.0.0",
 
-  # ✅ pull in the local subprojects (must match each subproject's [project].name)
+  # Local subprojects (these names must match each subproject's [project].name)
   "llm_server",
   "llm_eval",
   "llm_policy",
+
+  # Shared contracts (fixes the file:../contracts relative-path issue)
+  "llm-contracts",
 ]
 
 [project.scripts]
 llmctl = "cli.main:main"
 
-# Optional: re-expose subpackage CLIs
+# Re-expose subpackage CLIs
 llm = "llm_server.cli:main"
 eval = "llm_eval.cli:main"
 llm-policy = "llm_policy.cli:main"
@@ -32,11 +36,13 @@ dev = [
 [tool.uv]
 package = true
 
-# ✅ map dependency-name -> local path
+# ✅ map dependency-name -> local path (workspace-style)
+# NOTE: the keys here must match the *dependency names* you use above.
 [tool.uv.sources]
-llm_server = { path = "backend", editable = true }
-llm_eval   = { path = "eval", editable = true }
-llm_policy = { path = "policy", editable = true }
+llm_server    = { path = "server", editable = true }
+llm_eval      = { path = "eval", editable = true }
+llm_policy    = { path = "policy", editable = true }
+llm-contracts = { path = "contracts", editable = true }
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -45,7 +51,16 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["cli*"]
-exclude = ["backend*", "eval*", "policy*", "tools*", "deploy*", "integrations*", "ui*"]
+exclude = [
+  "server*",
+  "eval*",
+  "policy*",
+  "contracts*",
+  "tools*",
+  "deploy*",
+  "integrations*",
+  "ui*",
+]
 
 [tool.ruff]
 line-length = 100

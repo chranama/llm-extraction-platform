@@ -23,71 +23,44 @@ def _warning(code: str, message: str, context: Optional[dict[str, Any]] = None) 
 
 
 def _coerce_reasons(items: Any) -> list[DecisionReason]:
-    """
-    Tolerate:
-      - None
-      - list[dict] with keys {code, message, context? or extra?}
-      - list[DecisionReason]
-      - list[DecisionWarning] (converted)
-      - anything else -> ignored
-    """
-    if not items:
-        return []
-
-    if not isinstance(items, list):
+    if not items or not isinstance(items, list):
         return []
 
     out: list[DecisionReason] = []
     for it in items:
         if isinstance(it, DecisionReason):
             out.append(it)
-            continue
-        if isinstance(it, DecisionWarning):
+        elif isinstance(it, DecisionWarning):
             out.append(_reason(it.code, it.message, dict(it.context or {})))
-            continue
-        if isinstance(it, dict):
+        elif isinstance(it, dict):
             code = str(it.get("code") or "issue")
             msg = str(it.get("message") or "")
             if not msg:
                 continue
-            ctx_any = it.get("context", None)
-            if ctx_any is None:
-                ctx_any = it.get("extra", None)
+            ctx_any = it.get("context") or it.get("extra")
             ctx = ctx_any if isinstance(ctx_any, dict) else {}
             out.append(_reason(code, msg, ctx))
-            continue
     return out
 
 
 def _coerce_warnings(items: Any) -> list[DecisionWarning]:
-    """
-    Same as _coerce_reasons, but for warnings.
-    """
-    if not items:
-        return []
-
-    if not isinstance(items, list):
+    if not items or not isinstance(items, list):
         return []
 
     out: list[DecisionWarning] = []
     for it in items:
         if isinstance(it, DecisionWarning):
             out.append(it)
-            continue
-        if isinstance(it, DecisionReason):
+        elif isinstance(it, DecisionReason):
             out.append(_warning(it.code, it.message, dict(it.context or {})))
-            continue
-        if isinstance(it, dict):
+        elif isinstance(it, dict):
             code = str(it.get("code") or "warning")
             msg = str(it.get("message") or "")
             if not msg:
                 continue
-            ctx_any = it.get("context", None)
-            if ctx_any is None:
-                ctx_any = it.get("extra", None)
+            ctx_any = it.get("context") or it.get("extra")
             ctx = ctx_any if isinstance(ctx_any, dict) else {}
             out.append(_warning(code, msg, ctx))
-            continue
     return out
 
 
@@ -98,33 +71,48 @@ def decide_extract_enablement(
     thresholds_profile: Optional[str] = None,
 ) -> Decision:
     """
-    v0 extract enablement decision:
-      1) health gate (catastrophic operational issues => block)
-      2) quality thresholds (schema_validity_rate, required_present_rate, etc.)
-      3) optional latency thresholds
+    Extract enablement policy (pure).
+
+    Responsibilities:
+      - Decide allow/deny for extract
+      - Populate enable_extract, status, reasons, warnings, metrics
+      - NEVER decide pipeline
+      - NEVER assume generate clamp is present
 
     Fail-closed:
-      - missing required metrics => deny
-      - health gate block => deny
+      - Health gate block => deny
+      - Missing required metrics => deny
     """
-    # 1) Health gate (hard)
-    hg = health_gate_from_eval(artifact, thresholds=thresholds, thresholds_profile=thresholds_profile)
 
-    # If health gate explicitly blocks, deny immediately.
+    # ------------------------------------------------------------------
+    # 1) Health gate (hard fail)
+    # ------------------------------------------------------------------
+    hg = health_gate_from_eval(
+        artifact,
+        thresholds=thresholds,
+        thresholds_profile=thresholds_profile,
+    )
+
+    s = artifact.summary
+
     if getattr(hg, "enable_extract", None) is False:
         reasons = _coerce_reasons(getattr(hg, "reasons", None))
         warnings = _coerce_warnings(getattr(hg, "warnings", None))
         metrics = dict(getattr(hg, "metrics", {}) or {})
 
         if not reasons:
-            reasons = [_reason("health_gate_block", "Health gate blocked extraction.", {})]
+            reasons = [
+                _reason(
+                    "health_gate_block",
+                    "Health gate blocked extraction.",
+                )
+            ]
 
-        s = artifact.summary
         return Decision(
             policy="extract_enablement",
             status=DecisionStatus.deny,
-            thresholds_profile=thresholds_profile,
             enable_extract=False,
+            thresholds_profile=thresholds_profile,
             reasons=reasons,
             warnings=warnings,
             metrics=metrics,
@@ -133,23 +121,22 @@ def decide_extract_enablement(
             eval_run_dir=str(getattr(s, "run_dir", "") or ""),
         )
 
-    s = artifact.summary
+    # ------------------------------------------------------------------
+    # 2) Quality / latency gating
+    # ------------------------------------------------------------------
     n_total = int(getattr(s, "n_total", 0) or 0)
 
     reasons: list[DecisionReason] = []
     warnings: list[DecisionWarning] = []
     metrics: Dict[str, Any] = {}
 
-    # carry forward any HG warnings/metrics (even if it "passed")
+    # Carry forward HG warnings/metrics
     warnings.extend(_coerce_warnings(getattr(hg, "warnings", None)))
-
-    # if HG produces "reasons" on pass, downgrade to warnings (don’t block)
-    reasons_from_hg = _coerce_reasons(getattr(hg, "reasons", None))
-    if reasons_from_hg:
-        for r in reasons_from_hg:
-            warnings.append(_warning(r.code, r.message, dict(r.context or {})))
-
     metrics.update(dict(getattr(hg, "metrics", {}) or {}))
+
+    # Downgrade HG reasons to warnings on pass
+    for r in _coerce_reasons(getattr(hg, "reasons", None)):
+        warnings.append(_warning(r.code, r.message, dict(r.context or {})))
 
     # Sample size warning (non-blocking)
     if n_total < thresholds.min_n_total:
@@ -161,7 +148,7 @@ def decide_extract_enablement(
             )
         )
 
-    # ---- Quality gating ----
+    # ---- Schema validity ----
     sv = getattr(s, "schema_validity_rate", None)
     if sv is None:
         reasons.append(_reason("missing_metric", "schema_validity_rate is missing from summary"))
@@ -176,6 +163,7 @@ def decide_extract_enablement(
                 )
             )
 
+    # ---- Required present rate ----
     if thresholds.min_required_present_rate is not None:
         rp = getattr(s, "required_present_rate", None)
         if rp is None:
@@ -191,6 +179,7 @@ def decide_extract_enablement(
                     )
                 )
 
+    # ---- Doc EM ----
     if thresholds.min_doc_required_exact_match_rate is not None:
         em = getattr(s, "doc_required_exact_match_rate", None)
         if em is None:
@@ -206,15 +195,14 @@ def decide_extract_enablement(
                     )
                 )
 
-    # Per-field (optional)
+    # ---- Per-field EM ----
     fem = getattr(s, "field_exact_match_rate", None) or {}
     metrics["field_exact_match_rate"] = fem
     for field, minv in (thresholds.min_field_exact_match_rate or {}).items():
         cur = fem.get(field)
         if cur is None:
             reasons.append(_reason("missing_metric", f"field_exact_match_rate.{field} missing", {"field": field}))
-            continue
-        if float(cur) < float(minv):
+        elif float(cur) < float(minv):
             reasons.append(
                 _reason(
                     "field_em_too_low",
@@ -223,7 +211,7 @@ def decide_extract_enablement(
                 )
             )
 
-    # Latency (optional)
+    # ---- Latency ----
     if thresholds.max_latency_p95_ms is not None and getattr(s, "latency_p95_ms", None) is not None:
         metrics["latency_p95_ms"] = float(s.latency_p95_ms)
         if float(s.latency_p95_ms) > float(thresholds.max_latency_p95_ms):
@@ -246,9 +234,6 @@ def decide_extract_enablement(
                 )
             )
 
-    enable = len(reasons) == 0
-
-    # Ensure common counters always included
     metrics.update(
         {
             "n_total": int(getattr(s, "n_total", 0) or 0),
@@ -256,13 +241,14 @@ def decide_extract_enablement(
         }
     )
 
+    enable = len(reasons) == 0
     status = DecisionStatus.allow if enable else DecisionStatus.deny
 
     return Decision(
         policy="extract_enablement",
         status=status,
-        thresholds_profile=thresholds_profile,
         enable_extract=enable,
+        thresholds_profile=thresholds_profile,
         reasons=reasons,
         warnings=warnings,
         metrics=metrics,

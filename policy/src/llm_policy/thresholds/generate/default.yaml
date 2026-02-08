@@ -1,0 +1,27 @@
+# policy/src/llm_policy/thresholds/generate/default.yaml
+# Generate SLO clamp thresholds (default profile)
+#
+# Semantics (implemented in policies/generate_slo_clamp.py):
+#   - If snapshot invalid and clamp enabled: cap = safe_cap_on_invalid_snapshot (fail-closed)
+#   - If total_requests < min_requests: cap = null (avoid flapping)
+#   - If error_rate >= error_rate.threshold: cap = error_rate.cap
+#   - Else apply latency_p95_ms.steps in descending threshold order
+#   - Else cap = null (no clamp)
+
+min_requests: 10
+
+# Fail-closed cap used when snapshot is missing/invalid (only when clamp policy is enabled).
+safe_cap_on_invalid_snapshot: 128
+
+error_rate:
+  # 2% error rate => clamp hard
+  threshold: 0.02
+  cap: 128
+
+latency_p95_ms:
+  # Descending thresholds are evaluated first (higher latency => tighter cap).
+  # Values are caps for max_new_tokens.
+  steps:
+    1200: 64
+    800: 128
+    500: 256

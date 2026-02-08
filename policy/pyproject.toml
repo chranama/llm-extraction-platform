@@ -19,7 +19,7 @@ dependencies = [
   "python-dotenv>=1.0.0",
 
   "jsonschema>=4.21,<5",
-  "llm-contracts @ file:../contracts",
+  "llm-contracts",
 ]
 
 [project.scripts]

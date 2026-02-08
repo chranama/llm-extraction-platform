@@ -1,4 +1,4 @@
-# cli/util/paths.py
+# cli/utils/paths.py
 from __future__ import annotations
 
 import os

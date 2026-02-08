@@ -1,4 +1,4 @@
-# src/llm_policy/config.py
+# policy/src/llm_policy/config.py
 from __future__ import annotations
 
 import os
@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
-from llm_policy.types.thresholds import ExtractThresholds
+from llm_policy.types.extract_thresholds import ExtractThresholds
+from llm_policy.types.generate_thresholds import GenerateThresholds
 from llm_policy.utils.fs import read_yaml
 
 
@@ -30,7 +31,7 @@ class PolicyConfig:
         return PolicyConfig(thresholds_root=root)
 
 
-def _normalize_profile(profile: Optional[str]) -> str:
+def _normalize_extract_profile(profile: Optional[str]) -> str:
     """
     Accept:
       - None -> "extract/default"
@@ -46,9 +47,37 @@ def _normalize_profile(profile: Optional[str]) -> str:
     return p
 
 
+def _normalize_generate_profile(profile: Optional[str]) -> str:
+    """
+    Accept:
+      - None -> "generate/portable"
+      - "generate/portable"
+      - "portable" (shorthand -> "generate/portable")
+    """
+    if not profile or not str(profile).strip():
+        return "generate/portable"
+
+    p = str(profile).strip().replace("\\", "/").strip("/")
+    if "/" not in p:
+        p = f"generate/{p}"
+    return p
+
+
 def _load_thresholds_yaml(path: str) -> dict[str, Any]:
     obj = read_yaml(path)
     return obj if isinstance(obj, dict) else {}
+
+
+def _safe_profile_path(*, root: Path, resolved: str) -> Path:
+    """
+    Build <root>/<resolved>.yaml and prevent traversal outside root.
+    """
+    root = root.resolve()
+    yml_path = (root / f"{resolved}.yaml").resolve()
+
+    if not str(yml_path).startswith(str(root)):
+        raise ValueError("Invalid profile path (path traversal)")
+    return yml_path
 
 
 def load_extract_thresholds(
@@ -63,18 +92,13 @@ def load_extract_thresholds(
     Returns (resolved_profile, thresholds).
     """
     cfg = cfg or PolicyConfig.default()
-    resolved = _normalize_profile(profile)
+    resolved = _normalize_extract_profile(profile)
 
-    root = Path(cfg.thresholds_root).resolve()
-    yml_path = (root / f"{resolved}.yaml").resolve()
-
-    # Safety: prevent path traversal out of thresholds_root
-    if str(yml_path).find(str(root)) != 0:
-        raise ValueError("Invalid profile path (path traversal)")
+    root = Path(cfg.thresholds_root)
+    yml_path = _safe_profile_path(root=root, resolved=resolved)
 
     if not yml_path.exists():
-        # fall back to extract/default.yaml if requested profile missing
-        fallback = (root / "extract" / "default.yaml").resolve()
+        fallback = _safe_profile_path(root=root, resolved="extract/default")
         if not fallback.exists():
             raise FileNotFoundError(f"Thresholds file not found: {yml_path} (and no fallback {fallback})")
         obj = _load_thresholds_yaml(str(fallback))
@@ -82,3 +106,31 @@ def load_extract_thresholds(
 
     obj = _load_thresholds_yaml(str(yml_path))
     return resolved, ExtractThresholds.model_validate(obj)
+
+
+def load_generate_thresholds(
+    *,
+    cfg: Optional[PolicyConfig] = None,
+    profile: Optional[str] = None,
+) -> Tuple[str, GenerateThresholds]:
+    """
+    Load GenerateThresholds from:
+      <thresholds_root>/<profile>.yaml
+
+    Returns (resolved_profile, thresholds).
+    """
+    cfg = cfg or PolicyConfig.default()
+    resolved = _normalize_generate_profile(profile)
+
+    root = Path(cfg.thresholds_root)
+    yml_path = _safe_profile_path(root=root, resolved=resolved)
+
+    if not yml_path.exists():
+        fallback = _safe_profile_path(root=root, resolved="generate/portable")
+        if not fallback.exists():
+            raise FileNotFoundError(f"Generate thresholds file not found: {yml_path} (and no fallback {fallback})")
+        obj = _load_thresholds_yaml(str(fallback))
+        return "generate/portable", GenerateThresholds.model_validate(obj)
+
+    obj = _load_thresholds_yaml(str(yml_path))
+    return resolved, GenerateThresholds.model_validate(obj)

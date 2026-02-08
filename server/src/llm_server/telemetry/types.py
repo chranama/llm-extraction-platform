@@ -1,4 +1,4 @@
-# backend/src/llm_server/reports/types.py
+# server/src/llm_server/telemetry/types.py
 from __future__ import annotations
 
 from dataclasses import dataclass

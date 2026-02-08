@@ -1,0 +1,75 @@
+# config/compose-defaults.yaml
+#
+# Purpose (trimmed):
+# - Provide deterministic, profile-based *wiring* defaults for docker compose runs
+# - Keep config semantics in config/server.yaml + config/models.yaml (profiles)
+# - This file should NOT define app behavior toggles that belong in server.yaml
+#
+# Profiles:
+#   docker  -> server runs in compose network (postgres/redis service names)
+#   host    -> infra runs in docker, server runs on host (127.0.0.1 published ports)
+#   itest   -> integration-test infra + server_itest wiring
+#   jobs    -> eval/policy containers defaults (API_BASE_URL, policy paths)
+#
+# Notes:
+# - MODELS_YAML points to the profiled models file (config/models.yaml)
+# - MODELS_PROFILE selects the *models* profile inside models.yaml
+# - We intentionally do NOT set MODEL_LOAD_MODE / REQUIRE_MODEL_READY / TOKEN_COUNTING here
+#   because those are owned by config/server.yaml profiles.
+
+profiles:
+  docker:
+    # ✅ identify wiring instance
+    DB_INSTANCE: "docker"
+
+    DATABASE_URL: "postgresql+asyncpg://llm:llm@postgres:5432/llm"
+    REDIS_URL: "redis://redis:6379/0"
+    APP_PROFILE: "docker"
+    MODELS_YAML: "/app/config/models.yaml"
+    MODELS_PROFILE: "docker-portable"
+    POLICY_DECISION_PATH: "/app/policy_out/latest.json"
+    SLO_OUT_DIR: "/app/slo_out"
+    # ...rest unchanged...
+
+  host:
+    # ✅ identify wiring instance
+    DB_INSTANCE: "host"
+
+    DATABASE_URL: "postgresql+asyncpg://llm:llm@127.0.0.1:5433/llm"
+    REDIS_URL: "redis://127.0.0.1:6379/0"
+    APP_PROFILE: "host"
+    MODELS_YAML: "config/models.yaml"
+    MODELS_PROFILE: "host"
+    POLICY_DECISION_PATH: "policy_out/latest.json"
+    SLO_OUT_DIR: "slo_out"
+
+  itest:
+    # ✅ identify wiring instance
+    DB_INSTANCE: "itest"
+
+    ITEST_DATABASE_URL: "postgresql+asyncpg://llm:llm@postgres_itest:5432/llm_test"
+    ITEST_REDIS_URL: "redis://redis_itest:6379/0"
+    APP_PROFILE: "test"
+    MODELS_YAML: "/app/config/models.yaml"
+    MODELS_PROFILE: "test"
+    POLICY_DECISION_PATH: "/app/policy_out/latest.json"
+    SLO_OUT_DIR: "/app/slo_out"
+
+  jobs:
+    # optional (not required for server /readyz, but nice for consistency)
+    DB_INSTANCE: "jobs"
+
+    API_BASE_URL: "http://server:8000"
+    EVAL_ARGS: ""
+    EVAL_WRITE_LATEST: "1"
+    EVAL_OUT_PATH: ""
+
+    POLICY_RUN_DIR: "latest"
+    POLICY_MODEL_ID: ""
+    POLICY_THRESHOLDS_ROOT: "/app/policy/src/llm_policy/thresholds"
+    POLICY_THRESHOLD_PROFILE: "extract/default"
+    POLICY_OUT_PATH: "/work/policy_out/latest.json"
+    POLICY_ARGS: ""
+
+    POLICY_GENERATE_PROFILE: "generate/portable"
+    POLICY_GENERATE_SLO_PATH: "/work/slo_out/generate/latest.json"

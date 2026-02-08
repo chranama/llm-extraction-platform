@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "policy_decision_v2",
+  "title": "PolicyDecisionArtifactV2",
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "schema_version",
+    "generated_at",
+    "policy",
+    "pipeline",
+    "status",
+    "ok",
+    "contract_errors",
+    "reasons",
+    "warnings"
+  ],
+
+  "properties": {
+    "schema_version": { "const": "policy_decision_v2" },
+
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time"
+    },
+
+    "policy": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Policy implementation name (e.g. extract_enablement)"
+    },
+
+    "pipeline": {
+      "type": "string",
+      "enum": [
+        "extract_only",
+        "generate_clamp_only",
+        "extract_plus_generate_clamp"
+      ],
+      "description": "Explicit policy pipeline selector"
+    },
+
+    "status": {
+      "type": "string",
+      "enum": ["allow", "deny", "unknown"]
+    },
+
+    "ok": { "type": "boolean" },
+
+    "enable_extract": {
+      "type": ["boolean", "null"],
+      "description": "Extraction gate result. null when pipeline does not include extract."
+    },
+
+    "generate_max_new_tokens_cap": {
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "maximum": 8192,
+      "description": "Generate clamp. null means no clamp."
+    },
+
+    "contract_errors": {
+      "type": "integer",
+      "minimum": 0
+    },
+
+    "thresholds_profile": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Extract thresholds profile (required for extract pipelines)"
+    },
+
+    "thresholds_version": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+
+    "generate_thresholds_profile": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Generate SLO thresholds profile (required for generate clamp pipelines)"
+    },
+
+    "eval_run_dir": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+
+    "eval_task": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+
+    "eval_run_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+
+    "model_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "context"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "context"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "context": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+
+    "contract_warnings": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+
+  "allOf": [
+    {
+      "if": {
+        "properties": { "pipeline": { "const": "extract_only" } }
+      },
+      "then": {
+        "required": ["enable_extract", "thresholds_profile", "eval_run_dir"],
+        "properties": {
+          "generate_max_new_tokens_cap": { "const": null },
+          "generate_thresholds_profile": { "const": null }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": { "pipeline": { "const": "generate_clamp_only" } }
+      },
+      "then": {
+        "required": ["generate_thresholds_profile"],
+        "properties": {
+          "enable_extract": { "const": null },
+          "thresholds_profile": { "const": null },
+          "eval_run_dir": { "const": null }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": { "pipeline": { "const": "extract_plus_generate_clamp" } }
+      },
+      "then": {
+        "required": [
+          "enable_extract",
+          "thresholds_profile",
+          "eval_run_dir",
+          "generate_thresholds_profile"
+        ]
+      }
+    },
+
+    {
+      "if": {
+        "properties": { "status": { "enum": ["deny", "unknown"] } }
+      },
+      "then": {
+        "properties": {
+          "ok": { "const": false },
+          "enable_extract": { "const": false }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": { "contract_errors": { "minimum": 1 } }
+      },
+      "then": {
+        "properties": {
+          "ok": { "const": false },
+          "enable_extract": { "const": false }
+        }
+      }
+    }
+  ]
+}

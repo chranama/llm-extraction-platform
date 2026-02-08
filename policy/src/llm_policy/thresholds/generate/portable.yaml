@@ -1,0 +1,22 @@
+# policy/src/llm_policy/thresholds/generate/portable.yaml
+# Generate SLO clamp thresholds (portable / demo-friendly profile)
+#
+# Intended for Mode A (CPU / generate-only):
+#   - clamp earlier to keep latency stable
+#   - conservative fail-closed cap
+#   - fewer steps to keep demo behavior obvious
+
+min_requests: 8
+
+safe_cap_on_invalid_snapshot: 128
+
+error_rate:
+  # Slightly more tolerant than default (avoid clamping on transient blips),
+  # but still hard clamp if it gets meaningfully bad.
+  threshold: 0.03
+  cap: 128
+
+latency_p95_ms:
+  steps:
+    900: 128
+    600: 256

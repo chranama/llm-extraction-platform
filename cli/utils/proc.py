@@ -1,11 +1,11 @@
-# cli/util/proc.py
+# cli/utils/proc.py
 from __future__ import annotations
 
 import os
 import shlex
 import subprocess
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Optional, Sequence
+from typing import Mapping, Optional, Sequence
 
 from cli.errors import CLIError
 
@@ -26,13 +26,22 @@ def run(
     env: Optional[Mapping[str, str]] = None,
     verbose: bool = False,
     check: bool = True,
+    inherit_env: bool = True,
 ) -> RunResult:
     """
     Run a command with good ergonomics:
       - prints the command if verbose
       - raises CLIError on failure (if check=True)
+
+    inherit_env:
+      - True (default): start from os.environ then overlay `env`
+      - False: use ONLY `env` (fresh environment)
     """
-    merged_env = dict(os.environ)
+    if inherit_env:
+        merged_env = dict(os.environ)
+    else:
+        merged_env = {}
+
     if env:
         merged_env.update({k: str(v) for k, v in env.items()})
 
@@ -52,11 +61,19 @@ def run_bash(
     env: Optional[Mapping[str, str]] = None,
     verbose: bool = False,
     check: bool = True,
+    inherit_env: bool = True,
 ) -> RunResult:
     """
     Run via bash -lc to preserve parity with your prior justfile behavior.
     """
-    return run(["bash", "-lc", script], cwd=cwd, env=env, verbose=verbose, check=check)
+    return run(
+        ["bash", "-lc", script],
+        cwd=cwd,
+        env=env,
+        verbose=verbose,
+        check=check,
+        inherit_env=inherit_env,
+    )
 
 
 def ensure_bins(*bins: str) -> None:

@@ -13,5 +13,18 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# -------------------------
+# Hatchling configuration
+# -------------------------
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/llm_contracts"]
+# Ensure the wheel contains the package (and all subpackages like runtime/)
+packages = ["llm_contracts"]
+
+# src/ layout mapping: force the src directory into the installed package
+[tool.hatch.build.targets.wheel.force-include]
+"src/llm_contracts" = "llm_contracts"
+
+# (Optional but nice) make sdists include the source package too
+[tool.hatch.build.targets.sdist]
+include = ["src/llm_contracts/**", "pyproject.toml", "README*"]

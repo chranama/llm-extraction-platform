@@ -26,9 +26,15 @@ if str(TESTS_DIR) not in sys.path:
 # ============================================================
 # Config routing (root-level config/)
 # ============================================================
-APP_TEST_YAML = "config/server.test.yaml"
+# ✅ Use profiled config/server.yaml now (APP_PROFILE selects overlay)
+APP_YAML = "config/server.yaml"
 os.environ["APP_ROOT"] = str(REPO_ROOT)
-os.environ["APP_CONFIG_PATH"] = APP_TEST_YAML
+os.environ["APP_CONFIG_PATH"] = APP_YAML
+
+# ✅ Select profiles for test runs
+os.environ["APP_PROFILE"] = "test"
+# models.yaml uses MODELS_PROFILE (preferred) or falls back to APP_PROFILE
+os.environ["MODELS_PROFILE"] = "test"
 
 
 def _is_generate_only_module(request: pytest.FixtureRequest) -> bool:
@@ -51,7 +57,7 @@ def anyio_backend():
 def _assert_test_config_file_exists():
     root = Path(os.environ["APP_ROOT"])
     cfg = (root / os.environ["APP_CONFIG_PATH"]).resolve()
-    assert cfg.exists(), f"Missing test config: {cfg}"
+    assert cfg.exists(), f"Missing config: {cfg}"
 
 
 # ============================================================
@@ -59,24 +65,28 @@ def _assert_test_config_file_exists():
 # ============================================================
 @pytest.fixture(autouse=True)
 def _integration_env_defaults(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
+    # Ensure config + profile selection for every test
     monkeypatch.setenv("APP_ROOT", str(REPO_ROOT))
-    monkeypatch.setenv("APP_CONFIG_PATH", APP_TEST_YAML)
+    monkeypatch.setenv("APP_CONFIG_PATH", APP_YAML)
+    monkeypatch.setenv("APP_PROFILE", "test")
+    monkeypatch.setenv("MODELS_PROFILE", "test")
 
-    monkeypatch.setenv("ENV", "test")
+    # NOTE:
+    # Do NOT hard-set MODEL_LOAD_MODE / REQUIRE_MODEL_READY / TOKEN_COUNTING here.
+    # Those must come from config/server.yaml profile:test.
+    #
+    # You *can* set DEBUG/REDIS_ENABLED defaults, but avoid overriding the YAML
+    # unless tests explicitly need it. We'll keep DEBUG low-noise.
     monkeypatch.setenv("DEBUG", "0")
     monkeypatch.setenv("REDIS_ENABLED", "0")
 
-    # These may be overridden by YAML in your app loader; that's OK.
-    monkeypatch.setenv("MODEL_LOAD_MODE", "lazy")
-    monkeypatch.setenv("REQUIRE_MODEL_READY", "0")
-    monkeypatch.setenv("TOKEN_COUNTING", "0")
-
     # Capabilities: extract disabled ONLY for generate-only module
+    # (this is a test-specific behavior toggle, and it's ok to override)
+    monkeypatch.setenv("ENABLE_GENERATE", "1")
     if _is_generate_only_module(request):
         monkeypatch.setenv("ENABLE_EXTRACT", "0")
     else:
         monkeypatch.setenv("ENABLE_EXTRACT", "1")
-    monkeypatch.setenv("ENABLE_GENERATE", "1")
 
 
 # ============================================================
@@ -88,6 +98,7 @@ def _assert_test_config_loaded_per_test():
 
     get_settings.cache_clear()
     s = get_settings()
+
     assert s.env == "test", f"Expected env=test, got {s.env}"
     assert "test" in s.service_name.lower(), f"service_name not test-like: {s.service_name}"
 
@@ -179,16 +190,13 @@ def llm_sleep_s():
 
 
 # ============================================================
-# Force-load FakeLLM even if MODEL_LOAD_MODE=off
+# Force-load FakeLLM even if model mode blocks readiness checks
 # ============================================================
 def _force_llm_loaded(fake: Any) -> None:
     """
-    Your config/server.test.yaml is forcing model_load_mode=off in some contexts.
-    That makes /v1/generate and /v1/extract raise llm_not_loaded (503)
-    before the endpoint does anything.
-
-    This helper tries a few registry patterns to mark the FakeLLM as loaded,
-    without knowing your exact internal implementation.
+    Some readiness gates may block /v1/generate or /v1/extract if the service thinks
+    the model isn't loaded. Tests always provide FakeLLM; force it marked as loaded
+    for whichever registry pattern your code uses.
     """
     # 1) deps registry pattern
     try:
@@ -196,7 +204,6 @@ def _force_llm_loaded(fake: Any) -> None:
 
         rl = getattr(deps, "_RL", None)
         if rl is not None:
-            # method-based
             for meth in ("set", "set_llm", "set_model", "load", "set_loaded", "register"):
                 fn = getattr(rl, meth, None)
                 if callable(fn):
@@ -204,19 +211,16 @@ def _force_llm_loaded(fake: Any) -> None:
                         fn(fake)
                         return
                     except TypeError:
-                        # some signatures might be (name, model) etc.
                         try:
                             fn("default", fake)
                             return
                         except Exception:
                             pass
 
-            # attribute-based
             for attr in ("llm", "_llm", "model", "_model"):
                 if hasattr(rl, attr):
                     try:
                         setattr(rl, attr, fake)
-                        # also mark loaded if such a flag exists
                         for flag in ("loaded", "_loaded", "is_loaded"):
                             if hasattr(rl, flag):
                                 try:
@@ -233,7 +237,6 @@ def _force_llm_loaded(fake: Any) -> None:
     try:
         import llm_server.services.llm as llm_svc
 
-        # common global singleton patterns
         for attr in ("LLM", "_LLM", "llm", "_llm", "MODEL", "_MODEL", "model", "_model"):
             if hasattr(llm_svc, attr):
                 try:
@@ -242,7 +245,6 @@ def _force_llm_loaded(fake: Any) -> None:
                 except Exception:
                     pass
 
-        # common flags
         for flag in ("LOADED", "_LOADED", "loaded", "_loaded", "MODEL_LOADED", "_MODEL_LOADED"):
             if hasattr(llm_svc, flag):
                 try:
@@ -252,7 +254,6 @@ def _force_llm_loaded(fake: Any) -> None:
     except Exception:
         pass
 
-    # 3) last resort: no-op if nothing matches
     return
 
 
@@ -264,8 +265,9 @@ def app(monkeypatch, llm_outputs, llm_sleep_s, patch_app_db_engine, request: pyt
     """
     App wired with FakeLLM. DB is already pointed at test_engine via patch_app_db_engine.
 
-    Critical: even if model_load_mode is forced to OFF by YAML, we mark FakeLLM as loaded
-    so /v1/generate works for integration tests.
+    The test profile should select:
+      - server.yaml: profile=test
+      - models.yaml: profile=test (fake model)
     """
     from llm_server.core.config import get_settings
 
@@ -287,8 +289,6 @@ def app(monkeypatch, llm_outputs, llm_sleep_s, patch_app_db_engine, request: pyt
 
     app = main.create_app()
 
-    # The YAML is still printing model_load_mode=off in logs.
-    # That's fine: we force the model as "loaded" for the tests.
     _force_llm_loaded(fake)
 
     return app
@@ -369,14 +369,21 @@ async def auth_headers(api_key):
 @pytest.fixture(autouse=True)
 def _debug_settings_trace():
     from llm_server.core.config import get_settings
-    import os
 
     get_settings.cache_clear()
     s = get_settings()
 
     print(
-        "\n[debug] ENV MODEL_LOAD_MODE=",
-        os.getenv("MODEL_LOAD_MODE"),
+        "\n[debug] APP_PROFILE=",
+        os.getenv("APP_PROFILE"),
+        "| MODELS_PROFILE=",
+        os.getenv("MODELS_PROFILE"),
+        "| settings.env=",
+        getattr(s, "env", None),
         "| settings.model_load_mode=",
         getattr(s, "model_load_mode", None),
+        "| ENABLE_EXTRACT=",
+        os.getenv("ENABLE_EXTRACT"),
+        "| ENABLE_GENERATE=",
+        os.getenv("ENABLE_GENERATE"),
     )

@@ -1,4 +1,4 @@
-# policy/src/llm_policy/io/eval_artifacts.py
+# policy/src/llm_policy/io/eval_runs.py
 from __future__ import annotations
 
 import json

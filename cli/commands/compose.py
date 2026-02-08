@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
+from pathlib import Path
 from typing import Sequence
 
 from cli.errors import CLIError
 from cli.types import GlobalConfig  # type: ignore[attr-defined]
-from cli.util.proc import ensure_bins, run
+from cli.utils.compose_config import render_compose_env_file
+from cli.utils.proc import ensure_bins, run
 
-# Compose verbs we recognize to auto-split profiles vs args when user omits `--`.
-# (Keep this fairly broad; better to accept than to reject.)
 _COMPOSE_VERBS = {
     "up",
     "down",
@@ -37,14 +39,68 @@ _COMPOSE_VERBS = {
     "create",
 }
 
+_PASSTHROUGH_ENV = {
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "HF_TOKEN",
+    "HF_HOME",
+    "HF_HUB_CACHE",
+    "TRANSFORMERS_CACHE",
+    "XDG_CACHE_HOME",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+}
 
-def _compose_base(cfg: GlobalConfig) -> list[str]:
-    return ["docker", "compose", "--env-file", str(cfg.env_file), "-f", str(cfg.compose_yml)]
+# Critical: prevent shell env from silently overriding your deterministic defaults-profile wiring.
+_DENYLIST_ENV = {
+    # config selection / profiles (must be controlled by rendered defaults + user .env)
+    "APP_PROFILE",
+    "MODELS_PROFILE",
+
+    # app behavior & model wiring (compose profile decides; server.yaml decides semantics)
+    "MODELS_YAML",
+    "MODEL_LOAD_MODE",
+    "REQUIRE_MODEL_READY",
+    "MODEL_ID",
+    "MODEL_DEVICE",
+
+    # infra wiring
+    "DATABASE_URL",
+    "REDIS_ENABLED",
+    "REDIS_URL",
+
+    # misc runtime toggles
+    "ENV",
+    "WORKERS",
+    "UVICORN_RELOAD",
+
+    # artifacts paths
+    "POLICY_DECISION_PATH",
+    "SLO_OUT_DIR",
+}
 
 
-def _compose_env(cfg: GlobalConfig) -> dict[str, str]:
-    # Compose loads --env-file for interpolation; this pins project name deterministically.
-    return {"COMPOSE_PROJECT_NAME": cfg.project_name}
+def _clean_compose_process_env(cfg: GlobalConfig) -> dict[str, str]:
+    env: dict[str, str] = {"COMPOSE_PROJECT_NAME": cfg.project_name}
+    for k in _PASSTHROUGH_ENV:
+        v = os.environ.get(k)
+        if v:
+            env[k] = v
+    for k in list(env.keys()):
+        if k in _DENYLIST_ENV:
+            env.pop(k, None)
+    return env
+
+
+def _compose_base(cfg: GlobalConfig, *, env_files: list[Path]) -> list[str]:
+    cmd: list[str] = ["docker", "compose"]
+    for f in env_files:
+        cmd += ["--env-file", str(f)]
+    cmd += ["-f", str(cfg.compose_yml)]
+    return cmd
 
 
 def _add_profiles(cmd: list[str], profiles: Sequence[str]) -> list[str]:
@@ -54,33 +110,17 @@ def _add_profiles(cmd: list[str], profiles: Sequence[str]) -> list[str]:
 
 
 def _split_profiles_and_args(tokens: list[str]) -> tuple[list[str], list[str]]:
-    """
-    Accept either:
-      - dc <profiles...> -- <compose args...>
-      - dc <profiles...> <compose-verb> <compose args...>   (no --)
-
-    We split on:
-      - first literal "--", OR
-      - first token that matches a known compose verb
-    """
     if not tokens:
         return [], []
 
-    # If explicit -- is present, split there.
     if "--" in tokens:
         i = tokens.index("--")
-        profiles = tokens[:i]
-        extra = tokens[i + 1 :]
-        return profiles, extra
+        return tokens[:i], tokens[i + 1 :]
 
-    # Otherwise split at first compose verb.
     for i, t in enumerate(tokens):
         if t in _COMPOSE_VERBS:
-            profiles = tokens[:i]
-            extra = tokens[i:]
-            return profiles, extra
+            return tokens[:i], tokens[i:]
 
-    # No separator and no verb: treat as profiles-only (args missing)
     return tokens, []
 
 
@@ -88,48 +128,44 @@ def register(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("compose", help="Direct docker compose control (replacement for just dc).")
     p.set_defaults(_handler=_handle)
 
+    p.add_argument(
+        "--defaults-profile",
+        default=None,
+        help="Override compose defaults profile(s) for this invocation (e.g. docker, host, itest, jobs, or docker+jobs).",
+    )
+
     sp = p.add_subparsers(dest="compose_cmd", required=True)
 
-    # compose dc <profiles...> [--] <args...>
-    dc = sp.add_parser(
-        "dc",
-        help="Compose with profiles. Examples: "
-        "`llmctl compose dc infra api -- up -d --build` OR `llmctl compose dc infra api up -d --build`",
-    )
-    # We take everything and split ourselves to support both styles reliably.
-    dc.add_argument(
-        "tokens",
-        nargs=argparse.REMAINDER,
-        help="Profiles + compose args. Use `--` to separate, or omit it and include a compose verb (e.g. up/ps/logs).",
-    )
+    dc = sp.add_parser("dc", help="Compose with profiles + args.")
+    dc.add_argument("tokens", nargs=argparse.REMAINDER)
 
     cfgp = sp.add_parser("config", help="docker compose config (validates compose).")
-    cfgp.add_argument("--profiles", nargs="*", default=[], help="Optional profiles to include when rendering config")
+    cfgp.add_argument("--profiles", nargs="*", default=[])
 
     psp = sp.add_parser("ps", help="docker compose ps")
-    psp.add_argument("--profiles", nargs="*", default=[], help="Optional profiles")
+    psp.add_argument("--profiles", nargs="*", default=[])
     psp.add_argument("args", nargs=argparse.REMAINDER)
 
     lg = sp.add_parser("logs", help="docker compose logs -f --tail=200 (default)")
-    lg.add_argument("--profiles", nargs="*", default=[], help="Optional profiles")
-    lg.add_argument("--follow", action="store_true", help="Follow logs (default)")
-    lg.add_argument("--tail", type=int, default=200, help="Tail N lines (default 200)")
+    lg.add_argument("--profiles", nargs="*", default=[])
+    lg.add_argument("--follow", action="store_true")
+    lg.add_argument("--tail", type=int, default=200)
 
     dn = sp.add_parser("down", help="docker compose down --remove-orphans")
-    dn.add_argument("--profiles", nargs="*", default=[], help="Optional profiles")
-    dn.add_argument("--volumes", action="store_true", help="Also remove volumes (-v)")
-    dn.add_argument("--remove-orphans", action="store_true", help="Remove orphans (default true)")
+    dn.add_argument("--profiles", nargs="*", default=[])
+    dn.add_argument("--volumes", action="store_true")
+    dn.add_argument("--remove-orphans", action="store_true")
     dn.set_defaults(remove_orphans=True)
 
     up = sp.add_parser("up", help="docker compose up")
-    up.add_argument("--profiles", nargs="*", default=[], help="Optional profiles")
-    up.add_argument("-d", "--detach", action="store_true", help="Run detached")
-    up.add_argument("--build", action="store_true", help="Build images")
-    up.add_argument("--remove-orphans", action="store_true", help="Remove orphans")
-    up.add_argument("args", nargs=argparse.REMAINDER, help="Extra args passed to compose up")
+    up.add_argument("--profiles", nargs="*", default=[])
+    up.add_argument("-d", "--detach", action="store_true")
+    up.add_argument("--build", action="store_true")
+    up.add_argument("--remove-orphans", action="store_true")
+    up.add_argument("args", nargs=argparse.REMAINDER)
 
     rm = sp.add_parser("rm-orphans", help="Shortcut: compose up -d --remove-orphans for a profile set")
-    rm.add_argument("--profiles", nargs="*", default=[], help="Profiles")
+    rm.add_argument("--profiles", nargs="*", default=[])
 
     infra = sp.add_parser("infra-up", help="Start postgres+redis (profile infra).")
     infra.set_defaults(_shortcut="infra-up")
@@ -140,90 +176,113 @@ def register(sub: argparse._SubParsersAction) -> None:
     infra3.set_defaults(_shortcut="infra-down")
 
 
+def _resolve_defaults_yaml(cfg: GlobalConfig, args: argparse.Namespace) -> Path:
+    rel = getattr(args, "compose_defaults_yaml", None) or "config/compose-defaults.yaml"
+    p = Path(rel)
+    return p if p.is_absolute() else (cfg.repo_root / p)
+
+
+def _resolve_defaults_profile(args: argparse.Namespace) -> str:
+    # allow compose subcommand override
+    return (getattr(args, "defaults_profile", None) or getattr(args, "compose_defaults_profile", None) or "docker").strip()
+
+
+def _render_defaults_env_file(cfg: GlobalConfig, args: argparse.Namespace) -> Path:
+    defaults_yaml = _resolve_defaults_yaml(cfg, args)
+    profile = _resolve_defaults_profile(args)
+
+    tmp_dir = cfg.repo_root / ".tmp" / "llmctl"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_suffix = profile.replace("/", "_").replace("+", "_").replace(",", "_")
+    fd, path = tempfile.mkstemp(prefix=f"compose-defaults-{safe_suffix}-", suffix=".env", dir=str(tmp_dir))
+    os.close(fd)
+    out_path = Path(path)
+
+    render_compose_env_file(
+        config_yaml_path=defaults_yaml,
+        profile=profile,  # can be "docker+jobs"
+        out_env_path=out_path,
+        extra_env={"COMPOSE_PROJECT_NAME": cfg.project_name},
+    )
+    return out_path
+
+
 def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
     ensure_bins("docker")
-    env = _compose_env(cfg)
 
-    # Shortcuts
+    proc_env = _clean_compose_process_env(cfg)
+    rendered_defaults = _render_defaults_env_file(cfg, args)
+
+    env_files = [rendered_defaults]
+    if cfg.env_file.exists():
+        env_files.append(cfg.env_file)
+
+    def base_cmd() -> list[str]:
+        return _compose_base(cfg, env_files=env_files)
+
     if getattr(args, "_shortcut", None) == "infra-up":
-        cmd = _add_profiles(_compose_base(cfg), ["infra"]) + ["up", "-d", "--remove-orphans"]
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), ["infra"]) + ["up", "-d", "--remove-orphans"]
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         print("✅ infra up (postgres/redis).")
         return 0
 
     if getattr(args, "_shortcut", None) == "infra-ps":
-        cmd = _add_profiles(_compose_base(cfg), ["infra"]) + ["ps"]
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), ["infra"]) + ["ps"]
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if getattr(args, "_shortcut", None) == "infra-down":
-        cmd = _add_profiles(_compose_base(cfg), ["infra"]) + ["down", "--remove-orphans"]
+        cmd = _add_profiles(base_cmd(), ["infra"]) + ["down", "--remove-orphans"]
         if getattr(args, "volumes", False):
             cmd.append("-v")
-        run(cmd, env=env, verbose=args.verbose)
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     c = args.compose_cmd
 
     if c == "dc":
         tokens = list(getattr(args, "tokens", []) or [])
-        # argparse.REMAINDER includes a leading "--" sometimes if user wrote it; our splitter handles it.
         profiles, extra = _split_profiles_and_args(tokens)
-
-        # Normalize: allow no profiles; require compose args.
         if not extra:
             raise CLIError(
                 "compose dc requires compose args. Examples:\n"
-                "  llmctl compose dc infra api -- up -d --build\n"
-                "  llmctl compose dc infra api up -d --build\n"
+                "  llmctl compose dc infra server -- up -d --build\n"
+                "  llmctl compose dc infra server up -d --build\n"
                 "  llmctl compose dc infra -- ps"
             )
-
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, profiles)
-        cmd += extra
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), profiles) + extra
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if c == "config":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        cmd += ["config"]
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), list(args.profiles or [])) + ["config"]
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         print("✅ compose config OK")
         return 0
 
     if c == "ps":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        cmd += ["ps"] + list(args.args or [])
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), list(args.profiles or [])) + ["ps"] + list(args.args or [])
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if c == "logs":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        follow = "-f" if args.follow else "-f"  # default follow on (matches your justfile)
-        cmd += ["logs", follow, f"--tail={args.tail}"]
-        cmd = [x for x in cmd if x]
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), list(args.profiles or []))
+        cmd += ["logs", "-f", f"--tail={args.tail}"]
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if c == "down":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        cmd += ["down"]
+        cmd = _add_profiles(base_cmd(), list(args.profiles or [])) + ["down"]
         if args.remove_orphans:
             cmd.append("--remove-orphans")
         if args.volumes:
             cmd.append("-v")
-        run(cmd, env=env, verbose=args.verbose)
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if c == "up":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        cmd += ["up"]
+        cmd = _add_profiles(base_cmd(), list(args.profiles or [])) + ["up"]
         if args.detach:
             cmd.append("-d")
         if args.build:
@@ -231,14 +290,12 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
         if args.remove_orphans:
             cmd.append("--remove-orphans")
         cmd += list(args.args or [])
-        run(cmd, env=env, verbose=args.verbose)
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     if c == "rm-orphans":
-        cmd = _compose_base(cfg)
-        cmd = _add_profiles(cmd, list(args.profiles or []))
-        cmd += ["up", "-d", "--remove-orphans"]
-        run(cmd, env=env, verbose=args.verbose)
+        cmd = _add_profiles(base_cmd(), list(args.profiles or [])) + ["up", "-d", "--remove-orphans"]
+        run(cmd, env=proc_env, verbose=args.verbose, inherit_env=False)
         return 0
 
     raise CLIError(f"Unknown compose command: {c}", code=2)

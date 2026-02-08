@@ -1,4 +1,5 @@
-# backend/src/llm_server/api/extract.py
+# server/src/llm_server/api/extract.py
+# server/src/llm_server/api/extract.py
 from __future__ import annotations
 
 import json
@@ -38,6 +39,7 @@ from llm_server.core.validation import (
     JSONSchemaValidationError,
     validate_jsonschema,
 )
+from llm_server.io.policy_decisions import policy_generate_max_new_tokens_cap
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 from llm_server.services.inference import (
     CacheSpec,
@@ -261,6 +263,109 @@ def _set_stage(request: Request, stage: str) -> None:
         pass
 
 
+# ------------------------------------------------------------------------------
+# Policy clamp + truncation detection
+# ------------------------------------------------------------------------------
+
+
+def _apply_generate_cap_for_extract(request: Request, *, model_id: str, requested: int | None) -> tuple[int | None, int | None]:
+    """
+    Apply v2 policy clamp to max_new_tokens used by extract.
+
+    Returns:
+      (effective_max_new_tokens, applied_cap)
+
+    Semantics:
+      - If no cap => (requested, None)
+      - If cap exists:
+          - if requested is None: effective=cap
+          - else effective=min(requested, cap)
+    """
+    cap = policy_generate_max_new_tokens_cap(model_id, request=request)
+    if cap is None:
+        return requested, None
+
+    try:
+        cap_i = int(cap)
+        if cap_i <= 0:
+            return requested, None
+    except Exception:
+        return requested, None
+
+    if requested is None:
+        return cap_i, cap_i
+
+    try:
+        req_i = int(requested)
+        if req_i <= 0:
+            return cap_i, cap_i
+        return min(req_i, cap_i), cap_i
+    except Exception:
+        return cap_i, cap_i
+
+
+def _maybe_raise_truncation_error(
+    *,
+    raw_output: str,
+    effective_max_new_tokens: int | None,
+    applied_cap: int | None,
+    stage: str,
+) -> None:
+    """
+    Phase 1: deterministic heuristic for "possible truncation".
+
+    Goal:
+      - When policy clamp reduces max_new_tokens, extract may fail because output is cut.
+      - We want a deterministic, classifiable error for eval/policy.
+
+    When to raise (conservative but deterministic):
+      - We only raise if:
+          (a) an applied_cap exists (policy clamp active), AND
+          (b) effective_max_new_tokens is set and is "smallish" relative to typical JSON outputs, AND
+          (c) the output looks cut off: missing end delimiter OR unmatched braces.
+    """
+    if not applied_cap:
+        return
+    if effective_max_new_tokens is None:
+        return
+
+    s = (raw_output or "").strip()
+    if not s:
+        return
+
+    # If the output format is being followed but end delimiter is missing -> strong truncation signal.
+    has_begin = _JSON_BEGIN in s
+    has_end = _JSON_END in s
+
+    # Unmatched braces is a decent deterministic proxy for "cut mid-object".
+    # (Not perfect, but stable and cheap.)
+    brace_delta = s.count("{") - s.count("}")
+
+    looks_truncated = False
+    if has_begin and not has_end:
+        looks_truncated = True
+    if brace_delta > 0:
+        looks_truncated = True
+
+    if not looks_truncated:
+        return
+
+    raise AppError(
+        code="possible_truncation",
+        message="Model output appears truncated; max_new_tokens may be too low for extraction.",
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        extra={
+            "stage": stage,
+            "effective_max_new_tokens": int(effective_max_new_tokens),
+            "applied_policy_cap": int(applied_cap) if applied_cap is not None else None,
+            "has_json_begin": bool(has_begin),
+            "has_json_end": bool(has_end),
+            "brace_delta": int(brace_delta),
+            "raw_preview": s[:500],
+        },
+    )
+
+
 @router.get("/v1/schemas")
 async def schemas_index(api_key=Depends(get_api_key)):
     return [{"schema_id": s.schema_id, "title": s.title, "description": s.description} for s in list_schemas()]
@@ -337,10 +442,24 @@ async def extract(
                 extra={"schema_id": e.schema_id, "stage": "load_schema"},
             ) from e
 
+        # -------------------------
+        # Apply policy clamp for extract (generate shaping)
+        # -------------------------
+        stage = "apply_policy_clamp"
+        _set_stage(request, stage)
+        effective_max_new_tokens, applied_cap = _apply_generate_cap_for_extract(
+            request,
+            model_id=model_id,
+            requested=body.max_new_tokens,
+        )
+
         stage = "build_cache_keys"
         _set_stage(request, stage)
         prompt_hash = sha32(f"{body.schema_id}\n{body.text}")
-        params_fp = fingerprint_pydantic(body, exclude={"text", "model", "cache", "repair"})
+        params_fp = fingerprint_pydantic(
+            body.model_copy(update={"max_new_tokens": effective_max_new_tokens}),
+            exclude={"text", "model", "cache", "repair"},
+        )
         redis_key = make_extract_redis_key(model_id, prompt_hash, params_fp)
 
         cache = CacheSpec(
@@ -407,7 +526,13 @@ async def extract(
                         route="/v1/extract",
                         client_host=request.client.host if request.client else None,
                         model_id=model_id,
-                        params_json={"schema_id": body.schema_id, "cache": True, "repair": body.repair},
+                        params_json={
+                            "schema_id": body.schema_id,
+                            "cache": True,
+                            "repair": body.repair,
+                            "max_new_tokens": effective_max_new_tokens,
+                            "policy_cap_applied": applied_cap,
+                        },
                         prompt=body.text,
                         output=json.dumps(data, ensure_ascii=False),
                         latency_ms=latency_ms,
@@ -435,10 +560,20 @@ async def extract(
             _set_stage(request, stage)
             result = model.generate(
                 prompt=prompt,
-                max_new_tokens=body.max_new_tokens,
+                max_new_tokens=effective_max_new_tokens,
                 temperature=body.temperature,
             )
             output = result if isinstance(result, str) else str(result)
+
+            # Phase 1: deterministic truncation signal (only when clamp active)
+            stage = "truncation_check"
+            _set_stage(request, stage)
+            _maybe_raise_truncation_error(
+                raw_output=output,
+                effective_max_new_tokens=effective_max_new_tokens,
+                applied_cap=applied_cap,
+                stage=stage,
+            )
 
             repair_attempted = False
 
@@ -481,10 +616,20 @@ async def extract(
                 _set_stage(request, stage)
                 repair_result = model.generate(
                     prompt=repair_prompt,
-                    max_new_tokens=body.max_new_tokens,
+                    max_new_tokens=effective_max_new_tokens,
                     temperature=0.0,
                 )
                 repaired = repair_result if isinstance(repair_result, str) else str(repair_result)
+
+                # Phase 1: deterministic truncation signal on repair too
+                stage = "repair_truncation_check"
+                _set_stage(request, stage)
+                _maybe_raise_truncation_error(
+                    raw_output=repaired,
+                    effective_max_new_tokens=effective_max_new_tokens,
+                    applied_cap=applied_cap,
+                    stage=stage,
+                )
 
                 stage = "repair_validate"
                 _set_stage(request, stage)
@@ -531,7 +676,13 @@ async def extract(
                 route="/v1/extract",
                 client_host=request.client.host if request.client else None,
                 model_id=model_id,
-                params_json={"schema_id": body.schema_id, "cache": body.cache, "repair": body.repair},
+                params_json={
+                    "schema_id": body.schema_id,
+                    "cache": body.cache,
+                    "repair": body.repair,
+                    "max_new_tokens": effective_max_new_tokens,
+                    "policy_cap_applied": applied_cap,
+                },
                 prompt=body.text,
                 output=out_json,
                 latency_ms=latency_ms,

@@ -1,4 +1,4 @@
-# backend/src/llm_server/reports/writer.py
+# server/src/llm_server/reports/writer.py
 from __future__ import annotations
 
 import json

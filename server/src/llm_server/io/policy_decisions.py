@@ -17,44 +17,84 @@ class PolicyDecisionSnapshot:
     """
     Backend-local minimal runtime representation.
 
-    NOTE:
-    - This intentionally stays tiny and stable for backend usage.
-    - Raw is retained for forward compatibility/debugging.
+    Design goals:
+      - Small, explicit, stable
+      - Fail-closed for gating
+      - Shaping is advisory only
     """
     ok: bool
+
+    # Scope
     model_id: Optional[str]
+
+    # Gating
     enable_extract: Optional[bool]
+
+    # Runtime shaping (v2)
+    generate_max_new_tokens_cap: Optional[int]
+
+    # Debug / forward-compat
     raw: Dict[str, Any]
     source_path: Optional[str]
     error: Optional[str]
 
 
-def _to_backend_snapshot(s: ContractsPolicyDecisionSnapshot) -> PolicyDecisionSnapshot:
+# ------------------------------------------------------------------------------
+# Conversion
+# ------------------------------------------------------------------------------
+
+
+def _to_backend_snapshot(
+    s: ContractsPolicyDecisionSnapshot,
+) -> PolicyDecisionSnapshot:
     """
-    Convert contracts snapshot -> backend tiny snapshot.
+    Convert contracts snapshot -> backend snapshot.
+
+    Backend semantics:
+      - ok=False => extract must be disabled (fail-closed)
+      - enable_extract=None => no override
+      - generate_max_new_tokens_cap is advisory only
     """
-    # Backend semantics:
-    # - If the file exists but is non-ok, enable_extract should be False (fail-closed).
-    # - If no policy configured, we represent as ok=True, enable_extract=None (no override).
+
+    # Defensive normalization of cap
+    cap = None
+    raw_cap = getattr(s, "generate_max_new_tokens_cap", None)
+    if isinstance(raw_cap, int) and raw_cap > 0:
+        cap = raw_cap
+
     return PolicyDecisionSnapshot(
         ok=bool(s.ok),
         model_id=s.model_id,
-        enable_extract=bool(s.enable_extract) if s.ok else False,
+        enable_extract=(
+            bool(s.enable_extract)
+            if s.ok and s.enable_extract is not None
+            else False if not s.ok else None
+        ),
+        generate_max_new_tokens_cap=cap,
         raw=dict(s.raw or {}),
         source_path=s.source_path,
         error=s.error,
     )
 
 
+# ------------------------------------------------------------------------------
+# Loading / caching
+# ------------------------------------------------------------------------------
+
+
 def load_policy_decision_from_env() -> PolicyDecisionSnapshot:
     """
     Load a policy decision JSON from POLICY_DECISION_PATH.
 
-    Semantics (unchanged, but now enforced by llm_contracts schema + parser):
-      - If POLICY_DECISION_PATH is unset/empty => no override (ok=True, enable_extract=None)
-      - If set but file missing => fail-closed (ok=False, enable_extract=False)
-      - If set and file invalid/unparseable => fail-closed (ok=False, enable_extract=False)
-      - If set and decision indicates non-ok => fail-closed (ok=False, enable_extract=False)
+    Semantics:
+      - POLICY_DECISION_PATH unset:
+          -> no override (ok=True, enable_extract=None)
+      - path set but missing:
+          -> fail-closed (ok=False, enable_extract=False)
+      - parse/validation failure:
+          -> fail-closed
+      - parsed but decision.ok == False:
+          -> fail-closed
     """
     path_s = os.getenv("POLICY_DECISION_PATH", "").strip()
     if not path_s:
@@ -62,6 +102,7 @@ def load_policy_decision_from_env() -> PolicyDecisionSnapshot:
             ok=True,
             model_id=None,
             enable_extract=None,
+            generate_max_new_tokens_cap=None,
             raw={},
             source_path=None,
             error=None,
@@ -73,16 +114,25 @@ def load_policy_decision_from_env() -> PolicyDecisionSnapshot:
             ok=False,
             model_id=None,
             enable_extract=False,
+            generate_max_new_tokens_cap=None,
             raw={},
             source_path=str(p),
             error="policy_decision_missing",
         )
 
-    snap = read_policy_decision(p)
-
-    # If parse failed, read_policy_decision already returns ok=False and enable_extract=False.
-    # Convert to backend’s tiny snapshot shape.
-    return _to_backend_snapshot(snap)
+    try:
+        snap = read_policy_decision(p)
+        return _to_backend_snapshot(snap)
+    except Exception as e:
+        return PolicyDecisionSnapshot(
+            ok=False,
+            model_id=None,
+            enable_extract=False,
+            generate_max_new_tokens_cap=None,
+            raw={},
+            source_path=str(p),
+            error=f"policy_decision_read_error: {type(e).__name__}: {e}",
+        )
 
 
 def get_policy_snapshot(request) -> PolicyDecisionSnapshot:
@@ -92,6 +142,7 @@ def get_policy_snapshot(request) -> PolicyDecisionSnapshot:
     snap = getattr(request.app.state, "policy_snapshot", None)
     if isinstance(snap, PolicyDecisionSnapshot):
         return snap
+
     snap = load_policy_decision_from_env()
     request.app.state.policy_snapshot = snap
     return snap
@@ -106,27 +157,56 @@ def reload_policy_snapshot(request) -> PolicyDecisionSnapshot:
     return snap
 
 
-def policy_capability_overrides(model_id: str, *, request) -> Optional[Dict[str, bool]]:
-    """
-    Returns an override mapping for known capability keys, or None if no override applies.
+# ------------------------------------------------------------------------------
+# Application helpers
+# ------------------------------------------------------------------------------
 
-    Semantics:
-      - If policy file is configured but invalid/non-ok => fail-closed extract for ALL models.
-      - If decision is for a specific model_id and doesn't match => no override.
-      - If decision is ok and enable_extract is present => override extract accordingly.
+
+def policy_capability_overrides(
+    model_id: str, *, request
+) -> Optional[Dict[str, bool]]:
+    """
+    Capability overrides for models.yaml semantics.
+
+    Rules:
+      - If policy file configured AND ok=False => extract disabled for ALL models
+      - If decision scoped to model_id and does not match => no override
+      - If enable_extract is None => no override
     """
     snap = get_policy_snapshot(request)
 
-    # If policy file is configured but invalid/non-ok => fail-closed extract for all models.
+    # Policy configured but non-ok => fail-closed globally
     if snap.source_path and not snap.ok:
         return {"extract": False}
 
-    # If decision is for a specific model and doesn't match, do not apply.
+    # Scoped decision mismatch
     if snap.model_id and snap.model_id != model_id:
         return None
 
-    out: Dict[str, bool] = {}
-    if snap.enable_extract is not None:
-        out["extract"] = bool(snap.enable_extract)
+    if snap.enable_extract is None:
+        return None
 
-    return out or None
+    return {"extract": bool(snap.enable_extract)}
+
+
+def policy_generate_max_new_tokens_cap(
+    model_id: str, *, request
+) -> Optional[int]:
+    """
+    Optional runtime shaping for /v1/generate.
+
+    Rules:
+      - Never invent a cap
+      - Scoped by model_id if present
+      - ok=False does NOT imply a cap
+    """
+    snap = get_policy_snapshot(request)
+
+    if snap.model_id and snap.model_id != model_id:
+        return None
+
+    cap = snap.generate_max_new_tokens_cap
+    if isinstance(cap, int) and cap > 0:
+        return cap
+
+    return None

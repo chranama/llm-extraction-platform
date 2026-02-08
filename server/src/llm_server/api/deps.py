@@ -15,10 +15,10 @@ from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.db.models import ApiKey
 from llm_server.db.session import get_session
+from llm_server.io.policy_decisions import policy_capability_overrides
 from llm_server.services.llm import build_llm_from_settings
 from llm_server.services.llm_config import load_models_config
 from llm_server.services.llm_registry import MultiModelManager
-from llm_server.io.policy_decisions import policy_capability_overrides
 
 # -----------------------------------------------------------------------------
 # Types / constants
@@ -97,6 +97,7 @@ def _check_and_consume_quota_in_session(api_key_obj: ApiKey) -> None:
 
 
 async def get_api_key(
+    request: Request,
     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKey:
@@ -107,6 +108,9 @@ async def get_api_key(
       - Invalid key    -> AppError(401) code="invalid_api_key"
       - Rate limit hit -> AppError(429) code="rate_limited"
       - Quota exceeded -> AppError(402) code="quota_exhausted"
+
+    Side effect:
+      - Sets request.state.api_key for best-effort failure logging attribution.
     """
     if not x_api_key:
         raise AppError(
@@ -124,6 +128,12 @@ async def get_api_key(
             message="Invalid or inactive API key",
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
+
+    # Best-effort: allow core/errors.py to attribute failures.
+    try:
+        request.state.api_key = api_key_obj.key
+    except Exception:
+        pass
 
     # IMPORTANT: do NOT touch api_key_obj.role here if it's lazy; keep it None for now.
     role_obj = None
@@ -318,7 +328,6 @@ def model_capabilities(model_id: str, *, request: Request | None = None) -> Opti
     if request is not None:
         pol = policy_capability_overrides(model_id, request=request)
         if pol:
-            # Merge onto base_caps; if base is None, policy becomes the only explicit caps map.
             merged: Dict[str, bool] = dict(base_caps or {})
             for k, v in pol.items():
                 if k in _CAP_KEYS:

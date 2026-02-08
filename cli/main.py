@@ -14,21 +14,24 @@ import cli.commands.k8s as k8s_cmd
 import cli.commands.policy as policy_cmd
 from cli.errors import CLIError, die
 from cli.types import GlobalConfig
-from cli.util.paths import find_repo_root
-
+from cli.utils.paths import find_repo_root
 
 # -----------------------
 # Defaults
 # -----------------------
 
 DEFAULT_ENV_FILE = ".env"
+
 DEFAULT_PROJECT_NAME = "llm-extraction-platform"
 DEFAULT_COMPOSE_YML = "deploy/compose/docker-compose.yml"
 DEFAULT_TOOLS_DIR = "tools"
 DEFAULT_COMPOSE_DOCTOR = "tools/compose_doctor.sh"
+DEFAULT_SERVER_DIR = "server"
 
-DEFAULT_MODELS_FULL = "config/models.full.yaml"
-DEFAULT_MODELS_GENERATE_ONLY = "config/models.generate-only.yaml"
+DEFAULT_MODELS_YAML = "config/models.yaml"
+
+DEFAULT_COMPOSE_DEFAULTS_YAML = "config/compose-defaults.yaml"
+DEFAULT_COMPOSE_DEFAULTS_PROFILE = "docker"  # docker | host | itest | jobs
 
 DEFAULT_API_PORT = "8000"
 DEFAULT_UI_PORT = "5173"
@@ -41,16 +44,32 @@ DEFAULT_PG_USER = "llm"
 DEFAULT_PG_DB = "llm"
 
 
+def _resolve_repo_path(repo_root: Path, raw: str) -> Path:
+    """
+    Resolve a user-provided path consistently:
+      - expand ~
+      - if absolute, use as-is
+      - else resolve relative to repo_root
+      - normalize with resolve()
+    """
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = repo_root / p
+    return p.resolve()
+
+
 def _build_global_config(args: argparse.Namespace) -> GlobalConfig:
     repo_root = find_repo_root(Path.cwd(), compose_rel=DEFAULT_COMPOSE_YML)
 
-    env_file = repo_root / (args.env_file or DEFAULT_ENV_FILE)
-    compose_yml = repo_root / (args.compose_yml or DEFAULT_COMPOSE_YML)
-    tools_dir = repo_root / (args.tools_dir or DEFAULT_TOOLS_DIR)
-    compose_doctor = repo_root / (args.compose_doctor or DEFAULT_COMPOSE_DOCTOR)
+    env_file = _resolve_repo_path(repo_root, args.env_file or DEFAULT_ENV_FILE)
+    compose_yml = _resolve_repo_path(repo_root, args.compose_yml or DEFAULT_COMPOSE_YML)
+    tools_dir = _resolve_repo_path(repo_root, args.tools_dir or DEFAULT_TOOLS_DIR)
+    compose_doctor = _resolve_repo_path(repo_root, args.compose_doctor or DEFAULT_COMPOSE_DOCTOR)
 
-    models_full = repo_root / (args.models_full or DEFAULT_MODELS_FULL)
-    models_generate_only = repo_root / (args.models_generate_only or DEFAULT_MODELS_GENERATE_ONLY)
+    server_dir = _resolve_repo_path(repo_root, args.server_dir or DEFAULT_SERVER_DIR)
+
+    # ✅ argparse flag is --models-yaml => args.models_yaml
+    models_yaml = _resolve_repo_path(repo_root, getattr(args, "models_yaml", None) or DEFAULT_MODELS_YAML)
 
     return GlobalConfig(
         repo_root=repo_root,
@@ -59,8 +78,8 @@ def _build_global_config(args: argparse.Namespace) -> GlobalConfig:
         compose_yml=compose_yml,
         tools_dir=tools_dir,
         compose_doctor=compose_doctor,
-        models_full=models_full,
-        models_generate_only=models_generate_only,
+        server_dir=server_dir,
+        models_yaml=models_yaml,
         api_port=args.api_port or DEFAULT_API_PORT,
         ui_port=args.ui_port or DEFAULT_UI_PORT,
         pgadmin_port=args.pgadmin_port or DEFAULT_PGADMIN_PORT,
@@ -85,8 +104,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tools-dir", default=os.getenv("LLMCTL_TOOLS_DIR", DEFAULT_TOOLS_DIR))
     p.add_argument("--compose-doctor", default=os.getenv("LLMCTL_COMPOSE_DOCTOR", DEFAULT_COMPOSE_DOCTOR))
 
-    p.add_argument("--models-full", default=os.getenv("LLMCTL_MODELS_FULL", DEFAULT_MODELS_FULL))
-    p.add_argument("--models-generate-only", default=os.getenv("LLMCTL_MODELS_GENERATE_ONLY", DEFAULT_MODELS_GENERATE_ONLY))
+    p.add_argument("--server-dir", default=os.getenv("LLMCTL_SERVER_DIR", DEFAULT_SERVER_DIR))
+
+    # Keep this around as a *host-path* convenience for tooling or future commands.
+    # (Compose itself should not inherit it due to compose.py denylist.)
+    p.add_argument("--models-yaml", dest="models_yaml", default=os.getenv("LLMCTL_MODELS_YAML", DEFAULT_MODELS_YAML))
+
+    # Internal compose defaults (YAML + selected profile)
+    p.add_argument(
+        "--compose-defaults-yaml",
+        default=os.getenv("LLMCTL_COMPOSE_DEFAULTS_YAML", DEFAULT_COMPOSE_DEFAULTS_YAML),
+        help="YAML containing internal compose default env values (profiles: docker/host/itest/jobs).",
+    )
+    p.add_argument(
+        "--compose-defaults-profile",
+        default=os.getenv("LLMCTL_COMPOSE_DEFAULTS_PROFILE", DEFAULT_COMPOSE_DEFAULTS_PROFILE),
+        help="Which defaults profile to render (docker|host|itest|jobs).",
+    )
 
     p.add_argument("--api-port", default=os.getenv("API_PORT", DEFAULT_API_PORT))
     p.add_argument("--ui-port", default=os.getenv("UI_PORT", DEFAULT_UI_PORT))
@@ -98,15 +132,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pg-user", default=os.getenv("POSTGRES_USER", DEFAULT_PG_USER))
     p.add_argument("--pg-db", default=os.getenv("POSTGRES_DB", DEFAULT_PG_DB))
 
-    p.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print the exact commands being executed.",
-    )
+    p.add_argument("--verbose", action="store_true", help="Print the exact commands being executed.")
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    # Register subcommands (each module must provide register(subparsers))
     compose_cmd.register(sub)
     dev_cmd.register(sub)
     eval_cmd.register(sub)
@@ -124,7 +153,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(argv)
         cfg = _build_global_config(args)
 
-        # Dispatch: each subcommand sets args._handler
         handler = getattr(args, "_handler", None)
         if handler is None:
             die("Internal error: no handler registered for command", code=2)

@@ -1,4 +1,4 @@
-# llm_server/core/config.py
+# server/src/llm_server/core/config.py
 from __future__ import annotations
 
 import json
@@ -12,54 +12,116 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 try:
     from pydantic_settings.sources import SettingsSourceCallable  # type: ignore
-except Exception:  # pragma: no cover
+except Exception:
     SettingsSourceCallable = Callable[..., Dict[str, Any]]  # type: ignore
 
 try:
-    import yaml  # pyyaml
-except Exception:  # pragma: no cover
+    import yaml
+except Exception:
     yaml = None
 
 
-# =========================
-# Path resolution helpers
-# =========================
+# ============================================================
+# Path + YAML helpers
+# ============================================================
 def _app_root() -> Path:
     v = (os.environ.get("APP_ROOT") or "").strip()
-    if v:
-        return Path(v).expanduser().resolve()
-    return Path.cwd().resolve()
+    return Path(v).expanduser().resolve() if v else Path.cwd().resolve()
 
 
 def _resolve_path(path: str) -> Path:
     p = Path(path).expanduser()
-    if p.is_absolute():
-        return p
-    return (_app_root() / p).resolve()
+    return p if p.is_absolute() else (_app_root() / p).resolve()
 
 
-def _load_app_yaml(path: str) -> Dict[str, Any]:
+def _deep_merge(base: Any, overlay: Any) -> Any:
     """
-    Load YAML config and map it to Settings fields.
-    Missing file => {}.
+    Deep merge dictionaries: overlay wins.
+    Non-dict types are replaced.
     """
-    if yaml is None:
+    if not isinstance(base, dict) or not isinstance(overlay, dict):
+        return overlay
+    out = dict(base)
+    for k, v in overlay.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _select_profile_yaml(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Supports two shapes:
+
+    1) legacy (no profiles):
+       service:, server:, model:, ...
+
+    2) profiled:
+       base: {...}
+       profiles:
+         host: {...}
+         docker: {...}
+
+    Selection:
+      APP_PROFILE env var selects profile (default: "host" if profiles exist).
+    """
+    if not isinstance(raw, dict):
         return {}
 
+    if "profiles" not in raw and "base" not in raw:
+        # legacy shape
+        return raw
+
+    base = raw.get("base") or {}
+    profiles = raw.get("profiles") or {}
+    if not isinstance(base, dict):
+        base = {}
+    if not isinstance(profiles, dict):
+        profiles = {}
+
+    profile = (os.getenv("APP_PROFILE") or "").strip()
+    if not profile:
+        profile = "host"  # sensible default for uv-run on your machine
+
+    overlay = profiles.get(profile) or {}
+    if not isinstance(overlay, dict):
+        overlay = {}
+
+    merged = _deep_merge(base, overlay)
+    merged["_selected_profile"] = profile
+    return merged
+
+
+def _load_yaml_file(path: str) -> Dict[str, Any]:
+    if yaml is None:
+        return {}
     p = _resolve_path(path)
     if not p.exists():
         return {}
-
     try:
         raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     except Exception:
         return {}
+    return raw if isinstance(raw, dict) else {}
 
-    if not isinstance(raw, dict):
+
+def _load_app_yaml(path: str) -> Dict[str, Any]:
+    """
+    Load config/server.yaml and map to Settings fields.
+    Supports profiles via APP_PROFILE.
+
+    IMPORTANT:
+      - This function should be pure/read-only (no env mutation).
+      - Env vars still override YAML via pydantic_settings source order.
+    """
+    raw = _load_yaml_file(path)
+    cfg = _select_profile_yaml(raw)
+    if not isinstance(cfg, dict):
         return {}
 
     def g(*keys, default=None):
-        cur: Any = raw
+        cur: Any = cfg
         for k in keys:
             if not isinstance(cur, dict) or k not in cur:
                 return default
@@ -88,19 +150,17 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     if (v := g("api", "cors_allowed_origins")) is not None:
         out["cors_allowed_origins"] = v
 
-    # capabilities (support both old and new shapes)
-    # New recommended:
+    # capabilities (support both shapes)
     if (v := g("capabilities", "generate")) is not None:
         out["enable_generate"] = v
     if (v := g("capabilities", "extract")) is not None:
         out["enable_extract"] = v
-    # Backward compatible:
     if (v := g("capabilities", "enable_generate")) is not None:
         out["enable_generate"] = v
     if (v := g("capabilities", "enable_extract")) is not None:
         out["enable_extract"] = v
 
-    # model (YAML)
+    # model
     if (v := g("model", "default_id")) is not None:
         out["model_id"] = v
     if (v := g("model", "allowed_models")) is not None:
@@ -112,7 +172,7 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     if (v := g("model", "device")) is not None:
         out["model_device"] = v
 
-    # ✅ critical runtime toggles can be expressed in YAML too
+    # runtime model toggles
     if (v := g("model", "model_load_mode")) is not None:
         out["model_load_mode"] = v
     if (v := g("model", "require_model_ready")) is not None:
@@ -149,6 +209,9 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     return out
 
 
+# ============================================================
+# Runtime env coherence
+# ============================================================
 def _truthy(v: Any) -> str:
     return "1" if bool(v) else "0"
 
@@ -157,29 +220,30 @@ def _sync_runtime_env(s: "Settings") -> None:
     """
     Keep runtime env vars coherent with Settings.
 
-    Why: some modules still read os.getenv(...) directly. If Settings are loaded
-    from YAML/.env/monkeypatch, we want those os.getenv reads to see the same values.
+    Use setdefault so real environment overrides (or test overrides) still win.
     """
-    os.environ["ENV"] = str(s.env)
-    os.environ["DEBUG"] = _truthy(s.debug)
+    os.environ.setdefault("ENV", str(s.env))
+    os.environ.setdefault("DEBUG", _truthy(s.debug))
 
-    os.environ["ENABLE_GENERATE"] = _truthy(s.enable_generate)
-    os.environ["ENABLE_EXTRACT"] = _truthy(s.enable_extract)
+    os.environ.setdefault("ENABLE_GENERATE", _truthy(s.enable_generate))
+    os.environ.setdefault("ENABLE_EXTRACT", _truthy(s.enable_extract))
 
-    os.environ["REDIS_ENABLED"] = _truthy(s.redis_enabled)
+    os.environ.setdefault("REDIS_ENABLED", _truthy(s.redis_enabled))
 
-    os.environ["MODEL_LOAD_MODE"] = str(s.model_load_mode)
-    os.environ["REQUIRE_MODEL_READY"] = _truthy(s.require_model_ready)
-    os.environ["TOKEN_COUNTING"] = _truthy(s.token_counting)
+    os.environ.setdefault("MODEL_LOAD_MODE", str(s.model_load_mode))
+    os.environ.setdefault("REQUIRE_MODEL_READY", _truthy(s.require_model_ready))
+    os.environ.setdefault("TOKEN_COUNTING", _truthy(s.token_counting))
+
+    # Explicit “which DB world am I in?” signal (host vs docker vs itest)
+    os.environ.setdefault("DB_INSTANCE", str(s.db_instance))
 
 
+# ============================================================
+# Settings
+# ============================================================
 class Settings(BaseSettings):
     # --- config file path ---
-    app_config_path: str = Field(
-        default="config/server.yaml",
-        validation_alias="APP_CONFIG_PATH",
-        description="Path to config/server.yaml (YAML defaults). Env vars override YAML.",
-    )
+    app_config_path: str = Field(default="config/server.yaml", validation_alias="APP_CONFIG_PATH")
 
     # --- service info ---
     service_name: str = "LLM Server"
@@ -187,12 +251,19 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # --- server ---
-    env: str = Field(default="dev")
-    host: str = Field(default="0.0.0.0")
-    port: int = Field(default=8000)
+    env: str = "dev"
+    host: str = "0.0.0.0"
+    port: int = 8000
 
     # --- database ---
-    database_url: str = Field(default="postgresql+asyncpg://llm:llm@postgres:5432/llm", validation_alias="DATABASE_URL")
+    database_url: str = Field(
+        default="postgresql+asyncpg://llm:llm@postgres:5432/llm",
+        validation_alias="DATABASE_URL",
+    )
+
+    # A human-readable tag for “which database instance am I pointed at?”
+    # e.g. host|docker|itest (owned by compose-defaults.yaml or user env)
+    db_instance: str = Field(default="unknown", validation_alias="DB_INSTANCE")
 
     # --- CORS ---
     cors_allowed_origins: Any = Field(default_factory=lambda: ["*"])
@@ -204,13 +275,19 @@ class Settings(BaseSettings):
     # --- model config ---
     model_id: str = Field(default="mistralai/Mistral-7B-v0.1")
     allowed_models: List[str] = Field(default_factory=list)
-    models_config_path: Optional[str] = Field(default="config/models.yaml")
+
+    # IMPORTANT: env var in compose is MODELS_YAML, so alias it.
+    models_config_path: Optional[str] = Field(
+        default="config/models.generate-only.yaml",
+        validation_alias="MODELS_YAML",
+    )
+
     model_dtype: Literal["float16", "bfloat16", "float32"] = Field(default="float16")
     model_device: Optional[str] = Field(default=None)
 
-    # --- runtime model behavior toggles (these match your env vars + tests) ---
+    # --- runtime model behavior toggles ---
     model_load_mode: Literal["off", "lazy", "eager"] = Field(default="lazy", validation_alias="MODEL_LOAD_MODE")
-    require_model_ready: bool = Field(default=True, validation_alias="REQUIRE_MODEL_READY")
+    require_model_ready: bool = Field(default=False, validation_alias="REQUIRE_MODEL_READY")
     token_counting: bool = Field(default=True, validation_alias="TOKEN_COUNTING")
 
     # --- Redis ---
@@ -234,13 +311,22 @@ class Settings(BaseSettings):
     def all_model_ids(self) -> List[str]:
         return self.allowed_models or [self.model_id]
 
+    @field_validator("require_model_ready", mode="after")
+    @classmethod
+    def derive_require_model_ready(cls, v: bool, info):
+        # If explicitly true, keep true. Otherwise, default true in prod.
+        if v:
+            return True
+        env = str(info.data.get("env", "dev")).strip().lower()
+        return env == "prod"
+
     @field_validator("cors_allowed_origins", mode="after")
     @classmethod
     def normalize_cors_origins(cls, v: Any) -> List[str]:
         if v is None:
             return ["*"]
         if isinstance(v, list):
-            return [str(item).strip() for item in v if str(item).strip()]
+            return [str(item).strip() for item in v if str(item).strip()] or ["*"]
         if isinstance(v, str):
             s = v.strip()
             if not s:
@@ -250,8 +336,8 @@ class Settings(BaseSettings):
             try:
                 parsed = json.loads(s)
                 if isinstance(parsed, list):
-                    return [str(item).strip() for item in parsed if str(item).strip()]
-            except json.JSONDecodeError:
+                    return [str(item).strip() for item in parsed if str(item).strip()] or ["*"]
+            except Exception:
                 pass
             values = [item.strip() for item in s.split(",") if item.strip()]
             return values or ["*"]
@@ -275,8 +361,7 @@ class Settings(BaseSettings):
             path = os.getenv("APP_CONFIG_PATH", "config/server.yaml")
             return _load_app_yaml(path)
 
-        # ✅ IMPORTANT: env must override dotenv, not the other way around.
-        # Order: defaults -> YAML -> dotenv -> env -> secrets
+        # Order: init -> yaml -> dotenv -> env -> secrets
         return (init_settings, yaml_settings, dotenv_settings, env_settings, file_secret_settings)
 
 

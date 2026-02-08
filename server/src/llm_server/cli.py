@@ -1,4 +1,4 @@
-# src/llm_server/cli.py
+# server/src/llm_server/cli.py
 from __future__ import annotations
 
 import asyncio
@@ -49,15 +49,19 @@ def serve(
         help="Enable auto-reload (overrides UVICORN_RELOAD if provided).",
     ),
     proxy_headers: bool = typer.Option(True, "--proxy-headers/--no-proxy-headers", help="Respect proxy headers"),
+    profile: Optional[str] = typer.Option(
+        None,
+        "--profile",
+        envvar="APP_PROFILE",
+        help="Config profile inside config/server.yaml (e.g. host, docker).",
+    ),
 ):
     """
     Run the FastAPI service.
-
-    Policy:
-      - reload is opt-in (either --reload or UVICORN_RELOAD=1)
-      - dev mode forces workers=1 (stateful in-memory LLM)
-      - prod mode uses WORKERS (default 1)
     """
+    if profile:
+        os.environ["APP_PROFILE"] = profile
+
     env = os.getenv("ENV", "").lower()
     dev_mode = env == "dev" or os.getenv("DEV") == "1"
 

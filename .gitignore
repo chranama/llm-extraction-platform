@@ -3,7 +3,6 @@
 # =========================
 .venv/
 venv/
-env/
 ENV/
 __pycache__/
 *.py[cod]
@@ -48,7 +47,7 @@ weights/
 !tools/models/**
 
 # =========================
-# ML/Experiment Artifacts
+# ML / Experiment Artifacts
 # =========================
 runs/
 outputs/
@@ -61,20 +60,59 @@ predictions/
 *.joblib
 
 # =========================
-# Config / Secrets
+# Runtime artifacts (control plane outputs)
 # =========================
+policy_out/
+slo_out/
+eval_out/
+observability_out/
+pipeline_runs/
+
+# Allow keeping an empty directory via .gitkeep if you want
+!.gitkeep
+!policy_out/.gitkeep
+!slo_out/.gitkeep
+!eval_out/.gitkeep
+!observability_out/.gitkeep
+!pipeline_runs/.gitkeep
+
+# =========================
+# Environment files & secrets
+# =========================
+# Ignore all env files by default (these nearly always contain secrets)
 .env
 .env.*
 *.env
+*.env.*
+
+# But allow explicit non-secret templates
+!.env.example
+!*.env.example
+!*.example.env
+!.env.template
+!*.env.template
+
+# If you intentionally want to commit sample profiles, name them .env.example.*
+# e.g. .env.example.docker, .env.example.host
+
+# Other secret formats
+*.secret.env
 secrets.yaml
 secrets.json
 credentials.json
 tokens.json
 api_keys.yaml
 
-
-# Allow example env template
-!.env.example
+# =========================
+# CLI / Tooling temp output
+# =========================
+.tmp/
+.tmp/llmctl/
+tmp/
+scratch/
+debug/
+notes.txt
+.todo
 
 # =========================
 # Data
@@ -94,8 +132,7 @@ data/cache/
 *.h5
 *.parquet
 
-# Ignore generated datasets/exports, but allow source-controlled JSON schemas/examples
-# (keep schemas under src/llm_server/schemas/ and examples/ tracked)
+# Ignore generated datasets/exports
 data/**/*.json
 data/**/*.csv
 results/**/*.json
@@ -145,28 +182,44 @@ docker-compose.override.yml
 htmlcov/
 
 # =========================
-# Temporary Dev Files
+# Archives
 # =========================
-tmp/
-scratch/
-debug/
-notes.txt
-.todo
 *.zip
+*.tar
+*.tar.gz
 
 # =========================
-# UI (Vite/React)
+# UI (Vite / React)
 # =========================
 ui/node_modules/
 ui/dist/
 ui/.vite/
 
-# Eval outputs living under src (should move to /results)
+# UI env files should never be committed (except example/template)
+ui/.env
+ui/.env.*
+!ui/.env.example
+!ui/.env.example.*
+!ui/.env.template
+!ui/.env.template.*
+
+# =========================
+# Eval outputs under src (should live in /results)
+# =========================
 src/llm_server/eval/results/
 
+# =========================
 # Build metadata
+# =========================
 llm_server.egg-info/
 src/llm_server.egg-info/
 
+# =========================
 # Local Python version files
+# =========================
 .python-version
+
+# =========================
+# Project-local generated files
+# =========================
+.tmp_llmctl/

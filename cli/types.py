@@ -8,16 +8,20 @@ from pathlib import Path
 @dataclass(frozen=True)
 class GlobalConfig:
     repo_root: Path
+
+    # core paths
     env_file: Path
-    project_name: str
     compose_yml: Path
-    backend_dir: Path
     tools_dir: Path
     compose_doctor: Path
 
-    models_full: Path
-    models_generate_only: Path
+    server_dir: Path
 
+    # models config paths (host paths)
+    models_yaml: Path
+
+    # runtime ports
+    project_name: str
     api_port: str
     ui_port: str
     pgadmin_port: str
@@ -25,5 +29,6 @@ class GlobalConfig:
     grafana_port: str
     prom_host_port: str
 
+    # db defaults (used by tooling)
     pg_user: str
     pg_db: str

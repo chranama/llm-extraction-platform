@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 
 from cli.errors import CLIError
-from cli.util.proc import ensure_bins, run_bash
+from cli.utils.proc import ensure_bins, run_bash
 from cli.types import GlobalConfig  # type: ignore[attr-defined]
 
 

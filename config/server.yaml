@@ -1,38 +1,108 @@
-service:
-  name: "LLM Server"
-  version: "0.1.0"
-  debug: false
-  env: "dev"
+# config/server.yaml
+# ------------------------------------------------------------
+# Shape:
+#   base:      canonical defaults for all environments
+#   profiles:  overlays applied on top of base (selected by APP_PROFILE)
+#
+# Selection:
+#   APP_PROFILE=test|host|docker  (default: host)
+# ------------------------------------------------------------
 
-server:
-  host: "0.0.0.0"
-  port: 8000
+base:
+  service:
+    name: "LLM Server"
+    version: "0.1.0"
+    debug: false
+    env: "dev"
 
-api:
-  cors_allowed_origins:
-    - "*"
+  server:
+    host: "0.0.0.0"
+    port: 8000
 
-model:
-  default_id: "mistralai/Mistral-7B-v0.1"
-  allowed_models: []
-  models_config_path: "config/models.yaml"
-  dtype: "float16"
-  device: null   # null | "cuda" | "mps" | "cpu"
+  api:
+    cors_allowed_origins: ["*"]
 
-redis:
-  enabled: false
+  capabilities:
+    generate: true
+    extract: true
 
-http:
-  # optional; you can keep this env-only if you prefer
-  llm_service_url: "http://127.0.0.1:9001"
-  client_timeout_seconds: 60
+  model:
+    default_id: "mistralai/Mistral-7B-v0.1"
+    allowed_models: []
+    models_config_path: "config/models.yaml"
+    dtype: "float16"
+    device: null
+    model_load_mode: "lazy"
+    require_model_ready: false
+    token_counting: true
 
-limits:
-  rate_limit_rpm:
-    admin: 0
-    default: 120
-    free: 30
-  quota_auto_reset_days: 30
+  redis:
+    enabled: false
 
-cache:
-  api_key_cache_ttl_seconds: 10
+  http:
+    llm_service_url: "http://127.0.0.1:9001"
+    client_timeout_seconds: 60
+
+  limits:
+    rate_limit_rpm:
+      admin: 0
+      default: 120
+      free: 30
+    quota_auto_reset_days: 30
+
+  cache:
+    api_key_cache_ttl_seconds: 10
+
+
+profiles:
+  # ------------------------------------------------------------
+  # Default dev / host-run profile (no overrides)
+  # ------------------------------------------------------------
+  host: {}
+
+  # ------------------------------------------------------------
+  # Dockerized server profile (server runs in docker-compose)
+  # Keep this aligned with compose wiring (postgres/redis hostnames).
+  # ------------------------------------------------------------
+  docker:
+    redis:
+      enabled: true
+    model:
+      model_load_mode: "eager"
+      require_model_ready: true
+
+  # ------------------------------------------------------------
+  # Test profile (merges your old server.test.yaml)
+  # Intended for integration tests / itest profile.
+  # ------------------------------------------------------------
+  test:
+    service:
+      name: "LLM Server (test)"
+      env: "test"
+
+    server:
+      host: "127.0.0.1"
+      port: 8000
+
+    capabilities:
+      generate: true
+      extract: true
+
+    model:
+      default_id: "fake"
+      allowed_models: []
+      models_config_path: "config/models.yaml"
+      dtype: "float16"
+      device: "cpu"
+      model_load_mode: "lazy"
+      require_model_ready: false
+      token_counting: false
+
+    redis:
+      enabled: false
+
+    http:
+      client_timeout_seconds: 5
+
+    cache:
+      api_key_cache_ttl_seconds: 1

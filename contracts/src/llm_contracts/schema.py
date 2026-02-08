@@ -164,3 +164,35 @@ def read_json_internal(schema_filename: str, path: Pathish) -> Dict[str, Any]:
         raise SchemaValidationError(schema_name=schema_filename, message="payload root must be an object")
     validate_internal(schema_filename, raw)
     return raw
+
+def read_json_internal_versioned(
+    version_to_schema: dict[str, str],
+    path: Pathish,
+    *,
+    version_key: str = "schema_version",
+) -> Dict[str, Any]:
+    """
+    Read JSON from disk, pick schema based on payload[version_key], validate, return dict.
+
+    version_to_schema maps schema_version strings -> internal schema filenames,
+    e.g. { "policy_decision_v1": "policy_decision_v1.schema.json",
+           "policy_decision_v2": "policy_decision_v2.schema.json" }.
+
+    Raises SchemaValidationError / ValueError / JSON errors on failure.
+    """
+    p = Path(path).resolve()
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise SchemaValidationError(schema_name="<versioned>", message="payload root must be an object")
+
+    ver = raw.get(version_key)
+    if not isinstance(ver, str) or not ver.strip():
+        raise SchemaValidationError(schema_name="<versioned>", message=f"missing/invalid {version_key}")
+    ver = ver.strip()
+
+    schema_filename = version_to_schema.get(ver)
+    if not schema_filename:
+        raise ValueError(f"unsupported {version_key}: {ver!r}")
+
+    validate_internal(schema_filename, raw)
+    return raw

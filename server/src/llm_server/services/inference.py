@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -9,7 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from llm_server.core.metrics import LLM_TOKENS
+from llm_server.core.metrics import (
+    LLM_REDIS_HITS,
+    LLM_REDIS_LATENCY,
+    LLM_REDIS_MISSES,
+    LLM_TOKENS,
+)
 from llm_server.core.redis import redis_get, redis_set
 from llm_server.db.models import CompletionCache, InferenceLog
 
@@ -24,6 +30,7 @@ class CacheSpec:
       - Redis stores JSON payload {"output": <STRING>}
       - payload key is always "output" (even for extract, where the string is JSON)
     """
+
     model_id: str
     prompt: str
     prompt_hash: str
@@ -47,7 +54,31 @@ def record_token_metrics(model_id: str, prompt_tokens: int | None, completion_to
 
 
 async def _read_redis_output(redis: Any, *, cache: CacheSpec, kind: str) -> str | None:
-    raw = await redis_get(redis, cache.redis_key, model_id=cache.model_id, kind=kind)
+    """
+    Returns cached output string or None.
+
+    Also emits Redis hit/miss + latency metrics.
+    """
+    t0 = time.perf_counter()
+    raw = None
+    try:
+        raw = await redis_get(redis, cache.redis_key, model_id=cache.model_id, kind=kind)
+        return _parse_redis_cached_output(raw)
+    finally:
+        dt = time.perf_counter() - t0
+        # Metrics are best-effort; never raise on metrics.
+        try:
+            LLM_REDIS_LATENCY.labels(model_id=cache.model_id, kind=kind).observe(dt)
+            if raw is None:
+                LLM_REDIS_MISSES.labels(model_id=cache.model_id, kind=kind).inc()
+            else:
+                # NOTE: raw might exist but be unparsable; still counts as hit at the Redis layer.
+                LLM_REDIS_HITS.labels(model_id=cache.model_id, kind=kind).inc()
+        except Exception:
+            pass
+
+
+def _parse_redis_cached_output(raw: Any) -> str | None:
     if raw is None:
         return None
     try:
@@ -173,18 +204,42 @@ async def write_inference_log(
     route: str,
     client_host: str | None,
     model_id: str,
-    params_json: Mapping[str, Any],
+    params_json: Mapping[str, Any] | None,
     prompt: str,
-    output: str,
-    latency_ms: float,
+    output: str | None,
+    latency_ms: float | None,
     prompt_tokens: int | None,
     completion_tokens: int | None,
+    # NEW FIELDS (expanded InferenceLog)
+    status_code: int = 200,
+    cached: bool | None = None,
+    error_code: str | None = None,
+    error_stage: str | None = None,
     commit: bool = True,
 ) -> None:
     """
-    Canonical log write. Default commit=True matches your early-return pattern.
+    Canonical log write (success + failure).
+
+    Default commit=True matches your early-return pattern.
     For batched endpoints, pass commit=False and commit once at the end.
+
+    Notes:
+      - prompt can be "" for failure paths that never parsed a body
+      - output should be None for failures (or if you intentionally suppress output logging)
+      - latency_ms can be None if unknown (but you should strive to set it)
     """
+    # Clamp status_code defensively (avoid weird None/0 cases)
+    try:
+        sc = int(status_code)
+        if sc <= 0:
+            sc = 500
+    except Exception:
+        sc = 500
+
+    # Normalize optional strings
+    ec = error_code.strip() if isinstance(error_code, str) and error_code.strip() else None
+    es = error_stage.strip() if isinstance(error_stage, str) and error_stage.strip() else None
+
     session.add(
         InferenceLog(
             api_key=api_key,
@@ -192,13 +247,57 @@ async def write_inference_log(
             route=route,
             client_host=client_host,
             model_id=model_id,
-            params_json=dict(params_json),
+            params_json=dict(params_json or {}),
             prompt=prompt,
             output=output,
             latency_ms=latency_ms,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            status_code=sc,
+            cached=cached,
+            error_code=ec,
+            error_stage=es,
         )
     )
     if commit:
         await session.commit()
+
+
+async def write_failure_log(
+    session: AsyncSession,
+    *,
+    api_key: str,
+    request_id: str | None,
+    route: str,
+    client_host: str | None,
+    model_id: str,
+    latency_ms: float | None,
+    status_code: int,
+    error_code: str,
+    error_stage: str | None = None,
+    cached: bool | None = None,
+    commit: bool = True,
+) -> None:
+    """
+    Convenience wrapper for error handlers (best-effort).
+    Keeps core/errors.py simple and consistent.
+    """
+    await write_inference_log(
+        session,
+        api_key=api_key,
+        request_id=request_id,
+        route=route,
+        client_host=client_host,
+        model_id=model_id,
+        params_json={},
+        prompt="",
+        output=None,
+        latency_ms=latency_ms,
+        prompt_tokens=None,
+        completion_tokens=None,
+        status_code=status_code,
+        cached=cached,
+        error_code=error_code,
+        error_stage=error_stage,
+        commit=commit,
+    )
