@@ -5,13 +5,13 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from llm_server.telemetry.queries import compute_window_slo_snapshot
+from llm_contracts.runtime.generate_slo import parse_generate_slo
+from llm_server.telemetry.queries import compute_window_generate_slo_contracts_payload
 
 
 # -----------------------------
@@ -29,7 +29,7 @@ class SloWriteResult:
 def default_generate_slo_dir() -> Path:
     """
     Convention:
-      - SLO_OUT_DIR can override root
+      - SLO_OUT_DIR can override root directory
       - default is repo-relative "slo_out/generate"
     """
     root = os.getenv("SLO_OUT_DIR", "").strip()
@@ -51,44 +51,27 @@ async def write_generate_slo_artifact(
     out_path: str | os.PathLike[str] | None = None,
 ) -> SloWriteResult:
     """
-    Compute SLO snapshot from DB logs (InferenceLog) and write an artifact.
+    Compute SLO snapshot from DB logs (InferenceLog) and write a CONTRACTS-SHAPED
+    runtime_generate_slo_v1 artifact.
 
-    Artifact shape:
-      {
-        "schema_version": "runtime_generate_slo_v1",
-        "generated_at": "...",
-        "window_seconds": ...,
-        "window_end": "...",
-        "since": "...",
-        "routes": [...],
-        "model_id": "...|null",
-        "totals": { "requests": ..., "errors": ..., "error_rate": ... },
-        "latency_ms": { "avg": ..., "p95": ... },
-        "tokens": { "prompt_total": ..., "completion_total": ..., "completion_p95": ... }
-      }
-
-    Returns payload + output path.
+    This MUST remain aligned with:
+      - llm_contracts.runtime.generate_slo.read_generate_slo()
+      - policy/src/llm_policy/io/generate_slo.py (reads contracts snapshot)
     """
-    snap = await compute_window_slo_snapshot(
+    payload = await compute_window_generate_slo_contracts_payload(
         session,
         window_seconds=int(window_seconds),
         routes=list(routes) if routes else None,
         model_id=model_id,
     )
 
-    # Normalize timestamps as ISO strings for the artifact boundary.
-    payload = _to_jsonable(
-        {
-            "schema_version": "runtime_generate_slo_v1",
-            "generated_at": datetime.utcnow().isoformat() + "Z",
-            **snap,
-        }
-    )
+    # Validate at the boundary so admin endpoints are "true" boundaries.
+    # parse_generate_slo() runs JSON Schema validation + version checks.
+    parse_generate_slo(dict(payload))
 
     path = Path(out_path) if out_path is not None else default_generate_slo_path()
     _atomic_write_json(path, payload)
-
-    return SloWriteResult(ok=True, out_path=str(path), payload=payload)
+    return SloWriteResult(ok=True, out_path=str(path), payload=dict(payload))
 
 
 # -----------------------------
@@ -96,28 +79,16 @@ async def write_generate_slo_artifact(
 # -----------------------------
 
 
-def _to_jsonable(x: Any) -> Any:
-    if isinstance(x, datetime):
-        # keep timezone info if present
-        return x.isoformat()
-    if isinstance(x, dict):
-        return {k: _to_jsonable(v) for k, v in x.items()}
-    if isinstance(x, list):
-        return [_to_jsonable(v) for v in x]
-    if isinstance(x, tuple):
-        return [_to_jsonable(v) for v in x]
-    return x
-
-
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """
+    Atomically write JSON to disk (write temp file in same dir, fsync, then os.replace).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = json.dumps(dict(payload), ensure_ascii=False, indent=2) + "\n"
 
-    # Atomic-ish write: write to temp in same directory, then replace.
-    tmp_fd = None
-    tmp_path = None
+    tmp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -127,15 +98,13 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
             prefix=f".{path.name}.",
             suffix=".tmp",
         ) as f:
-            tmp_fd = f.fileno()
             tmp_path = Path(f.name)
             f.write(data)
             f.flush()
-            os.fsync(tmp_fd)
+            os.fsync(f.fileno())
 
         os.replace(str(tmp_path), str(path))
     finally:
-        # Clean up temp file if anything failed before replace.
         if tmp_path is not None and tmp_path.exists():
             try:
                 tmp_path.unlink()

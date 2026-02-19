@@ -1,13 +1,29 @@
-# src/llm_policy/thresholds/extract/default.yaml
-max_error_rate: 0.05
-max_5xx_rate: 0.01
-max_transport_error_rate: 0.01
+# policy/src/llm_policy/thresholds/extract/default.yaml
+version: "v1"
+task: null
 
-min_schema_validity_rate: 0.90
-min_required_present_rate: null
-min_doc_required_exact_match_rate: null
+metrics:
+  schema_validity_rate:
+    min: 0.90
 
-min_field_exact_match_rate: {}
-max_latency_p95_ms: null
-max_latency_p99_ms: null
-min_n_total: 20
+  required_present_rate:
+    min: null
+
+  doc_required_exact_match_rate:
+    min: null
+
+  latency_p95_ms:
+    max: null
+
+  latency_p99_ms:
+    max: null
+
+params:
+  min_n_total: 20
+  min_field_exact_match_rate: {}
+
+  # If you still want these around for other policies, keep them in params.
+  # If nothing uses them anymore, delete them.
+  max_error_rate: 0.05
+  max_5xx_rate: 0.01
+  max_transport_error_rate: 0.01

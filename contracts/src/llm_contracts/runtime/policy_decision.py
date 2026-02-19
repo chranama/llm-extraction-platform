@@ -71,6 +71,20 @@ def _opt_int(payload: Dict[str, Any], key: str) -> Optional[int]:
     return v if isinstance(v, int) else None
 
 
+def _coerce_optional_bool(x: Any) -> Optional[bool]:
+    """
+    Coerce a value to Optional[bool] with strict-ish handling:
+      - None => None
+      - bool => bool
+      - otherwise => None (don't guess)
+    """
+    if x is None:
+        return None
+    if isinstance(x, bool):
+        return x
+    return None
+
+
 def parse_policy_decision(
     payload: Dict[str, Any],
     *,
@@ -79,8 +93,13 @@ def parse_policy_decision(
     """
     Parse and validate a policy decision artifact (v2 only).
 
-    All fail-closed invariants are enforced here so downstream code
+    Fail-closed invariants are enforced here so downstream code
     can trust the snapshot.
+
+    Key behavior change:
+      - For pipeline == "generate_clamp_only", enable_extract is treated as
+        NOT APPLICABLE and is kept as None (including on fail-closed).
+      - For extract pipelines, fail-closed forces enable_extract=False.
     """
     schema_version = str(payload.get("schema_version", "")).strip()
     if schema_version not in SUPPORTED_POLICY_DECISION_VERSIONS:
@@ -97,27 +116,39 @@ def parse_policy_decision(
     ok = bool(payload["ok"])
     contract_errors = int(payload["contract_errors"])
 
-    enable_extract = payload.get("enable_extract", None)
-    if enable_extract is not None:
-        enable_extract = bool(enable_extract)
+    # enable_extract is OPTIONAL/nullable, and for generate-only pipeline it should remain None
+    enable_extract = _coerce_optional_bool(payload.get("enable_extract", None))
 
     cap = _opt_int(payload, "generate_max_new_tokens_cap")
     if cap is not None and cap <= 0:
         cap = None
 
+    is_extract_pipeline = pipeline in ("extract_only", "extract_plus_generate_clamp")
+    is_generate_only = pipeline == "generate_clamp_only"
+
     # ----------------------------
     # Fail-closed invariants
     # ----------------------------
+    # Fail-closed affects ok/status everywhere, but only forces enable_extract for extract pipelines.
     if contract_errors > 0:
         ok = False
-        enable_extract = False
+        if is_extract_pipeline:
+            enable_extract = False
+        elif is_generate_only:
+            enable_extract = None
 
     if status in ("deny", "unknown"):
         ok = False
-        enable_extract = False
+        if is_extract_pipeline:
+            enable_extract = False
+        elif is_generate_only:
+            enable_extract = None
 
     if not ok:
-        enable_extract = False
+        if is_extract_pipeline:
+            enable_extract = False
+        elif is_generate_only:
+            enable_extract = None
 
     return PolicyDecisionSnapshot(
         ok=ok,
@@ -163,6 +194,10 @@ def read_policy_decision(path: Pathish) -> PolicyDecisionSnapshot:
 def _fail_closed_snapshot(p: Path, e: Exception) -> PolicyDecisionSnapshot:
     """
     Construct a synthetic fail-closed snapshot when parsing fails.
+
+    Note: pipeline is unknown here; keep enable_extract=None to avoid
+    fabricating a gating decision when we can't interpret the payload.
+    Downstream should treat this snapshot as deny/unknown anyway via ok=False.
     """
     return PolicyDecisionSnapshot(
         ok=False,
@@ -171,7 +206,7 @@ def _fail_closed_snapshot(p: Path, e: Exception) -> PolicyDecisionSnapshot:
         policy="",
         pipeline="unknown",
         status="unknown",
-        enable_extract=False,
+        enable_extract=None,
         generate_max_new_tokens_cap=None,
         contract_errors=1,
         model_id=None,

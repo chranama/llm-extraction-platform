@@ -8,6 +8,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
+from llm_contracts.runtime.generate_slo import RUNTIME_GENERATE_SLO_VERSION
 from llm_server.db.models import ApiKey, InferenceLog, RoleTable
 from llm_server.telemetry.types import (
     AdminStats,
@@ -26,7 +27,7 @@ from llm_server.telemetry.types import (
 
 def _pct(values: list[float], p: float) -> float | None:
     """
-    Simple percentile on a list of floats.
+    Simple percentile on a list of floats (portable).
 
     - p in [0, 100]
     - returns None if no values
@@ -39,7 +40,6 @@ def _pct(values: list[float], p: float) -> float | None:
         return float(max(values))
 
     xs = sorted(values)
-    # "nearest rank" style
     k = int(round((p / 100.0) * (len(xs) - 1)))
     k = max(0, min(len(xs) - 1, k))
     return float(xs[k])
@@ -59,8 +59,17 @@ def _safe_float(x: Any) -> float | None:
         return None
 
 
+def _utc_iso_z() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
 # -----------------------------
-# Existing API (back-compat)
+# Existing API (unchanged)
 # -----------------------------
 
 
@@ -72,10 +81,6 @@ async def fetch_role_name(session: AsyncSession, role_id: int | None) -> Optiona
 
 
 async def get_me_usage(session: AsyncSession, *, api_key_value: str, role_name: Optional[str]) -> MeUsage:
-    """
-    Back-compat: counts ALL requests for that api key (success + failure).
-    Tokens will naturally sum over successes (failures have NULL tokens).
-    """
     stmt = (
         select(
             func.count(InferenceLog.id),
@@ -87,7 +92,13 @@ async def get_me_usage(session: AsyncSession, *, api_key_value: str, role_name: 
         .where(InferenceLog.api_key == api_key_value)
     )
     res = await session.execute(stmt)
-    (total_requests, first_request_at, last_request_at, total_prompt_tokens, total_completion_tokens) = res.one()
+    (
+        total_requests,
+        first_request_at,
+        last_request_at,
+        total_prompt_tokens,
+        total_completion_tokens,
+    ) = res.one()
 
     return MeUsage(
         api_key=api_key_value,
@@ -101,14 +112,6 @@ async def get_me_usage(session: AsyncSession, *, api_key_value: str, role_name: 
 
 
 async def get_admin_usage(session: AsyncSession) -> list[AdminUsageRow]:
-    """
-    Back-compat: aggregates ALL requests per api_key.
-
-    NOTE:
-      - Failures are now logged with api_key possibly "" (empty) depending on your deps.
-      - This function preserves original behavior and does not attempt to separate errors,
-        because AdminUsageRow doesn't have error fields.
-    """
     stmt = (
         select(
             InferenceLog.api_key,
@@ -123,11 +126,14 @@ async def get_admin_usage(session: AsyncSession) -> list[AdminUsageRow]:
 
     rows = (await session.execute(stmt)).all()
 
-    # Fetch key metadata in one shot
     key_values = [r[0] for r in rows if isinstance(r[0], str) and r[0]]
     key_map: dict[str, ApiKey] = {}
     if key_values:
-        keys_stmt = select(ApiKey).options(selectinload(ApiKey.role)).where(ApiKey.key.in_(key_values))
+        keys_stmt = (
+            select(ApiKey)
+            .options(selectinload(ApiKey.role))
+            .where(ApiKey.key.in_(key_values))
+        )
         key_objs = (await session.execute(keys_stmt)).scalars().all()
         key_map = {k.key: k for k in key_objs}
 
@@ -153,7 +159,6 @@ async def get_admin_usage(session: AsyncSession) -> list[AdminUsageRow]:
 async def list_api_keys(session: AsyncSession, *, limit: int, offset: int) -> ApiKeyListPage:
     total_stmt = select(func.count(ApiKey.id))
     total = (await session.execute(total_stmt)).scalar_one()
-    total_int = _safe_int(total)
 
     stmt = (
         select(ApiKey)
@@ -179,7 +184,12 @@ async def list_api_keys(session: AsyncSession, *, limit: int, offset: int) -> Ap
             )
         )
 
-    return ApiKeyListPage(total=total_int, limit=limit, offset=offset, items=items)
+    return ApiKeyListPage(
+        total=_safe_int(total),
+        limit=limit,
+        offset=offset,
+        items=items,
+    )
 
 
 async def list_inference_logs(
@@ -192,7 +202,6 @@ async def list_inference_logs(
     to_ts: Optional[datetime],
     limit: int,
     offset: int,
-    # NEW optional filters (won't break existing callers)
     status_code_min: int | None = None,
     status_code_max: int | None = None,
     error_code: str | None = None,
@@ -212,7 +221,6 @@ async def list_inference_logs(
     if to_ts:
         filters.append(InferenceLog.created_at <= to_ts)
 
-    # new expanded fields
     if status_code_min is not None:
         filters.append(InferenceLog.status_code >= int(status_code_min))
     if status_code_max is not None:
@@ -224,15 +232,12 @@ async def list_inference_logs(
     if isinstance(cached, bool):
         filters.append(InferenceLog.cached == cached)
 
-    # total
     count_stmt = select(func.count()).select_from(InferenceLog)
     if filters:
         count_stmt = count_stmt.where(*filters)
 
     total = await session.scalar(count_stmt)
-    total_int = _safe_int(total)
 
-    # page
     stmt = select(InferenceLog)
     if filters:
         stmt = stmt.where(*filters)
@@ -240,16 +245,15 @@ async def list_inference_logs(
     stmt = stmt.order_by(InferenceLog.created_at.desc()).offset(offset).limit(limit)
     rows = (await session.execute(stmt)).scalars().all()
 
-    return LogsPage(total=total_int, limit=limit, offset=offset, items=list(rows))
+    return LogsPage(
+        total=_safe_int(total),
+        limit=limit,
+        offset=offset,
+        items=list(rows),
+    )
 
 
 async def get_admin_stats(session: AsyncSession, *, window_days: int) -> AdminStats:
-    """
-    Back-compat AdminStats:
-      - counts ALL requests in window (success + failure)
-      - token sums naturally reflect successes only
-      - avg_latency includes failures where latency_ms is present (it should be, now)
-    """
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=window_days)
 
@@ -304,19 +308,20 @@ async def get_admin_stats(session: AsyncSession, *, window_days: int) -> AdminSt
 
 
 async def reload_key_with_role(session: AsyncSession, *, api_key_id: int) -> ApiKey | None:
-    """
-    Utility used by API layer for admin gating without lazy-load issues.
-    """
-    result = await session.execute(select(ApiKey).options(joinedload(ApiKey.role)).where(ApiKey.id == api_key_id))
+    result = await session.execute(
+        select(ApiKey)
+        .options(joinedload(ApiKey.role))
+        .where(ApiKey.id == api_key_id)
+    )
     return result.scalar_one_or_none()
 
 
 # -----------------------------
-# NEW: SLO-ish window summaries
+# NEW (A7): contracts-shaped SLO
 # -----------------------------
 
 
-async def compute_window_slo_snapshot(
+async def compute_window_generate_slo_contracts_payload(
     session: AsyncSession,
     *,
     window_seconds: int,
@@ -324,15 +329,12 @@ async def compute_window_slo_snapshot(
     model_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    Compute a small SLO snapshot from InferenceLog (DB-source-of-truth).
+    Compute a runtime_generate_slo_v1 payload directly from DB telemetry.
 
-    Returned dict is intentionally schema-friendly (you can map it to a contracts artifact later):
-      - totals: requests, errors, error_rate
-      - latency_ms: avg, p95
-      - tokens: prompt_total, completion_total, completion_p95 (success-only)
-      - dimensions: window_seconds, since, routes, model_id
-
-    NOTE: Percentiles are computed in Python for portability across SQLite/Postgres/DuckDB.
+    This payload:
+      - validates against runtime_generate_slo_v1.schema.json
+      - is readable by llm_contracts.runtime.generate_slo
+      - is suitable for policy generate-clamp decisions
     """
     now = datetime.now(timezone.utc)
     since = now - timedelta(seconds=int(window_seconds))
@@ -343,51 +345,81 @@ async def compute_window_slo_snapshot(
     if model_id:
         filters.append(InferenceLog.model_id == model_id)
 
-    # totals + error count in SQL (fast)
     totals_stmt = select(
         func.count(InferenceLog.id).label("n"),
         func.coalesce(func.sum(case((InferenceLog.status_code >= 400, 1), else_=0)), 0).label("errors"),
-        func.coalesce(func.sum(InferenceLog.prompt_tokens), 0).label("prompt_tokens"),
-        func.coalesce(func.sum(InferenceLog.completion_tokens), 0).label("completion_tokens"),
         func.avg(InferenceLog.latency_ms).label("avg_latency_ms"),
+        func.max(InferenceLog.latency_ms).label("max_latency_ms"),
+        func.avg(InferenceLog.prompt_tokens).label("prompt_avg"),
+        func.max(InferenceLog.prompt_tokens).label("prompt_max"),
+        func.avg(InferenceLog.completion_tokens).label("completion_avg"),
+        func.max(InferenceLog.completion_tokens).label("completion_max"),
     ).where(*filters)
 
     row = (await session.execute(totals_stmt)).one()
     n = _safe_int(row.n)
     errors = _safe_int(row.errors)
+    error_rate = (errors / n) if n > 0 else 0.0
 
-    # values for percentiles (portable)
-    lat_stmt = select(InferenceLog.latency_ms).where(*filters).where(InferenceLog.latency_ms.is_not(None))
+    lat_stmt = (
+        select(InferenceLog.latency_ms)
+        .where(*filters)
+        .where(InferenceLog.latency_ms.is_not(None))
+    )
     latencies = [float(x[0]) for x in (await session.execute(lat_stmt)).all() if x and x[0] is not None]
 
-    # completion tokens percentile (success-only: completion_tokens non-null)
     ct_stmt = (
         select(InferenceLog.completion_tokens)
         .where(*filters)
         .where(InferenceLog.completion_tokens.is_not(None))
     )
-    completion_tokens_vals = [float(x[0]) for x in (await session.execute(ct_stmt)).all() if x and x[0] is not None]
+    completion_vals = [float(x[0]) for x in (await session.execute(ct_stmt)).all() if x and x[0] is not None]
 
-    error_rate = (errors / n) if n > 0 else 0.0
+    ts = _utc_iso_z()
+    routes_out = list(routes or ["/v1/generate", "/v1/generate/batch"])
 
-    return {
-        "window_seconds": int(window_seconds),
-        "window_end": now,
-        "since": since,
-        "routes": list(routes or []),
-        "model_id": model_id,
-        "totals": {
-            "requests": n,
-            "errors": errors,
-            "error_rate": error_rate,
+    totals_obj = {
+        "requests": {"total": int(n)},
+        "errors": {
+            "total": int(errors),
+            "rate": float(error_rate),
+            "by_status": {},
+            "by_code": {},
         },
         "latency_ms": {
-            "avg": _safe_float(row.avg_latency_ms),
-            "p95": _pct(latencies, 95.0),
+            "p50": float(_pct(latencies, 50.0) or 0.0),
+            "p95": float(_pct(latencies, 95.0) or 0.0),
+            "p99": float(_pct(latencies, 99.0) or 0.0),
+            "avg": float(_safe_float(row.avg_latency_ms) or 0.0),
+            "max": float(_safe_float(row.max_latency_ms) or 0.0),
         },
         "tokens": {
-            "prompt_total": _safe_int(row.prompt_tokens),
-            "completion_total": _safe_int(row.completion_tokens),
-            "completion_p95": _pct(completion_tokens_vals, 95.0),
+            "prompt": {
+                "avg": float(_safe_float(row.prompt_avg) or 0.0),
+                "max": int(_safe_int(row.prompt_max)),
+            },
+            "completion": {
+                "avg": float(_safe_float(row.completion_avg) or 0.0),
+                "p95": float(_pct(completion_vals, 95.0) or 0.0),
+                "max": int(_safe_int(row.completion_max)),
+            },
         },
+    }
+
+    model_row = {
+        "model_id": model_id or "mixed",
+        "requests": totals_obj["requests"],
+        "errors": totals_obj["errors"],
+        "latency_ms": totals_obj["latency_ms"],
+        "tokens": totals_obj["tokens"],
+    }
+
+    return {
+        "schema_version": RUNTIME_GENERATE_SLO_VERSION,
+        "generated_at": ts,
+        "window_seconds": int(window_seconds),
+        "window_end": ts,
+        "routes": routes_out,
+        "models": [model_row],
+        "totals": totals_obj,
     }

@@ -1,4 +1,5 @@
 # pyproject.toml (repo)
+
 [project]
 name = "llm_platform"
 version = "0.1.0"
@@ -14,17 +15,19 @@ dependencies = [
   "llm_eval",
   "llm_policy",
 
-  # Shared contracts (fixes the file:../contracts relative-path issue)
+  # Shared contracts
   "llm-contracts",
 ]
 
 [project.scripts]
+# Repo-level control plane
 llmctl = "cli.main:main"
 
 # Re-expose subpackage CLIs
 llm = "llm_server.cli:main"
 eval = "llm_eval.cli:main"
-llm-policy = "llm_policy.cli:main"
+policy = "llm_policy.cli:main"
+sim = "simulations.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -50,7 +53,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*"]
+# ✅ include repo-level CLIs + simulations package (but not the subprojects)
+include = ["cli*", "simulations*"]
 exclude = [
   "server*",
   "eval*",

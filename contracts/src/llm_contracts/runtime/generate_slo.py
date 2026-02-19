@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, cast
 
-from llm_contracts.schema import atomic_write_json_internal, read_json_internal, validate_internal
+from llm_contracts.schema import atomic_write_json_internal, validate_internal
 
 Pathish = Union[str, Path]
 
@@ -19,6 +19,7 @@ class GenerateSLOSnapshot:
     Stable minimal snapshot policy can consume.
     Keep `raw` for forward compatibility.
     """
+
     schema_version: str
     generated_at: str
     window_seconds: int
@@ -74,8 +75,8 @@ def parse_generate_slo(payload: Dict[str, Any], *, source_path: Optional[str] = 
 def read_generate_slo(path: Pathish) -> GenerateSLOSnapshot:
     p = Path(path).resolve()
     try:
-        # Same caveat as policy_decision: use raw read + validate here.
         import json
+
         payload = cast(Dict[str, Any], json.loads(p.read_text(encoding="utf-8")))
         return parse_generate_slo(payload, source_path=str(p))
     except Exception as e:

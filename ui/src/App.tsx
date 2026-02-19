@@ -2,24 +2,39 @@
 import React, { useMemo, useState } from "react";
 import { Playground } from "./components/playground/Playground";
 import { AdminPage } from "./components/admin/AdminPage";
+import { DemoPage } from "./components/demo/DemoPage";
 import { UiRuntimeConfig } from "./lib/runtime_config";
 
 interface AppProps {
   runtimeConfig: UiRuntimeConfig;
 }
 
-type TopTab = "playground" | "admin";
+type TopTab = "playground" | "admin" | "demo";
 
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
+const ENV_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+
+function normalizeBase(s: string): string {
+  const t = s.trim();
+  if (!t) return t;
+  return t.endsWith("/") ? t.slice(0, -1) : t;
+}
 
 export default function App({ runtimeConfig }: AppProps) {
   const hasKey = Boolean(API_KEY && API_KEY.trim().length > 0);
 
-  const apiBase = runtimeConfig.api?.base_url?.trim() || "/api";
+  const apiBase = useMemo(() => {
+    // Priority:
+    // 1) runtime config.json (if present)
+    // 2) build-time VITE_API_BASE_URL (compose sets this)
+    // 3) same-origin (useful if UI is reverse-proxied with server)
+    const fromRuntime = runtimeConfig.api?.base_url?.trim();
+    const fromEnv = ENV_API_BASE;
+    const fromOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    return normalizeBase(fromRuntime || fromEnv || fromOrigin);
+  }, [runtimeConfig]);
 
-  const apiBaseNormalized = useMemo(() => {
-    return apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
-  }, [apiBase]);
+  const apiBaseNormalized = useMemo(() => normalizeBase(apiBase), [apiBase]);
 
   const [tab, setTab] = useState<TopTab>("playground");
 
@@ -52,9 +67,7 @@ export default function App({ runtimeConfig }: AppProps) {
     <div style={{ minHeight: "100vh", padding: "1.5rem", fontFamily: "system-ui, sans-serif" }}>
       <header style={{ marginBottom: "1.25rem" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0 }}>
-            LLM Server
-          </h1>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0 }}>LLM Server</h1>
 
           <span
             title={
@@ -76,7 +89,7 @@ export default function App({ runtimeConfig }: AppProps) {
           </span>
 
           <span
-            title="Runtime API base loaded from config.json"
+            title="API base loaded from runtime config, env, or same-origin"
             style={{
               fontSize: 12,
               padding: "4px 10px",
@@ -87,7 +100,7 @@ export default function App({ runtimeConfig }: AppProps) {
               fontWeight: 700,
             }}
           >
-            API base: {apiBaseNormalized}
+            API base: {apiBaseNormalized || "(unset)"}
           </span>
         </div>
 
@@ -98,6 +111,7 @@ export default function App({ runtimeConfig }: AppProps) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
           <TabButton label="Playground" active={tab === "playground"} onClick={() => setTab("playground")} />
           <TabButton label="Admin" active={tab === "admin"} onClick={() => setTab("admin")} />
+          <TabButton label="Demo" active={tab === "demo"} onClick={() => setTab("demo")} />
 
           <div style={{ flex: 1 }} />
 
@@ -147,7 +161,7 @@ export default function App({ runtimeConfig }: AppProps) {
         )}
       </header>
 
-      {tab === "playground" ? <Playground /> : <AdminPage />}
+      {tab === "playground" ? <Playground /> : tab === "admin" ? <AdminPage /> : <DemoPage />}
     </div>
   );
 }

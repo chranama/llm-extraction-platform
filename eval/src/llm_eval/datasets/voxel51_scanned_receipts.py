@@ -6,6 +6,55 @@ from typing import Any, Dict, Iterator, List, Optional
 
 DEFAULT_SCHEMA_ID = "sroie_receipt_v1"
 
+# -----------------------------
+# FiftyOne deterministic preload
+# -----------------------------
+
+def _fiftyone_import_probe() -> None:
+    """
+    Runs in a child process. Keep it minimal:
+    - import fiftyone (heavy)
+    - import the specific adapter we rely on
+    """
+    import fiftyone as fo  # noqa: F401
+    from fiftyone.utils.huggingface import load_from_hub  # noqa: F401
+
+
+def ensure_fiftyone_ready(timeout_s: int = 90) -> None:
+    """
+    Deterministically ensure FiftyOne can import.
+
+    Why subprocess?
+    - If import hangs, main process can kill and fail fast.
+    - Avoids wedging the whole eval pipeline.
+
+    Set timeout via env if you want:
+      LLM_EVAL_FIFTYONE_TIMEOUT=120
+    """
+    try:
+        timeout_s = int(os.getenv("LLM_EVAL_FIFTYONE_TIMEOUT", str(timeout_s)))
+    except Exception:
+        timeout_s = 90
+
+    ctx = mp.get_context("spawn")  # safest cross-platform (mac/linux)
+    p = ctx.Process(target=_fiftyone_import_probe, daemon=True)
+    start = time.time()
+    p.start()
+    p.join(timeout_s)
+
+    if p.is_alive():
+        p.kill()
+        p.join(5)
+        raise RuntimeError(
+            f"FiftyOne import did not complete within {timeout_s}s (hung during import). "
+            f"Try increasing LLM_EVAL_FIFTYONE_TIMEOUT or fix FiftyOne install/runtime deps."
+        )
+
+    if p.exitcode != 0:
+        raise RuntimeError(
+            f"FiftyOne import probe failed (exitcode={p.exitcode}). "
+            f"Run `python -c \"import fiftyone\"` to reproduce."
+        )
 
 @dataclass(frozen=True)
 class ExtractionExample:
@@ -92,14 +141,17 @@ def build_expected_from_sample(sample) -> Dict[str, Any]:
 
 
 def iter_voxel51_scanned_receipts(
-    split: str = "train",  # kept for API compatibility; hub dataset isn't split in the same way
+    split: str = "train",
     schema_id: str = DEFAULT_SCHEMA_ID,
     max_samples: Optional[int] = None,
 ) -> Iterator[ExtractionExample]:
     """
     Uses FiftyOne hub dataset, which actually contains OCR + labels.
     """
-    from fiftyone.utils.huggingface import load_from_hub  # local import keeps optional dep
+    # ✅ deterministically verify FiftyOne loads *before* attempting hub download
+    ensure_fiftyone_ready()
+
+    from fiftyone.utils.huggingface import load_from_hub  # local import still fine
 
     ds = load_from_hub("Voxel51/scanned_receipts")
 
@@ -111,7 +163,6 @@ def iter_voxel51_scanned_receipts(
         text = build_ocr_text_from_sample(sample)
         expected = build_expected_from_sample(sample)
 
-        # stable ID: filepath (what you saw in sample print)
         sid = _safe_str(getattr(sample, "filepath", None)) or f"{split}:{i}"
 
         yield ExtractionExample(

@@ -20,7 +20,7 @@ base:
     port: 8000
 
   api:
-    cors_allowed_origins: ["*"]
+    cors_allowed_origins: []
 
   capabilities:
     generate: true
@@ -39,9 +39,11 @@ base:
   redis:
     enabled: false
 
+  # NOTE: Gate is source-of-truth for total budget.
+  # Keep client timeouts aligned with gate timeout (or larger, but llm.py clamps per-backend anyway).
   http:
     llm_service_url: "http://127.0.0.1:9001"
-    client_timeout_seconds: 60
+    client_timeout_seconds: 30
 
   limits:
     rate_limit_rpm:
@@ -50,31 +52,54 @@ base:
       free: 30
     quota_auto_reset_days: 30
 
+    # GenerateGate is the total SLA budget (queue wait + execution).
+    generate_gate:
+      enabled: true
+      max_concurrent: 2
+      max_queue: 32
+      timeout_seconds: 30
+      fail_fast: true
+      count_queued_as_in_flight: false
+
+    # Fast-path overload protection (treat 0 as "disabled check").
+    generate_early_reject:
+      enabled: true
+      reject_queue_depth_gte: 0
+      reject_in_flight_gte: 0
+      routes:
+        - "/v1/generate"
+        - "/v1/generate/batch"
+
   cache:
     api_key_cache_ttl_seconds: 10
 
 
 profiles:
-  # ------------------------------------------------------------
-  # Default dev / host-run profile (no overrides)
-  # ------------------------------------------------------------
+  # Demo B: runs on host; llama-server may run on host as separate service.
   host: {}
 
-  # ------------------------------------------------------------
-  # Dockerized server profile (server runs in docker-compose)
-  # Keep this aligned with compose wiring (postgres/redis hostnames).
-  # ------------------------------------------------------------
+  # Demo A: runs in docker; likely with redis enabled and model required for readiness.
   docker:
+    api:
+      cors_allowed_origins:
+        - "http://localhost:5173"
+        - "http://127.0.0.1:5173"
+        - "http://localhost"
+        - "http://127.0.0.1"
+
     redis:
       enabled: true
+
     model:
       model_load_mode: "eager"
       require_model_ready: true
 
-  # ------------------------------------------------------------
-  # Test profile (merges your old server.test.yaml)
-  # Intended for integration tests / itest profile.
-  # ------------------------------------------------------------
+    # Optional: make early reject more aggressive in docker demos (uncomment if desired)
+    # limits:
+    #   generate_early_reject:
+    #     reject_queue_depth_gte: 24
+    #     reject_in_flight_gte: 6
+
   test:
     service:
       name: "LLM Server (test)"
@@ -83,6 +108,9 @@ profiles:
     server:
       host: "127.0.0.1"
       port: 8000
+
+    api:
+      cors_allowed_origins: []
 
     capabilities:
       generate: true
@@ -103,6 +131,23 @@ profiles:
 
     http:
       client_timeout_seconds: 5
+
+    limits:
+      generate_gate:
+        enabled: true
+        max_concurrent: 16
+        max_queue: 0
+        timeout_seconds: 2
+        fail_fast: true
+        count_queued_as_in_flight: false
+
+      generate_early_reject:
+        enabled: true
+        reject_queue_depth_gte: 0
+        reject_in_flight_gte: 0
+        routes:
+          - "/v1/generate"
+          - "/v1/generate/batch"
 
     cache:
       api_key_cache_ttl_seconds: 1

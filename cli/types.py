@@ -10,7 +10,7 @@ class GlobalConfig:
     repo_root: Path
 
     # core paths
-    env_file: Path
+    env_override_file: Path | None
     compose_yml: Path
     tools_dir: Path
     compose_doctor: Path

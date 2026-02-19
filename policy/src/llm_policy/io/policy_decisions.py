@@ -63,8 +63,33 @@ def _issue_to_dict(x: Any) -> dict[str, Any]:
 def _decision_to_payload(decision: Decision) -> Dict[str, Any]:
     """
     Convert an in-memory Decision into a policy_decision_v2 artifact payload.
+
+    IMPORTANT:
+      - v2 schema has conditional requirements:
+        * generate_clamp_only requires enable_extract == null and thresholds_profile/eval_run_dir == null
+        * extract_only requires generate_* fields == null
+      - Do NOT "compact away" keys that are required to be present with null values.
     """
+    pipeline = str(getattr(decision, "pipeline", "") or "").strip()
+    status = _status_value(getattr(decision, "status", None)).strip() or "unknown"
     ok = bool(decision.ok()) if hasattr(decision, "ok") else False
+
+    # ----------------------------
+    # enable_extract handling (schema-accurate)
+    # ----------------------------
+    enable_extract_val = getattr(decision, "enable_extract", None)
+    if pipeline == "generate_clamp_only":
+        # Schema requires const null for this pipeline.
+        enable_extract: bool | None = None
+    else:
+        # Extract-capable pipelines require a boolean.
+        if enable_extract_val is None:
+            enable_extract = False
+        else:
+            enable_extract = bool(enable_extract_val)
+        # Fail-closed: if not ok, extract must be false (schema enforces this for deny/unknown/contract_errors)
+        if not ok:
+            enable_extract = False
 
     payload: Dict[str, Any] = {
         "schema_version": "policy_decision_v2",
@@ -72,17 +97,15 @@ def _decision_to_payload(decision: Decision) -> Dict[str, Any]:
 
         # Identity
         "policy": str(getattr(decision, "policy", "") or "").strip() or "unknown_policy",
-        "pipeline": str(getattr(decision, "pipeline", "") or "").strip(),
+        "pipeline": pipeline,
 
         # Outcome
-        "status": _status_value(getattr(decision, "status", None)),
+        "status": status,
         "ok": ok,
 
         # Actions / shaping
-        "enable_extract": bool(getattr(decision, "enable_extract", False)) if ok else False,
-        "generate_max_new_tokens_cap": getattr(
-            decision, "generate_max_new_tokens_cap", None
-        ),
+        "enable_extract": enable_extract,
+        "generate_max_new_tokens_cap": getattr(decision, "generate_max_new_tokens_cap", None),
 
         # Contract health
         "contract_errors": int(getattr(decision, "contract_errors", 0) or 0),
@@ -98,19 +121,39 @@ def _decision_to_payload(decision: Decision) -> Dict[str, Any]:
         "model_id": getattr(decision, "model_id", None),
 
         # Human diagnostics
-        "reasons": [
-            _issue_to_dict(x) for x in (getattr(decision, "reasons", None) or [])
-        ],
-        "warnings": [
-            _issue_to_dict(x) for x in (getattr(decision, "warnings", None) or [])
-        ],
+        "reasons": [_issue_to_dict(x) for x in (getattr(decision, "reasons", None) or [])],
+        "warnings": [_issue_to_dict(x) for x in (getattr(decision, "warnings", None) or [])],
 
         # Arbitrary metrics
         "metrics": dict(getattr(decision, "metrics", None) or {}),
     }
 
-    # Compact artifact (nulls removed)
-    payload = {k: v for k, v in payload.items() if v is not None}
+    # ----------------------------
+    # Pipeline-specific nulling to satisfy schema allOf constraints.
+    # Keep required nulls present (do NOT compact them away).
+    # ----------------------------
+    if pipeline == "extract_only":
+        payload["generate_max_new_tokens_cap"] = None
+        payload["generate_thresholds_profile"] = None
+    elif pipeline == "generate_clamp_only":
+        payload["enable_extract"] = None
+        payload["thresholds_profile"] = None
+        payload["eval_run_dir"] = None
+    elif pipeline == "extract_plus_generate_clamp":
+        # no forced nulling; both halves present
+        pass
+
+    # ----------------------------
+    # Compact artifact: remove nulls EXCEPT keys that schema may require to be present with null.
+    # ----------------------------
+    keep_null_keys = {
+        "enable_extract",
+        "thresholds_profile",
+        "eval_run_dir",
+        "generate_thresholds_profile",
+        "generate_max_new_tokens_cap",
+    }
+    payload = {k: v for k, v in payload.items() if (v is not None) or (k in keep_null_keys)}
 
     validate_internal(POLICY_DECISION_SCHEMA, payload)
     return payload

@@ -151,7 +151,8 @@
   "allOf": [
     {
       "if": {
-        "properties": { "pipeline": { "const": "extract_only" } }
+        "properties": { "pipeline": { "const": "extract_only" } },
+        "required": ["pipeline"]
       },
       "then": {
         "required": ["enable_extract", "thresholds_profile", "eval_run_dir"],
@@ -164,21 +165,26 @@
 
     {
       "if": {
-        "properties": { "pipeline": { "const": "generate_clamp_only" } }
+        "properties": { "pipeline": { "const": "generate_clamp_only" } },
+        "required": ["pipeline"]
       },
       "then": {
         "required": ["generate_thresholds_profile"],
         "properties": {
           "enable_extract": { "const": null },
           "thresholds_profile": { "const": null },
-          "eval_run_dir": { "const": null }
+          "thresholds_version": { "const": null },
+          "eval_run_dir": { "const": null },
+          "eval_task": { "const": null },
+          "eval_run_id": { "const": null }
         }
       }
     },
 
     {
       "if": {
-        "properties": { "pipeline": { "const": "extract_plus_generate_clamp" } }
+        "properties": { "pipeline": { "const": "extract_plus_generate_clamp" } },
+        "required": ["pipeline"]
       },
       "then": {
         "required": [
@@ -192,11 +198,26 @@
 
     {
       "if": {
-        "properties": { "status": { "enum": ["deny", "unknown"] } }
+        "properties": { "status": { "enum": ["deny", "unknown"] } },
+        "required": ["status"]
       },
       "then": {
         "properties": {
-          "ok": { "const": false },
+          "ok": { "const": false }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": {
+          "status": { "enum": ["deny", "unknown"] },
+          "pipeline": { "enum": ["extract_only", "extract_plus_generate_clamp"] }
+        },
+        "required": ["status", "pipeline"]
+      },
+      "then": {
+        "properties": {
           "enable_extract": { "const": false }
         }
       }
@@ -204,11 +225,41 @@
 
     {
       "if": {
-        "properties": { "contract_errors": { "minimum": 1 } }
+        "properties": { "contract_errors": { "minimum": 1 } },
+        "required": ["contract_errors"]
       },
       "then": {
         "properties": {
+          "ok": { "const": false }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": {
+          "contract_errors": { "minimum": 1 },
+          "pipeline": { "enum": ["extract_only", "extract_plus_generate_clamp"] }
+        },
+        "required": ["contract_errors", "pipeline"]
+      },
+      "then": {
+        "properties": {
+          "enable_extract": { "const": false }
+        }
+      }
+    },
+
+    {
+      "if": {
+        "properties": {
           "ok": { "const": false },
+          "pipeline": { "enum": ["extract_only", "extract_plus_generate_clamp"] }
+        },
+        "required": ["ok", "pipeline"]
+      },
+      "then": {
+        "properties": {
           "enable_extract": { "const": false }
         }
       }

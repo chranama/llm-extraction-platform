@@ -1,11 +1,10 @@
 # server/src/llm_server/api/extract.py
-# server/src/llm_server/api/extract.py
 from __future__ import annotations
 
 import json
 import re
-import time
 from typing import Any, Optional
+import anyio
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
@@ -39,6 +38,7 @@ from llm_server.core.validation import (
     JSONSchemaValidationError,
     validate_jsonschema,
 )
+from llm_server.core.time import request_latency_ms
 from llm_server.io.policy_decisions import policy_generate_max_new_tokens_cap
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 from llm_server.services.inference import (
@@ -256,7 +256,6 @@ def _failure_stage_for_app_error(e: AppError, *, is_repair: bool) -> str | None:
 
 
 def _set_stage(request: Request, stage: str) -> None:
-    # Used by core/errors.py safety net too
     try:
         request.state.error_stage = stage
     except Exception:
@@ -267,20 +266,7 @@ def _set_stage(request: Request, stage: str) -> None:
 # Policy clamp + truncation detection
 # ------------------------------------------------------------------------------
 
-
 def _apply_generate_cap_for_extract(request: Request, *, model_id: str, requested: int | None) -> tuple[int | None, int | None]:
-    """
-    Apply v2 policy clamp to max_new_tokens used by extract.
-
-    Returns:
-      (effective_max_new_tokens, applied_cap)
-
-    Semantics:
-      - If no cap => (requested, None)
-      - If cap exists:
-          - if requested is None: effective=cap
-          - else effective=min(requested, cap)
-    """
     cap = policy_generate_max_new_tokens_cap(model_id, request=request)
     if cap is None:
         return requested, None
@@ -311,19 +297,6 @@ def _maybe_raise_truncation_error(
     applied_cap: int | None,
     stage: str,
 ) -> None:
-    """
-    Phase 1: deterministic heuristic for "possible truncation".
-
-    Goal:
-      - When policy clamp reduces max_new_tokens, extract may fail because output is cut.
-      - We want a deterministic, classifiable error for eval/policy.
-
-    When to raise (conservative but deterministic):
-      - We only raise if:
-          (a) an applied_cap exists (policy clamp active), AND
-          (b) effective_max_new_tokens is set and is "smallish" relative to typical JSON outputs, AND
-          (c) the output looks cut off: missing end delimiter OR unmatched braces.
-    """
     if not applied_cap:
         return
     if effective_max_new_tokens is None:
@@ -333,12 +306,8 @@ def _maybe_raise_truncation_error(
     if not s:
         return
 
-    # If the output format is being followed but end delimiter is missing -> strong truncation signal.
     has_begin = _JSON_BEGIN in s
     has_end = _JSON_END in s
-
-    # Unmatched braces is a decent deterministic proxy for "cut mid-object".
-    # (Not perfect, but stable and cheap.)
     brace_delta = s.count("{") - s.count("}")
 
     looks_truncated = False
@@ -400,14 +369,9 @@ async def extract(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
-    """
-    Key principle: every failure should be classifiable.
-    If we hit an unexpected exception, we wrap it as AppError with `extra.stage`.
-    """
     stage = "start"
     _set_stage(request, stage)
 
-    start = time.time()
     request_id = getattr(request.state, "request_id", None)
 
     try:
@@ -442,9 +406,6 @@ async def extract(
                 extra={"schema_id": e.schema_id, "stage": "load_schema"},
             ) from e
 
-        # -------------------------
-        # Apply policy clamp for extract (generate shaping)
-        # -------------------------
         stage = "apply_policy_clamp"
         _set_stage(request, stage)
         effective_max_new_tokens, applied_cap = _apply_generate_cap_for_extract(
@@ -475,9 +436,6 @@ async def extract(
         _set_stage(request, stage)
         redis = get_redis_from_request(request)
 
-        # -------------------------
-        # DB session + cache read
-        # -------------------------
         stage = "db_session_open"
         _set_stage(request, stage)
 
@@ -515,7 +473,7 @@ async def extract(
                     ).inc()
 
                     request.state.cached = True
-                    latency_ms = (time.time() - start) * 1000
+                    latency = request_latency_ms(request)
 
                     stage = "log_cached"
                     _set_stage(request, stage)
@@ -535,7 +493,7 @@ async def extract(
                         },
                         prompt=body.text,
                         output=json.dumps(data, ensure_ascii=False),
-                        latency_ms=latency_ms,
+                        latency_ms=latency,
                         prompt_tokens=None,
                         completion_tokens=None,
                         commit=True,
@@ -549,23 +507,21 @@ async def extract(
                         repair_attempted=False,
                     )
 
-            # -------------
-            # Run model
-            # -------------
             stage = "build_prompt"
             _set_stage(request, stage)
             prompt = _build_extraction_prompt(body.schema_id, schema, body.text)
 
             stage = "model_generate"
             _set_stage(request, stage)
-            result = model.generate(
-                prompt=prompt,
-                max_new_tokens=effective_max_new_tokens,
-                temperature=body.temperature,
+            result = await anyio.to_thread.run_sync(
+                lambda: model.generate(
+                    prompt=prompt,
+                    max_new_tokens=effective_max_new_tokens,
+                    temperature=body.temperature,
+                )
             )
             output = result if isinstance(result, str) else str(result)
 
-            # Phase 1: deterministic truncation signal (only when clamp active)
             stage = "truncation_check"
             _set_stage(request, stage)
             _maybe_raise_truncation_error(
@@ -587,7 +543,6 @@ async def extract(
                     EXTRACTION_VALIDATION_FAILURES.labels(schema_id=body.schema_id, model_id=model_id, stage=st).inc()
 
                 if not body.repair:
-                    # Preserve stage signal for eval/policy
                     if isinstance(e.extra, dict):
                         e.extra.setdefault("stage", st or "validate_output")
                     else:
@@ -614,14 +569,15 @@ async def extract(
 
                 stage = "repair_generate"
                 _set_stage(request, stage)
-                repair_result = model.generate(
-                    prompt=repair_prompt,
-                    max_new_tokens=effective_max_new_tokens,
-                    temperature=0.0,
+                repair_result = await anyio.to_thread.run_sync(
+                    lambda: model.generate(
+                        prompt=repair_prompt,
+                        max_new_tokens=effective_max_new_tokens,
+                        temperature=0.0,
+                    )
                 )
                 repaired = repair_result if isinstance(repair_result, str) else str(repair_result)
 
-                # Phase 1: deterministic truncation signal on repair too
                 stage = "repair_truncation_check"
                 _set_stage(request, stage)
                 _maybe_raise_truncation_error(
@@ -650,12 +606,9 @@ async def extract(
                         e2.extra = {"stage": st2 or "repair_validate"}  # type: ignore[assignment]
                     raise
 
-            latency_ms = (time.time() - start) * 1000
             request.state.cached = False
+            latency = request_latency_ms(request)
 
-            # -------------------------
-            # Cache write + log
-            # -------------------------
             stage = "cache_write"
             _set_stage(request, stage)
             out_json = json.dumps(data, ensure_ascii=False)
@@ -685,7 +638,7 @@ async def extract(
                 },
                 prompt=body.text,
                 output=out_json,
-                latency_ms=latency_ms,
+                latency_ms=latency,
                 prompt_tokens=None,
                 completion_tokens=None,
                 commit=True,
@@ -702,8 +655,6 @@ async def extract(
     except AppError:
         raise
     except Exception as e:
-        # Wrap unknowns so eval can classify them deterministically.
-        # Do NOT leak details; preserve only type + stage.
         raise AppError(
             code="internal_error",
             message="An unexpected error occurred",

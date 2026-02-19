@@ -134,6 +134,59 @@ export interface AdminLoadModelResponse {
   models: string[];
 }
 
+// NEW: policy + admin actions
+export type AdminPolicyIssue = {
+  code?: string;
+  message?: string;
+  context?: Record<string, any>;
+};
+
+export type AdminPolicySnapshot = {
+  schema_version?: string;
+  generated_at?: string;
+
+  policy?: string;
+  pipeline?: string;
+
+  status?: string;
+  ok?: boolean;
+
+  enable_extract?: boolean;
+  generate_max_new_tokens_cap?: number | null;
+
+  contract_errors?: number;
+  contract_warnings?: number;
+
+  thresholds_profile?: string | null;
+  thresholds_version?: string | null;
+
+  generate_thresholds_profile?: string | null;
+
+  eval_run_dir?: string | null;
+  eval_task?: string | null;
+  eval_run_id?: string | null;
+
+  model_id?: string | null;
+
+  reasons?: AdminPolicyIssue[];
+  warnings?: AdminPolicyIssue[];
+
+  metrics?: Record<string, any>;
+
+  // allow server to add fields without breaking UI
+  [k: string]: any;
+};
+
+export type AdminWriteGenerateSloParams = {
+  window_seconds: number;
+  route?: string;
+  model_id?: string;
+  out_path?: string;
+};
+
+export type AdminWriteGenerateSloResponse = Record<string, any>;
+export type AdminReloadResponse = Record<string, any>;
+
 // -----------------------------
 // Error type
 // -----------------------------
@@ -153,16 +206,10 @@ export class ApiError extends Error {
   private static makeMessage(status: number, bodyText: string, bodyJson: any | null) {
     if (bodyJson && typeof bodyJson === "object") {
       const errObj =
-        bodyJson.error && typeof bodyJson.error === "object"
-          ? bodyJson.error
-          : bodyJson;
+        bodyJson.error && typeof bodyJson.error === "object" ? bodyJson.error : bodyJson;
 
       const code =
-        errObj.code != null
-          ? String(errObj.code)
-          : bodyJson.code != null
-          ? String(bodyJson.code)
-          : null;
+        errObj.code != null ? String(errObj.code) : bodyJson.code != null ? String(bodyJson.code) : null;
 
       const msg =
         errObj.message != null
@@ -187,22 +234,37 @@ export class ApiError extends Error {
   }
 }
 
+// -----------------------------
+// Base URL handling
+// -----------------------------
+function normalizeBase(raw: string): string {
+  const s = raw.trim();
+  if (!s) return s;
+  // keep explicit "/api" for anyone still using a reverse-proxy prefix
+  if (s === "/api") return "/api";
+  // remove trailing slash only
+  return s.endsWith("/") ? s.slice(0, -1) : s;
+}
+
 /**
  * Runtime-configurable API base.
+ *
+ * IMPORTANT:
+ * - Do NOT auto-append "/api". Your backend serves "/v1/*".
+ * - If you later introduce a reverse proxy at "/api", set VITE_API_BASE_URL="/api".
  */
-let API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "/api";
+let API_BASE: string = normalizeBase(
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ""
+) || ""; // empty => same-origin
 
 export function setApiBaseUrl(base: string | undefined | null): void {
-  const s = (base ?? "").trim();
+  const s = normalizeBase(base ?? "");
   if (!s) return;
+  API_BASE = s;
+}
 
-  if (s === "/api") {
-    API_BASE = "/api";
-    return;
-  }
-
-  const noTrail = s.endsWith("/") ? s.slice(0, -1) : s;
-  API_BASE = noTrail.endsWith("/api") ? noTrail : `${noTrail}/api`;
+export function getApiBaseUrl(): string {
+  return API_BASE || "(same-origin)";
 }
 
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
@@ -216,8 +278,15 @@ function authHeaders(): HeadersInit {
   return API_KEY ? { "X-API-Key": API_KEY } : {};
 }
 
+function joinUrl(base: string, path: string): string {
+  // base may be "" (same-origin). path always starts with "/".
+  if (!base) return path;
+  if (base === "/api") return `${base}${path}`; // keep proxy prefix behavior
+  return `${base}${path}`;
+}
+
 async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(joinUrl(API_BASE, path), init);
   const bodyText = await res.text();
 
   const preview = bodyText.slice(0, 4000);
@@ -285,10 +354,6 @@ export async function getSchema(schemaId: string): Promise<JsonSchema> {
   });
 }
 
-export function getApiBaseUrl(): string {
-  return API_BASE;
-}
-
 export async function listModels(): Promise<ModelsResponseBody> {
   return requestJson<ModelsResponseBody>("/v1/models", {
     method: "GET",
@@ -346,5 +411,44 @@ export async function adminLoadModel(body: AdminLoadModelRequest): Promise<Admin
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body ?? {}),
+  });
+}
+
+// -----------------------------
+// Policy + demo admin actions
+// -----------------------------
+export async function adminGetPolicy(): Promise<AdminPolicySnapshot> {
+  return requestJson<AdminPolicySnapshot>("/v1/admin/policy", {
+    method: "GET",
+    headers: { ...authHeaders() },
+  });
+}
+
+export async function adminReloadPolicy(): Promise<AdminReloadResponse> {
+  return requestJson<AdminReloadResponse>("/v1/admin/policy/reload", {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+}
+
+export async function adminReloadRuntime(): Promise<AdminReloadResponse> {
+  return requestJson<AdminReloadResponse>("/v1/admin/reload", {
+    method: "POST",
+    headers: { ...authHeaders() },
+  });
+}
+
+export async function adminWriteGenerateSlo(
+  params: AdminWriteGenerateSloParams
+): Promise<AdminWriteGenerateSloResponse> {
+  const qs = new URLSearchParams();
+  qs.set("window_seconds", String(params.window_seconds));
+  if (params.route) qs.set("route", params.route);
+  if (params.model_id) qs.set("model_id", params.model_id);
+  if (params.out_path) qs.set("out_path", params.out_path);
+
+  return requestJson<AdminWriteGenerateSloResponse>(`/v1/admin/slo/generate/write?${qs.toString()}`, {
+    method: "POST",
+    headers: { ...authHeaders() },
   });
 }

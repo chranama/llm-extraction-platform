@@ -1,0 +1,24 @@
+{
+  "api": {
+    "base_url": "http://localhost:8000",
+    "timeout_ms": 60000
+  },
+
+  "features": {
+    "schema_discovery": true,
+    "schema_inspector": true,
+    "json_diff": true,
+    "curl_generator": true
+  },
+
+  "defaults": {
+    "mode": "extract",
+    "schema_id": "invoice_v1",
+    "model_id": "meta-llama/Llama-3.2-1B-Instruct"
+  },
+
+  "ui": {
+    "max_payload_chars": 20000,
+    "pretty_print_json": true
+  }
+}

@@ -70,7 +70,6 @@ def _select_profile_yaml(raw: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     if "profiles" not in raw and "base" not in raw:
-        # legacy shape
         return raw
 
     base = raw.get("base") or {}
@@ -80,9 +79,7 @@ def _select_profile_yaml(raw: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(profiles, dict):
         profiles = {}
 
-    profile = (os.getenv("APP_PROFILE") or "").strip()
-    if not profile:
-        profile = "host"  # sensible default for uv-run on your machine
+    profile = (os.getenv("APP_PROFILE") or "").strip() or "host"
 
     overlay = profiles.get(profile) or {}
     if not isinstance(overlay, dict):
@@ -180,6 +177,10 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     if (v := g("model", "token_counting")) is not None:
         out["token_counting"] = v
 
+    # NEW: modelz semantics
+    if (v := g("model", "model_readiness_mode")) is not None:
+        out["model_readiness_mode"] = v
+
     # redis
     if (v := g("redis", "enabled")) is not None:
         out["redis_enabled"] = v
@@ -192,7 +193,15 @@ def _load_app_yaml(path: str) -> Dict[str, Any]:
     if (v := g("http", "client_timeout_seconds")) is not None:
         out["http_client_timeout"] = v
 
-    # limits
+    # limits (phase 0 knobs)
+    if (v := g("limits", "max_concurrent_requests")) is not None:
+        out["max_concurrent_requests"] = v
+    if (v := g("limits", "mem_guard_enabled")) is not None:
+        out["mem_guard_enabled"] = v
+    if (v := g("limits", "mem_guard_rss_pct")) is not None:
+        out["mem_guard_rss_pct"] = v
+
+    # legacy limits
     if (v := g("limits", "rate_limit_rpm", "admin")) is not None:
         out["rate_limit_rpm_admin"] = v
     if (v := g("limits", "rate_limit_rpm", "default")) is not None:
@@ -234,6 +243,14 @@ def _sync_runtime_env(s: "Settings") -> None:
     os.environ.setdefault("REQUIRE_MODEL_READY", _truthy(s.require_model_ready))
     os.environ.setdefault("TOKEN_COUNTING", _truthy(s.token_counting))
 
+    # NEW: modelz semantics
+    os.environ.setdefault("MODEL_READINESS_MODE", str(s.model_readiness_mode))
+
+    # Concurrency / soft guard knobs (best-effort; do not fight explicit env)
+    os.environ.setdefault("MAX_CONCURRENT_REQUESTS", str(int(s.max_concurrent_requests)))
+    os.environ.setdefault("MEM_GUARD_ENABLED", _truthy(s.mem_guard_enabled))
+    os.environ.setdefault("MEM_GUARD_RSS_PCT", str(float(s.mem_guard_rss_pct)))
+
     # Explicit “which DB world am I in?” signal (host vs docker vs itest)
     os.environ.setdefault("DB_INSTANCE", str(s.db_instance))
 
@@ -262,7 +279,6 @@ class Settings(BaseSettings):
     )
 
     # A human-readable tag for “which database instance am I pointed at?”
-    # e.g. host|docker|itest (owned by compose-defaults.yaml or user env)
     db_instance: str = Field(default="unknown", validation_alias="DB_INSTANCE")
 
     # --- CORS ---
@@ -276,7 +292,6 @@ class Settings(BaseSettings):
     model_id: str = Field(default="mistralai/Mistral-7B-v0.1")
     allowed_models: List[str] = Field(default_factory=list)
 
-    # IMPORTANT: env var in compose is MODELS_YAML, so alias it.
     models_config_path: Optional[str] = Field(
         default="config/models.generate-only.yaml",
         validation_alias="MODELS_YAML",
@@ -290,6 +305,15 @@ class Settings(BaseSettings):
     require_model_ready: bool = Field(default=False, validation_alias="REQUIRE_MODEL_READY")
     token_counting: bool = Field(default=True, validation_alias="TOKEN_COUNTING")
 
+    # NEW: modelz semantics (especially for external backends like llamacpp/remote)
+    # - off: /modelz always succeeds (dev convenience)
+    # - probe: backend /health (fast)
+    # - generate: backend can generate output (tiny completion)
+    model_readiness_mode: Literal["off", "probe", "generate"] = Field(
+        default="generate",
+        validation_alias="MODEL_READINESS_MODE",
+    )
+
     # --- Redis ---
     redis_url: Optional[str] = Field(default=None, validation_alias="REDIS_URL")
     redis_enabled: bool = Field(default=False, validation_alias="REDIS_ENABLED")
@@ -297,6 +321,12 @@ class Settings(BaseSettings):
     # --- LLM service ---
     llm_service_url: str = Field(default="http://127.0.0.1:9001")
     http_client_timeout: int = Field(default=60)
+
+    # --- Phase 0 guardrails ---
+    max_concurrent_requests: int = Field(default=2, validation_alias="MAX_CONCURRENT_REQUESTS")
+    mem_guard_enabled: bool = Field(default=False, validation_alias="MEM_GUARD_ENABLED")
+    mem_guard_rss_pct: float = Field(default=0.85, validation_alias="MEM_GUARD_RSS_PCT")
+    container_memory_bytes: Optional[int] = Field(default=None, validation_alias="CONTAINER_MEMORY_BYTES")
 
     # --- rate limits / quotas ---
     rate_limit_rpm_admin: int = 0
@@ -311,10 +341,46 @@ class Settings(BaseSettings):
     def all_model_ids(self) -> List[str]:
         return self.allowed_models or [self.model_id]
 
+    @field_validator("max_concurrent_requests", mode="after")
+    @classmethod
+    def _validate_max_concurrency(cls, v: int) -> int:
+        try:
+            v = int(v)
+        except Exception:
+            return 2
+        if v < 1:
+            return 1
+        if v > 64:
+            return 64
+        return v
+
+    @field_validator("mem_guard_rss_pct", mode="after")
+    @classmethod
+    def _validate_mem_guard_pct(cls, v: float) -> float:
+        try:
+            f = float(v)
+        except Exception:
+            return 0.85
+        if f < 0.10:
+            return 0.10
+        if f > 0.99:
+            return 0.99
+        return f
+
+    @field_validator("container_memory_bytes", mode="after")
+    @classmethod
+    def _validate_container_mem_bytes(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return None
+        try:
+            n = int(v)
+            return n if n > 0 else None
+        except Exception:
+            return None
+
     @field_validator("require_model_ready", mode="after")
     @classmethod
     def derive_require_model_ready(cls, v: bool, info):
-        # If explicitly true, keep true. Otherwise, default true in prod.
         if v:
             return True
         env = str(info.data.get("env", "dev")).strip().lower()
@@ -361,7 +427,6 @@ class Settings(BaseSettings):
             path = os.getenv("APP_CONFIG_PATH", "config/server.yaml")
             return _load_app_yaml(path)
 
-        # Order: init -> yaml -> dotenv -> env -> secrets
         return (init_settings, yaml_settings, dotenv_settings, env_settings, file_secret_settings)
 
 

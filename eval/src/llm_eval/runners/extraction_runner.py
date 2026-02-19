@@ -8,6 +8,7 @@ from llm_eval.client.http_client import ExtractErr, ExtractOk
 from llm_eval.datasets.voxel51_scanned_receipts import (
     DEFAULT_SCHEMA_ID,
     iter_voxel51_scanned_receipts,
+    ensure_fiftyone_ready,  # ✅ from your A change
 )
 from llm_eval.metrics.extraction_scoring import (
     ExtractAttempt,
@@ -58,9 +59,14 @@ class ExtractionEvalRunner(BaseEvalRunner):
         results: List[Dict[str, Any]] = []
 
         # --- dataset seam (patchable in tests) ---
-        # Stable key: "voxel51_scanned_receipts"
+        # Stable key: "iter_voxel51_scanned_receipts"
         iter_fn = self.get_dataset_callable("iter_voxel51_scanned_receipts", iter_voxel51_scanned_receipts)
         iter_fn = cast(Any, iter_fn)
+
+        # ✅ Deterministic preflight: only do the heavy FiftyOne preload
+        # when we are actually using the real Voxel51 iterator (not a test override).
+        if iter_fn is iter_voxel51_scanned_receipts:
+            ensure_fiftyone_ready()
 
         for ex in iter_fn(
             split=self.split,
@@ -77,7 +83,6 @@ class ExtractionEvalRunner(BaseEvalRunner):
                 repair=True,
             )
 
-            # Protocol guarantees ExtractOk | ExtractErr with latency_ms
             if isinstance(resp, ExtractOk):
                 attempt = ExtractAttempt(
                     doc_id=ex.id,

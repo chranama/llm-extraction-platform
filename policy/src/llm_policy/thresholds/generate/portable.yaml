@@ -18,5 +18,5 @@ error_rate:
 
 latency_p95_ms:
   steps:
-    900: 128
     600: 256
+    900: 128

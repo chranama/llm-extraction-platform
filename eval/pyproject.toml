@@ -23,19 +23,15 @@ dependencies = [
   "python-dotenv>=1.0.0",
   "pydantic-settings>=2.0",
   "llm-contracts",
+
+  # ✅ Always available (used by some dataset adapters / viz workflows)
+  "fiftyone>=1.0.0",
 ]
 
 [project.scripts]
 eval = "llm_eval.cli:main"
 
 [project.optional-dependencies]
-# Heavier dataset deps (only needed for certain dataset adapters)
-datasets = [
-  # Needed for Voxel51/scanned_receipts loader:
-  # `from fiftyone.utils.huggingface import load_from_hub`
-  "fiftyone>=1.0.0",
-]
-
 test = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
@@ -55,7 +51,7 @@ viz = [
 
 # Convenience: install everything commonly used in this module
 all = [
-  "llm_eval[datasets,test,lint,viz]",
+  "llm_eval[test,lint,viz]",
 ]
 
 [build-system]

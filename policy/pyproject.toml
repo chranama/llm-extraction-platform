@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-llm-policy = "llm_policy.cli:main"
+policy = "llm_policy.cli:main"
 
 [project.optional-dependencies]
 test = [

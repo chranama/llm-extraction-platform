@@ -1,22 +1,38 @@
 # deploy/docker/Dockerfile.server
 FROM python:3.12-slim
 
+# ---- system deps ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl wget \
+    build-essential curl wget git ca-certificates \
+    cmake pkg-config \
+    libopenblas-dev \
+    tini \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV APP_ROOT=/app
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Optional: if you use HF anywhere (even for tokenizers/config), keep cache deterministic
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/hub
 
 # ---- copy & install shared contracts first ----
 COPY contracts/ /app/contracts/
 RUN pip install --no-cache-dir /app/contracts
 
-# ---- copy & install server as a package (keep its directory layout) ----
+# ---- copy & install server as a package ----
 COPY server/pyproject.toml /app/server/pyproject.toml
 COPY server/src /app/server/src
+
+# Install server deps
 RUN pip install --no-cache-dir /app/server
+
+# ---- llama.cpp python binding ----
+# If wheels exist, this is fast. If not, it will compile (needs cmake + openblas).
+# You can pin versions once stable.
+RUN pip install --no-cache-dir "llama-cpp-python>=0.2.90"
 
 # migrations
 COPY server/alembic.ini /app/server/alembic.ini
@@ -27,5 +43,8 @@ COPY config /app/config
 COPY schemas /app/schemas
 
 EXPOSE 8000
+
+# Use tini so SIGTERM/SIGINT are handled properly and logs flush more reliably.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
 CMD ["python", "-m", "uvicorn", "llm_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eval_result_row_v1",
+  "title": "EvalResultRowV1",
+  "type": "object",
+  "additionalProperties": true,
+
+  "required": ["schema_version", "task", "run_id", "ok"],
+
+  "properties": {
+    "schema_version": { "const": "eval_result_row_v1" },
+
+    "task": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+
+    "example_id": { "type": ["string", "null"], "minLength": 1 },
+    "schema_id": { "type": ["string", "null"], "minLength": 1 },
+    "model_id": { "type": ["string", "null"], "minLength": 1 },
+
+    "ok": { "type": "boolean" },
+
+    "error": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "stage": { "type": ["string", "null"] },
+        "context": { "type": ["object", "null"], "additionalProperties": true }
+      }
+    },
+
+    "latency_ms": { "type": ["number", "null"], "minimum": 0 },
+
+    "tokens": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt": { "type": ["integer", "null"], "minimum": 0 },
+        "completion": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+
+    "raw": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Optional raw per-example payload for debugging/forward-compat."
+    }
+  }
+}

@@ -67,6 +67,7 @@ slo_out/
 eval_out/
 observability_out/
 pipeline_runs/
+traffic_out/
 
 # Allow keeping an empty directory via .gitkeep if you want
 !.gitkeep

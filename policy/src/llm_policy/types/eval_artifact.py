@@ -12,7 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 # -------------------------
 
 
-IssueSeverity = Literal["info", "warn", "error"]
+from enum import Enum
+
+class IssueSeverity(str, Enum):
+    error = "error"
+    warn = "warn"
+    info = "info"
 
 
 class ContractIssue(BaseModel):

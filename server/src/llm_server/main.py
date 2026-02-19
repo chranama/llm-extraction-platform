@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import time
 import orjson
 from contextlib import asynccontextmanager
@@ -20,19 +21,34 @@ from llm_server.core.redis import init_redis, close_redis
 from llm_server.services.llm import build_llm_from_settings
 from llm_server.io.policy_decisions import load_policy_decision_from_env
 
+# ✅ NEW: early reject middleware
+from llm_server.services.limits.early_reject_middleware import EarlyRejectGenerateMiddleware
+
+_REQUEST_ID_HEADER = "X-Request-ID"
+
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """
     Sets minimal request context early so exception handlers can log failures with:
-      - latency_ms (start_ts)
+      - latency_ms (request.state.start_ts baseline)
       - route/model_id/cached fallbacks
+      - request_id (prefer client-provided X-Request-ID; otherwise generate)
 
     IMPORTANT: must be added LAST so it runs FIRST (outermost middleware).
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Canonical request start (wall clock) for request-lifecycle latency semantics.
         request.state.start_ts = time.time()
 
+        # Prefer client-provided request id; headers are case-insensitive in Starlette.
+        rid = request.headers.get(_REQUEST_ID_HEADER) or request.headers.get("x-request-id")
+        if not (isinstance(rid, str) and rid.strip()):
+            # Avoid uuid dependency; stable 32-hex token (similar shape to uuid4().hex).
+            rid = secrets.token_hex(16)
+        request.state.request_id = rid
+
+        # Best-effort defaults (handlers may overwrite)
         if not isinstance(getattr(request.state, "route", None), str):
             request.state.route = request.url.path
         if not isinstance(getattr(request.state, "model_id", None), str):
@@ -40,7 +56,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if not isinstance(getattr(request.state, "cached", None), bool):
             request.state.cached = False
 
-        return await call_next(request)
+        resp = await call_next(request)
+
+        # Canonical response header casing
+        try:
+            if _REQUEST_ID_HEADER not in resp.headers:
+                resp.headers[_REQUEST_ID_HEADER] = rid
+        except Exception:
+            pass
+
+        return resp
 
 
 def _effective_model_load_mode(settings: Any) -> str:
@@ -74,6 +99,26 @@ def _warmup_max_new_tokens() -> int:
         return 8
 
 
+def _cors_origins(settings: Any) -> list[str]:
+    raw = getattr(settings, "cors_allowed_origins", None)
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+
+    out: list[str] = []
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = x.strip()
+        if not s:
+            continue
+        out.append(s)
+    return out
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import logging
@@ -81,9 +126,6 @@ async def lifespan(app: FastAPI):
     s = getattr(app.state, "settings", None) or get_settings()
     app.state.settings = s
 
-    # --------------------
-    # Policy snapshot startup
-    # --------------------
     try:
         snap = load_policy_decision_from_env()
         app.state.policy_snapshot = snap
@@ -112,23 +154,15 @@ async def lifespan(app: FastAPI):
         mode,
     )
 
-    logging.getLogger("uvicorn.error").info(
-        "CORS allow_origins=%s",
-        getattr(s, "cors_allowed_origins", ["*"]),
-    )
+    origins = _cors_origins(s)
+    logging.getLogger("uvicorn.error").info("CORS enabled=%s allow_origins=%s", bool(origins), origins)
 
-    # --------------------
-    # Redis startup
-    # --------------------
     try:
         app.state.redis = await init_redis()
     except Exception as e:
         logging.getLogger("uvicorn.error").exception("Redis init failed: %s", e)
         app.state.redis = None
 
-    # --------------------
-    # LLM startup
-    # --------------------
     app.state.llm = None
     app.state.model_load_mode = mode
     app.state.model_loaded = False
@@ -148,21 +182,14 @@ async def lifespan(app: FastAPI):
                     app.state.model_loaded = True
 
                     if _model_warmup_enabled(s, mode):
-                        try:
-                            prompt = _warmup_prompt()
-                            max_new = _warmup_max_new_tokens()
+                        prompt = _warmup_prompt()
+                        max_new = _warmup_max_new_tokens()
 
-                            warm_backend = llm
-                            if hasattr(llm, "default") and callable(getattr(llm, "default")):
-                                warm_backend = llm.default()
+                        warm_backend = llm
+                        if hasattr(llm, "default") and callable(getattr(llm, "default")):
+                            warm_backend = llm.default()
 
-                            _ = warm_backend.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
-                        except Exception as e:
-                            app.state.model_loaded = False
-                            app.state.model_error = f"warmup_failed: {repr(e)}"
-                            logging.getLogger("uvicorn.error").exception("Model warmup failed: %s", e)
-                            logging.getLogger("uvicorn.error").error("Aborting startup: warmup failed in eager mode")
-                            raise
+                        _ = warm_backend.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
 
             else:
                 app.state.model_loaded = False
@@ -198,19 +225,27 @@ def create_app() -> FastAPI:
 
     app.state.settings = s
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=s.cors_allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    origins = _cors_origins(s)
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=[_REQUEST_ID_HEADER],  # canonical casing for browsers
+            max_age=600,
+        )
 
     logging_config.setup(app)
     limits.setup(app)
     metrics.setup(app)
     errors.setup(app)
 
+    # ✅ early reject should run early, but keep RequestContext outermost.
+    app.add_middleware(EarlyRejectGenerateMiddleware)
+
+    # IMPORTANT: add LAST so it runs FIRST (outermost middleware).
     app.add_middleware(RequestContextMiddleware)
 
     from llm_server.api import health, generate, models, admin, extract

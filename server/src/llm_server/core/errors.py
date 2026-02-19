@@ -1,7 +1,7 @@
+# server/src/llm_server/core/errors.py
 from __future__ import annotations
 
 import logging
-import time
 from typing import Any, Dict, Optional, Union
 
 from fastapi import FastAPI, Request
@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
+from llm_server.core.time import request_latency_ms
 from llm_server.services.inference import write_failure_log
 
 logger = logging.getLogger("llm.errors")
@@ -26,9 +27,6 @@ class AppError(FastAPIHTTPException):
 
     Always serializes into:
       { code, message, extra?, request_id? }
-
-    By subclassing HTTPException, FastAPI always renders it,
-    even in tests without custom exception handlers.
     """
 
     def __init__(
@@ -55,27 +53,11 @@ class AppError(FastAPIHTTPException):
 # ---------------------------------------------------------------------------
 
 def _request_id(request: Request) -> Optional[str]:
-    return getattr(getattr(request, "state", None), "request_id", None)
-
-
-def _best_effort_latency_ms(request: Request) -> Optional[float]:
-    """
-    Compute latency for failures using request.state.start_ts
-    (expected to be set by RequestContextMiddleware).
-    """
-    start_ts = getattr(getattr(request, "state", None), "start_ts", None)
-    try:
-        if isinstance(start_ts, (int, float)) and start_ts > 0:
-            return max(0.0, (time.time() - float(start_ts)) * 1000.0)
-    except Exception:
-        pass
-    return None
+    rid = getattr(getattr(request, "state", None), "request_id", None)
+    return rid if isinstance(rid, str) and rid.strip() else None
 
 
 def _best_route_label(request: Request) -> str:
-    """
-    Prefer request.state.route if handlers set it; otherwise fall back to URL path.
-    """
     route = getattr(getattr(request, "state", None), "route", None)
     if isinstance(route, str) and route.strip():
         return route.strip()
@@ -102,11 +84,6 @@ def _best_client_host(request: Request) -> Optional[str]:
 
 
 def _best_api_key_value(request: Request) -> str:
-    """
-    Best-effort API key attribution.
-
-    get_api_key() sets request.state.api_key; failures before auth will be empty.
-    """
     v = getattr(getattr(request, "state", None), "api_key", None)
     if isinstance(v, str) and v.strip():
         return v.strip()
@@ -124,13 +101,6 @@ async def _best_effort_log_failure(
     error_code: str,
     error_stage: Optional[str],
 ) -> None:
-    """
-    Insert an InferenceLog row for failures.
-
-    HARD RULES:
-      - MUST NOT raise
-      - MUST NOT delay error response
-    """
     try:
         SessionLocal = db_session.get_sessionmaker()
         async with SessionLocal() as session:
@@ -141,7 +111,7 @@ async def _best_effort_log_failure(
                 route=_best_route_label(request),
                 client_host=_best_client_host(request),
                 model_id=_best_model_id(request),
-                latency_ms=_best_effort_latency_ms(request),
+                latency_ms=request_latency_ms(request),
                 status_code=int(status_code),
                 error_code=str(error_code),
                 error_stage=error_stage.strip() if isinstance(error_stage, str) and error_stage.strip() else None,
@@ -149,7 +119,6 @@ async def _best_effort_log_failure(
                 commit=True,
             )
     except Exception:
-        # Absolute last-ditch safety: swallow everything
         return
 
 
@@ -165,17 +134,6 @@ def _to_json_error(
     message: str,
     extra: Optional[Dict[str, Any]] = None,
 ) -> JSONResponse:
-    """
-    Canonical error envelope.
-
-    Shape:
-      {
-        code: str,
-        message: str,
-        extra?: dict,
-        request_id?: str
-      }
-    """
     payload: Dict[str, Any] = {"code": code, "message": message}
 
     if isinstance(extra, dict) and extra:
@@ -187,6 +145,7 @@ def _to_json_error(
 
     resp = JSONResponse(payload, status_code=status_code)
     if rid:
+        # Canonical casing: X-Request-ID
         resp.headers["X-Request-ID"] = rid
     return resp
 
@@ -196,14 +155,6 @@ def _to_json_error(
 # ---------------------------------------------------------------------------
 
 async def handle_fastapi_http_exception(request: Request, exc: FastAPIHTTPException):
-    """
-    Handles fastapi.HTTPException.
-
-    detail may be:
-      - str
-      - dict
-      - canonical {code, message, extra}
-    """
     detail: Union[str, Dict[str, Any]] = exc.detail
 
     if isinstance(detail, dict):
@@ -245,9 +196,6 @@ async def handle_fastapi_http_exception(request: Request, exc: FastAPIHTTPExcept
 
 
 async def handle_starlette_http_exception(request: Request, exc: StarletteHTTPException):
-    """
-    Handles Starlette router errors (e.g. 404).
-    """
     if exc.status_code == 404:
         await _best_effort_log_failure(
             request,
@@ -278,9 +226,6 @@ async def handle_starlette_http_exception(request: Request, exc: StarletteHTTPEx
 
 
 async def handle_validation_error(request: Request, exc: RequestValidationError):
-    """
-    Handles Pydantic / request validation errors (422).
-    """
     logger.debug("validation_error: %s", exc.errors())
 
     await _best_effort_log_failure(
@@ -303,19 +248,11 @@ async def handle_validation_error(request: Request, exc: RequestValidationError)
 
 
 async def handle_app_error(request: Request, exc: AppError):
-    """
-    Handles explicit application / business logic errors.
-    """
     logger.info("app_error code=%s msg=%s", exc.code, exc.message)
 
     extra = exc.extra if isinstance(exc.extra, dict) else None
 
-    # Stage resolution priority:
-    #   1) extra.stage
-    #   2) request.state.error_stage
-    #   3) "app_error"
     stage: Optional[str] = None
-
     if isinstance(extra, dict):
         st = extra.get("stage")
         if isinstance(st, str) and st.strip():
@@ -346,11 +283,6 @@ async def handle_app_error(request: Request, exc: AppError):
 
 
 async def handle_unhandled_exception(request: Request, exc: Exception):
-    """
-    Final safety net.
-
-    Never leak internals, but DO emit stable telemetry signals.
-    """
     logger.exception("unhandled_exception path=%s", request.url.path, exc_info=exc)
 
     safe_extra: Dict[str, Any] = {
@@ -380,15 +312,7 @@ async def handle_unhandled_exception(request: Request, exc: Exception):
     )
 
 
-# ---------------------------------------------------------------------------
-# Registration
-# ---------------------------------------------------------------------------
-
 def setup(app: FastAPI) -> None:
-    """
-    Register all exception handlers.
-    Call once during app startup.
-    """
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(FastAPIHTTPException, handle_fastapi_http_exception)
     app.add_exception_handler(StarletteHTTPException, handle_starlette_http_exception)

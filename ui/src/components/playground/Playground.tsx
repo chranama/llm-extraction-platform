@@ -518,8 +518,8 @@ export function Playground() {
         </div>
       </div>
 
-      {/* Better disabled UX */}
-      {caps && !extractEnabled && (
+      {/* Disabled UX */}
+      {caps && !extractEnabled && mode === "extract" && (
         <div
           style={{
             marginBottom: 12,
@@ -535,7 +535,8 @@ export function Playground() {
             This deployment is advertising <code>extract=false</code>.
             {modelsResp?.default_model ? (
               <>
-                {" "}Default model is <code>{modelsResp.default_model}</code>.
+                {" "}
+                Default model is <code>{modelsResp.default_model}</code>.
               </>
             ) : null}
           </div>
@@ -543,13 +544,79 @@ export function Playground() {
           <div style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>
             <div style={{ fontWeight: 800, marginBottom: 4 }}>How to enable it</div>
             <ol style={{ margin: 0, paddingLeft: 18 }}>
-              <li>Run <code>llm_eval</code> against this deployment to produce <code>summary.json</code>.</li>
-              <li>Run <code>llm_policy decide-and-patch</code> to set <code>capabilities.extract=true</code> for a model.</li>
+              <li>
+                Run <code>llm_eval</code> against this deployment to produce <code>summary.json</code>.
+              </li>
+              <li>
+                Run <code>llm_policy decide-and-patch</code> to set{" "}
+                <code>capabilities.extract=true</code> for a model.
+              </li>
               <li>Restart backend (or hot-reload models config if you support it).</li>
             </ol>
           </div>
 
           {modelsResp && <ModelsCapsTable models={modelsResp} />}
+        </div>
+      )}
+
+      {/* Abridged banner (Generate mode) */}
+      {caps && !extractEnabled && mode === "generate" && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+            color: "#334155",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 12,
+              padding: "3px 8px",
+              borderRadius: 999,
+              border: "1px solid #cbd5f5",
+              background: "#ffffff",
+              color: "#0f172a",
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+            title="Server is advertising extract=false (policy not satisfied / missing decision)."
+          >
+            Extract: disabled
+          </span>
+
+          <div style={{ fontSize: 13, color: "#334155" }}>
+            Policy currently prevents <code>/v1/extract</code>.
+            {modelsResp?.default_model ? (
+              <>
+                {" "}
+                Default model: <code>{modelsResp.default_model}</code>.
+              </>
+            ) : null}
+          </div>
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            onClick={() => setMode("extract")}
+            style={{
+              padding: "0.35rem 0.7rem",
+              borderRadius: 999,
+              border: "1px solid #cbd5f5",
+              background: "white",
+              color: "#0f172a",
+              fontWeight: 800,
+              cursor: loading ? "wait" : "pointer",
+            }}
+            title="View details and enablement steps"
+          >
+            Details
+          </button>
         </div>
       )}
 

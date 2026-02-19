@@ -1,7 +1,6 @@
-# src/llm_server/core/metrics.py
+# server/src/llm_server/core/metrics.py
 from __future__ import annotations
 
-import time
 from typing import Callable, cast
 
 from fastapi import FastAPI, Request
@@ -17,6 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from llm_server.core.config import get_settings
+from llm_server.core.time import request_latency_ms
 
 
 def _metrics_handler() -> Response:
@@ -37,7 +37,6 @@ def _assert_labelnames_match(existing, expected: list[str]) -> None:
     except Exception:
         existing_labels = []
 
-    # If an existing collector is already labeled, enforce exact match.
     if existing_labels and existing_labels != expected:
         raise RuntimeError(
             f"Metric '{getattr(existing, '_name', 'unknown')}' already exists with labels={existing_labels}, "
@@ -133,6 +132,13 @@ LLM_REDIS_ENABLED = _get_or_create_gauge(
     "Whether Redis caching is enabled (1=yes, 0=no)",
 )
 
+# Phase 0: guard trip evidence (for dashboards + demos)
+LLM_GUARD_TRIPS = _get_or_create_counter(
+    "llm_guard_trips_total",
+    "Total guard trips (e.g., memory guard shedding) by kind and route",
+    ["kind", "route"],  # kind: mem_rss|...
+)
+
 # -----------------------------------------
 # Extraction Metrics (Phase 2)
 # -----------------------------------------
@@ -146,27 +152,30 @@ EXTRACTION_REQUESTS = _get_or_create_counter(
 EXTRACTION_CACHE_HITS = _get_or_create_counter(
     "llm_extraction_cache_hits_total",
     "Extraction cache hits by layer",
-    ["schema_id", "model_id", "layer"],  # layer: redis|db
+    ["schema_id", "model_id", "layer"],
 )
 
 EXTRACTION_VALIDATION_FAILURES = _get_or_create_counter(
     "llm_extraction_validation_failures_total",
     "Extraction failures due to parse or schema validation issues",
-    ["schema_id", "model_id", "stage"],  # stage: parse|validate|repair_parse|repair_validate
+    ["schema_id", "model_id", "stage"],
 )
 
 EXTRACTION_REPAIR = _get_or_create_counter(
     "llm_extraction_repair_total",
     "Extraction repair attempts and outcomes",
-    ["schema_id", "model_id", "outcome"],  # attempted|success|failure
+    ["schema_id", "model_id", "outcome"],
 )
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        start = time.perf_counter()
+        """
+        Latency semantics:
+          - request latency MUST be computed from request.state.start_ts (wall clock)
+          - this aligns Prometheus request latency with DB InferenceLog.latency_ms and error logging
+        """
         status_code = 500
-
         try:
             response = await call_next(request)
             status_code = response.status_code
@@ -178,14 +187,17 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             cached_label = "true" if cached else "false"
             status_label = str(status_code)
 
-            elapsed = time.perf_counter() - start
+            # Canonical request latency (ms) from RequestContextMiddleware baseline
+            latency_ms = request_latency_ms(request)
 
-            REQUEST_LATENCY.labels(
-                route=route,
-                model_id=model_id,
-                cached=cached_label,
-                status_code=status_label,
-            ).observe(elapsed)
+            # Prometheus histogram is in seconds; only observe when we have a baseline
+            if isinstance(latency_ms, (int, float)) and latency_ms >= 0:
+                REQUEST_LATENCY.labels(
+                    route=route,
+                    model_id=model_id,
+                    cached=cached_label,
+                    status_code=status_label,
+                ).observe(float(latency_ms) / 1000.0)
 
             REQUEST_COUNT.labels(
                 route=route,
@@ -196,7 +208,6 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 def setup(app: FastAPI) -> None:
-    # Set gauge here (not at import time) so tests/env overrides are respected.
     s = get_settings()
     LLM_REDIS_ENABLED.set(1 if bool(s.redis_enabled) else 0)
 

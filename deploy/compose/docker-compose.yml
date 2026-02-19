@@ -1,5 +1,6 @@
 # deploy/compose/docker-compose.yml
 #
+
 # ==========================
 # Templates / extension fields
 # ==========================
@@ -16,14 +17,14 @@ x-server-env: &server_env
   MODELS_PROFILE: ${MODELS_PROFILE:-}
 
   # ✅ Explicit DB wiring identity for readiness/debug ("docker" | "host" | "itest")
-  # Prefer setting this in compose-defaults.yaml per profile.
   DB_INSTANCE: ${DB_INSTANCE:-docker}
 
-  # infra toggles + endpoints (compose still owns these because they are wiring)
+  # infra toggles + endpoints
   REDIS_ENABLED: ${REDIS_ENABLED:-0}
   REDIS_URL: ${REDIS_URL:-}
 
-  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (provided via compose defaults profile or .env override)}
+  # 🔓 Make optional (no compose-time hard failure)
+  DATABASE_URL: ${DATABASE_URL:-}
 
   WORKERS: ${WORKERS:-1}
   UVICORN_RELOAD: ${UVICORN_RELOAD:-0}
@@ -34,16 +35,23 @@ x-server-env: &server_env
   SLO_OUT_DIR: ${SLO_OUT_DIR:-/app/slo_out}
 
   API_KEY: ${API_KEY:-}
-  HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN}
+  HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}
+
+  SCHEMAS_DIR: ${SCHEMAS_DIR:-}
+
+  CONTAINER_MEMORY_BYTES: ${CONTAINER_MEMORY_BYTES:-}
+
+  # llama-server wiring (Option A external llama.cpp)
+  # ✅ Default to in-compose llama_server service (works for Demo A)
+  LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://llama_server:8080}
+  LLAMA_SERVER_API_KEY: ${LLAMA_SERVER_API_KEY:-}
 
 # ---- GPU server env (deep-merge safe) ----
 x-server-gpu-env: &server_gpu_env
   <<: *server_env
-  # GPU wiring knobs can stay in compose (or move to server.yaml docker-gpu profile later)
   MODEL_DEVICE: ${MODEL_DEVICE:-gpu}
   REDIS_ENABLED: ${REDIS_ENABLED:-1}
   UVICORN_RELOAD: "0"
-  # For GPU, default to the heavyweight docker profile unless explicitly overridden
   MODELS_PROFILE: ${MODELS_PROFILE_GPU:-docker}
 
 # ---- Server base (uses env anchor) ----
@@ -54,11 +62,6 @@ x-server-base: &server_base
   restart: "no"
   environment:
     <<: *server_env
-
-  # IMPORTANT:
-  # Dockerized server services are wired to the INTERNAL infra service names:
-  #   postgres / redis
-  # Host-wired infra uses postgres_host / redis_host and is for host-run server only.
   depends_on:
     postgres:
       condition: service_healthy
@@ -88,6 +91,18 @@ x-redis-base: &redis_base
     timeout: 3s
     retries: 10
 
+# ---- UI template (dockerized always) ----
+x-ui-base: &ui_base
+  build:
+    context: ../..
+    dockerfile: deploy/docker/Dockerfile.ui
+    args:
+      VITE_API_KEY: ${API_KEY}
+      # ✅ Browser-safe default: UI running in browser calls published API on localhost.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:${API_PORT:-8000}}
+  restart: unless-stopped
+
+
 services:
   # ==========================
   # Data layer (INTERNAL-ONLY)
@@ -111,7 +126,6 @@ services:
   # ==========================
   # Data layer (HOST-PUBLISHED)
   # For running llm_server on the host (not in docker).
-  # NOTE: separate volumes so you can run infra + infra-host without collisions.
   # ==========================
   postgres_host:
     <<: *postgres_base
@@ -128,6 +142,54 @@ services:
       - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data_host:/data
+
+  # ==========================
+  # llama.cpp server (Option A external llama-server)
+  #
+  # IMPORTANT:
+  # - Uses a prebuilt image by default (LLAMA_SERVER_IMAGE), so `up` is fast.
+  # - Still supports compose rebuilds, with a pinned LLAMA_CPP_REF for determinism.
+  # - Hard-fails at compose-time if LLAMA_MODEL_FILE is missing (when llama profile is enabled).
+  # ==========================
+  llama_server:
+    profiles: ["llama"]
+    image: ${LLAMA_SERVER_IMAGE:-llmep-llama-server:b8069}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.llama-server
+      args:
+        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-b8069}
+    restart: unless-stopped
+    environment:
+      LLAMA_SERVER_PORT: ${LLAMA_SERVER_PORT:-8080}
+      LLAMA_MODEL_FILE: ${LLAMA_MODEL_FILE:-}
+      LLAMA_CTX_SIZE: ${LLAMA_CTX_SIZE:-4096}
+      LLAMA_THREADS: ${LLAMA_THREADS:-}
+      LLAMA_BATCH: ${LLAMA_BATCH:-256}
+      LLAMA_UBATCH: ${LLAMA_UBATCH:-}
+      LLAMA_N_GPU_LAYERS: ${LLAMA_N_GPU_LAYERS:-0}
+      LLAMA_SEED: ${LLAMA_SEED:-0}
+      LLAMA_TEMP: ${LLAMA_TEMP:-0.7}
+      LLAMA_TOP_P: ${LLAMA_TOP_P:-0.95}
+      LLAMA_MLOCK: ${LLAMA_MLOCK:-0}
+      LLAMA_NO_MMAP: ${LLAMA_NO_MMAP:-0}
+      LLAMA_SERVER_API_KEY: ${LLAMA_SERVER_API_KEY:-}
+      LLAMA_PARALLEL: ${LLAMA_PARALLEL:-1}
+    expose:
+      - "8080"
+    ports:
+      - "${LLAMA_PUBLISH_PORT:-8080}:8080"
+    volumes:
+      # Host directory of GGUF models mounted read-only at /models
+      - ${LLAMA_MODELS_DIR:-./.tmp/llama-models}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "/app/healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    mem_limit: ${LLAMA_MEM_LIMIT:-48g}
+    memswap_limit: ${LLAMA_MEMSWAP_LIMIT:-48g}
 
   # ==========================
   # Integration test infra (ephemeral)
@@ -175,14 +237,15 @@ services:
       <<: *server_env
       APP_PROFILE: ${APP_PROFILE:-docker}
       MODELS_PROFILE: ${MODELS_PROFILE_ITEST:-test}
-
-      # ✅ unambiguous
       DB_INSTANCE: ${DB_INSTANCE_ITEST:-itest}
 
       MODEL_LOAD_MODE: off
       REQUIRE_MODEL_READY: "0"
       ENV: test
+
+      # ✅ Keep a sensible default for itest
       DATABASE_URL: ${ITEST_DATABASE_URL:-postgresql+asyncpg://llm:llm@postgres_itest:5432/llm_test}
+
       REDIS_ENABLED: ${ITEST_REDIS_ENABLED:-1}
       REDIS_URL: ${ITEST_REDIS_URL:-redis://redis_itest:6379/0}
       MODEL_WARMUP: "0"
@@ -210,17 +273,55 @@ services:
     environment:
       <<: *server_env
       APP_PROFILE: ${APP_PROFILE:-docker}
-      # ✅ default comes from compose-defaults (docker => docker-portable)
       MODELS_PROFILE: ${MODELS_PROFILE:-}
+      # 🔓 no longer required at compose-time
+      DATABASE_URL: ${DATABASE_URL:-}
     volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ../../policy_out:/app/policy_out:rw
       - ../../slo_out:/app/slo_out:rw
-      # - ../../config:/app/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/readyz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
+    mem_limit: ${SERVER_MEM_LIMIT:-12g}
+    memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
+
+  # ==========================
+  # Server (CPU) + llama-server Demo A (explicit profile)
+  # Ensures depends_on llama_server only when enabled.
+  # ==========================
+  server_llama:
+    <<: *server_base
+    profiles: ["server-llama"]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      <<: *server_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      MODELS_PROFILE: ${MODELS_PROFILE:-llama-server}
+      LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://llama_server:8080}
+      # 🔓 no longer required at compose-time
+      DATABASE_URL: ${DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      llama_server:
+        condition: service_healthy
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../policy_out:/app/policy_out:rw
+      - ../../slo_out:/app/slo_out:rw
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    mem_limit: ${SERVER_MEM_LIMIT:-12g}
+    memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
 
   # ==========================
   # Server (GPU)
@@ -231,6 +332,8 @@ services:
     environment:
       <<: *server_gpu_env
       APP_PROFILE: ${APP_PROFILE:-docker}
+      # 🔓 no longer required at compose-time
+      DATABASE_URL: ${DATABASE_URL:-}
     ports: []
     expose:
       - "8000"
@@ -238,7 +341,6 @@ services:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ../../policy_out:/app/policy_out:rw
       - ../../slo_out:/app/slo_out:rw
-      # - ../../config:/app/config:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/modelz || exit 1"]
       interval: 30s
@@ -252,21 +354,20 @@ services:
             - driver: nvidia
               count: 1
               capabilities: ["gpu"]
+    mem_limit: ${SERVER_MEM_LIMIT:-12g}
+    memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
 
   # ==========================
-  # UI
+  # UI (single service)
   # ==========================
   ui:
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile.ui
-      args:
-        VITE_API_KEY: ${API_KEY}
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
-    restart: unless-stopped
+    <<: *ui_base
     profiles: ["ui"]
     ports:
       - "${UI_PORT:-5173}:80"
+    # IMPORTANT:
+    # Do NOT depends_on server/server_llama here, because it will force-start the wrong server
+    # when you choose only one of the profiles. The UI will still work as soon as the API is up.
 
   # ==========================
   # Admin
@@ -367,16 +468,16 @@ services:
     profiles: ["policy"]
     environment:
       POLICY_RUN_DIR: ${POLICY_RUN_DIR:-latest}
-      POLICY_MODEL_ID: ${POLICY_MODEL_ID:-}
       POLICY_MODELS_YAML: ${POLICY_MODELS_YAML:-/work/config/models.yaml}
       POLICY_THRESHOLDS_ROOT: ${POLICY_THRESHOLDS_ROOT:-/app/policy/src/llm_policy/thresholds}
       POLICY_THRESHOLD_PROFILE: ${POLICY_THRESHOLD_PROFILE:-extract/default}
       POLICY_GENERATE_PROFILE: ${POLICY_GENERATE_PROFILE:-generate/portable}
       POLICY_GENERATE_SLO_PATH: ${POLICY_GENERATE_SLO_PATH:-/work/slo_out/generate/latest.json}
       POLICY_OUT_PATH: ${POLICY_OUT_PATH:-/work/policy_out/latest.json}
-      EVAL_OUT_PATH: ${EVAL_OUT_PATH:-}
       POLICY_ARGS: ${POLICY_ARGS:-}
-
+      POLICY_PIPELINE: ${POLICY_PIPELINE:-extract_plus_generate_clamp}
+      POLICY_PATCH_MODELS: ${POLICY_PATCH_MODELS:-0}
+      POLICY_MODEL_ID: ${POLICY_MODEL_ID:-}
     volumes:
       - ../..:/work:rw
       - ../../results:/work/results:rw
@@ -384,21 +485,26 @@ services:
       - ../../eval_out:/work/eval_out:rw
       - ../../policy_out:/work/policy_out:rw
       - ../../slo_out:/work/slo_out:rw
-
     working_dir: /work
-    entrypoint: ["/bin/sh", "-lc"]
-    command: >
-      test -n "${POLICY_MODEL_ID}" || (echo "POLICY_MODEL_ID is required for decide-and-patch" >&2; exit 2);
-      llm-policy decide-and-patch
-      --run-dir "${POLICY_RUN_DIR}"
-      --models-yaml "${POLICY_MODELS_YAML}"
-      --model-id "${POLICY_MODEL_ID}"
-      --threshold-profile "${POLICY_THRESHOLD_PROFILE}"
-      --thresholds-root "${POLICY_THRESHOLDS_ROOT}"
-      --generate-threshold-profile "${POLICY_GENERATE_PROFILE}"
-      --generate-slo-path "${POLICY_GENERATE_SLO_PATH}"
-      --artifact-out "${POLICY_OUT_PATH}"
-      ${POLICY_ARGS}
+    # use the image ENTRYPOINT ["policy"]
+    command:
+      - "run"
+      - "--pipeline"
+      - "${POLICY_PIPELINE:-extract_plus_generate_clamp}"
+      - "--run-dir"
+      - "${POLICY_RUN_DIR:-latest}"
+      - "--threshold-profile"
+      - "${POLICY_THRESHOLD_PROFILE:-extract/default}"
+      - "--thresholds-root"
+      - "${POLICY_THRESHOLDS_ROOT:-/app/policy/src/llm_policy/thresholds}"
+      - "--generate-threshold-profile"
+      - "${POLICY_GENERATE_PROFILE:-generate/portable}"
+      - "--generate-slo-path"
+      - "${POLICY_GENERATE_SLO_PATH:-/work/slo_out/generate/latest.json}"
+      - "--artifact-out"
+      - "${POLICY_OUT_PATH:-/work/policy_out/latest.json}"
+      - "--report"
+      - "text"
 
 volumes:
   pg_data:

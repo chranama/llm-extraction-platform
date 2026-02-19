@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -18,21 +19,14 @@ logger = logging.getLogger("llm_server.models")
 # Types / allowed values
 # -----------------------------
 
-Backend = Literal["local", "remote"]
+Backend = Literal["transformers", "llamacpp", "remote"]
 LoadMode = Literal["eager", "lazy", "off"]
-Device = Literal["auto", "cuda", "mps", "cpu"]
-DType = Literal["float16", "bfloat16", "float32"]
-
-Quantization = Optional[str]  # e.g. "int8", "int4", "nf4", None
 
 Capability = Literal["generate", "extract"]
 CapabilitiesMap = Dict[Capability, bool]
 
-_ALLOWED_BACKENDS = {"local", "remote"}
+_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
-_ALLOWED_DEVICES = {"auto", "cuda", "mps", "cpu"}
-_ALLOWED_DTYPES = {"float16", "bfloat16", "float32"}
-_ALLOWED_QUANT = {None, "int8", "int4", "nf4"}
 _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 
 
@@ -44,15 +38,15 @@ _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
-    backend: Backend = "local"
+    backend: Backend = "transformers"
     load_mode: LoadMode = "lazy"
     capabilities: Optional[CapabilitiesMap] = None
-    dtype: Optional[DType] = None
-    device: Device = "auto"
-    text_only: Optional[bool] = None
-    max_context: Optional[int] = None
-    trust_remote_code: bool = False
-    quantization: Quantization = None
+
+    # backend config blocks (pass-through dicts)
+    transformers: Optional[Dict[str, Any]] = None
+    llamacpp: Optional[Dict[str, Any]] = None
+    remote: Optional[Dict[str, Any]] = None
+
     notes: Optional[str] = None
 
 
@@ -100,15 +94,56 @@ def _dedupe_preserve_order(items: List[str]) -> List[str]:
 
 
 # -----------------------------
+# ${ENV_VAR} expansion
+# -----------------------------
+
+# supports:
+#   ${VAR} -> env VAR or ""
+#   ${VAR:-default} -> env VAR or "default"
+_ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-(.*?))?\}")
+
+
+def _expand_env_in_str(s: str) -> str:
+    def repl(m: re.Match) -> str:
+        key = m.group(1)
+        default = m.group(2)
+        val = os.environ.get(key)
+        if val is None or not str(val).strip():
+            return (default or "")
+        return str(val)
+
+    # expand repeatedly in case defaults contain more ${...}
+    prev = None
+    cur = s
+    for _ in range(5):
+        prev = cur
+        cur = _ENV_PATTERN.sub(repl, cur)
+        if cur == prev:
+            break
+    return cur
+
+
+def _expand_env(obj: Any) -> Any:
+    """
+    Recursively expand ${VAR} in all strings within nested dict/list structures.
+    """
+    if isinstance(obj, str):
+        return _expand_env_in_str(obj)
+    if isinstance(obj, list):
+        return [_expand_env(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(_expand_env(x) for x in obj)
+    if isinstance(obj, dict):
+        return {k: _expand_env(v) for k, v in obj.items()}
+    return obj
+
+
+# -----------------------------
 # Merge logic (models-aware)
 # -----------------------------
 
 
 def _deep_merge_dicts(base: Any, overlay: Any) -> Any:
-    """
-    Generic deep merge for dicts: overlay wins.
-    Lists and non-dict types are replaced.
-    """
     if not isinstance(base, dict) or not isinstance(overlay, dict):
         return overlay
     out = dict(base)
@@ -132,24 +167,10 @@ def _model_id_of(item: Any) -> Optional[str]:
 
 
 def _merge_models_list_by_id(base_list: Any, overlay_list: Any) -> Any:
-    """
-    Merge two 'models' lists by id. Overlay can provide partial entries.
-
-    Rules:
-      - Entries are identified by:
-          - dict with 'id'
-          - or a string model id (treated as minimal entry)
-      - For a matching id:
-          - dict+dict => deep merge dicts (overlay wins)
-          - otherwise overlay replaces base
-      - New ids from overlay are appended (preserving overlay order)
-      - Base order is preserved, except where base ids are updated.
-    """
     if overlay_list is None:
         return base_list
     if base_list is None:
         return overlay_list
-
     if not isinstance(base_list, list) or not isinstance(overlay_list, list):
         return overlay_list
 
@@ -171,7 +192,6 @@ def _merge_models_list_by_id(base_list: Any, overlay_list: Any) -> Any:
         mid = _model_id_of(item)
         if not mid:
             continue
-
         if mid in base_map:
             a = base_map[mid]
             b = item
@@ -193,9 +213,6 @@ def _merge_models_list_by_id(base_list: Any, overlay_list: Any) -> Any:
 
 
 def _deep_merge_models_aware(base: Any, overlay: Any) -> Any:
-    """
-    Deep merge where key 'models' uses merge-by-id semantics.
-    """
     if not isinstance(base, dict) or not isinstance(overlay, dict):
         return overlay
 
@@ -204,7 +221,6 @@ def _deep_merge_models_aware(base: Any, overlay: Any) -> Any:
         if k == "models":
             out[k] = _merge_models_list_by_id(out.get(k), v)
             continue
-
         if k in out and isinstance(out[k], dict) and isinstance(v, dict):
             out[k] = _deep_merge_models_aware(out[k], v)
         else:
@@ -303,39 +319,6 @@ def _as_opt_str(x: Any) -> Optional[str]:
     return None
 
 
-def _as_opt_int(x: Any, *, field: str, path: str) -> Optional[int]:
-    if x is None:
-        return None
-    if isinstance(x, bool):
-        raise AppError(
-            code="models_yaml_invalid",
-            message=f"models.yaml {field} must be an integer",
-            status_code=500,
-            extra={"path": path, "field": field, "value": x},
-        )
-    if isinstance(x, int):
-        return x
-    raise AppError(
-        code="models_yaml_invalid",
-        message=f"models.yaml {field} must be an integer",
-        status_code=500,
-        extra={"path": path, "field": field, "value": x},
-    )
-
-
-def _as_opt_bool(x: Any, *, field: str, path: str) -> Optional[bool]:
-    if x is None:
-        return None
-    if isinstance(x, bool):
-        return x
-    raise AppError(
-        code="models_yaml_invalid",
-        message=f"models.yaml {field} must be a boolean",
-        status_code=500,
-        extra={"path": path, "field": field, "value": x},
-    )
-
-
 def _validate_enum(
     value: Any,
     *,
@@ -427,6 +410,19 @@ def _normalize_capabilities(raw_caps: Any, *, path: str, field: str) -> Optional
     return out  # type: ignore[return-value]
 
 
+def _normalize_backend_block(raw_block: Any, *, path: str, field: str) -> Optional[Dict[str, Any]]:
+    if raw_block is None:
+        return None
+    if not isinstance(raw_block, dict):
+        raise AppError(
+            code="models_yaml_invalid",
+            message=f"models.yaml {field} must be a mapping (dict)",
+            status_code=500,
+            extra={"path": path, "field": field, "value": raw_block},
+        )
+    return dict(raw_block)
+
+
 def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> ModelSpec:
     if isinstance(raw, str):
         mid = _as_str(raw, field="models[]", path=path)
@@ -435,12 +431,9 @@ def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> 
             backend=defaults["backend"],
             load_mode=defaults["load_mode"],
             capabilities=defaults.get("capabilities"),
-            dtype=defaults["dtype"],
-            device=defaults["device"],
-            text_only=defaults["text_only"],
-            max_context=defaults["max_context"],
-            trust_remote_code=defaults["trust_remote_code"],
-            quantization=defaults["quantization"],
+            transformers=dict(defaults.get("transformers") or {}) or None,
+            llamacpp=dict(defaults.get("llamacpp") or {}) or None,
+            remote=dict(defaults.get("remote") or {}) or None,
             notes=None,
         )
 
@@ -462,48 +455,23 @@ def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> 
         _validate_enum(raw.get("load_mode", defaults["load_mode"]), field="models[].load_mode", path=path, allowed=_ALLOWED_LOAD_MODES)
         or defaults["load_mode"]
     )
-    device = (
-        _validate_enum(raw.get("device", defaults["device"]), field="models[].device", path=path, allowed=_ALLOWED_DEVICES)
-        or defaults["device"]
-    )
-
-    dtype_raw = raw.get("dtype", defaults["dtype"])
-    dtype: Optional[DType] = None
-    if dtype_raw is not None:
-        dtype = _validate_enum(dtype_raw, field="models[].dtype", path=path, allowed=_ALLOWED_DTYPES)
-
-    quant = raw.get("quantization", defaults["quantization"])
-    if isinstance(quant, str):
-        quant = quant.strip().lower()
-    if quant not in _ALLOWED_QUANT:
-        raise AppError(
-            code="models_yaml_invalid",
-            message="models.yaml models[].quantization has invalid value",
-            status_code=500,
-            extra={
-                "path": path,
-                "field": "models[].quantization",
-                "value": quant,
-                "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None],
-            },
-        )
-
-    text_only = _as_opt_bool(raw.get("text_only", defaults["text_only"]), field="models[].text_only", path=path)
-    max_context = _as_opt_int(raw.get("max_context", defaults["max_context"]), field="models[].max_context", path=path)
-
-    trc = raw.get("trust_remote_code", defaults["trust_remote_code"])
-    if trc is None:
-        trc = defaults["trust_remote_code"]
-    if not isinstance(trc, bool):
-        raise AppError(
-            code="models_yaml_invalid",
-            message="models.yaml models[].trust_remote_code must be a boolean",
-            status_code=500,
-            extra={"path": path, "field": "models[].trust_remote_code", "value": trc},
-        )
 
     caps_raw = raw.get("capabilities", defaults.get("capabilities"))
     capabilities = _normalize_capabilities(caps_raw, path=path, field="models[].capabilities")
+
+    transformers = _normalize_backend_block(raw.get("transformers", None), path=path, field="models[].transformers")
+    llamacpp = _normalize_backend_block(raw.get("llamacpp", None), path=path, field="models[].llamacpp")
+    remote = _normalize_backend_block(raw.get("remote", None), path=path, field="models[].remote")
+
+    transformers = _deep_merge_dicts(defaults.get("transformers") or {}, transformers or {})
+    llamacpp = _deep_merge_dicts(defaults.get("llamacpp") or {}, llamacpp or {})
+    remote = _deep_merge_dicts(defaults.get("remote") or {}, remote or {})
+
+    # back-compat: older flat keys -> fold into remote/transformers if present
+    if "remote_base_url" in raw and raw.get("remote_base_url") is not None:
+        remote.setdefault("base_url", raw.get("remote_base_url"))
+    if "remote_model_id" in raw and raw.get("remote_model_id") is not None:
+        remote.setdefault("model_name", raw.get("remote_model_id"))
 
     notes = _as_opt_str(raw.get("notes"))
 
@@ -512,12 +480,9 @@ def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> 
         backend=backend,  # type: ignore[assignment]
         load_mode=load_mode,  # type: ignore[assignment]
         capabilities=capabilities,
-        dtype=dtype,  # type: ignore[assignment]
-        device=device,  # type: ignore[assignment]
-        text_only=text_only,
-        max_context=max_context,
-        trust_remote_code=bool(trc),
-        quantization=quant,  # type: ignore[assignment]
+        transformers=transformers or None,
+        llamacpp=llamacpp or None,
+        remote=remote or None,
         notes=notes,
     )
 
@@ -540,13 +505,6 @@ def _apply_effective_service_caps_from_primary(
     primary: ModelSpec,
     defaults_caps: Optional[CapabilitiesMap],
 ) -> Tuple[bool, bool]:
-    """
-    Decide effective ENABLE_GENERATE / ENABLE_EXTRACT based on:
-      - existing Settings toggles (authoritative service-level kill switches)
-      - primary model capabilities (authoritative "is extract actually supported?")
-
-    effective = settings_toggle AND primary_model_capability
-    """
     gen_default = _cap_bool(defaults_caps, "generate", True)
     ex_default = _cap_bool(defaults_caps, "extract", False)
 
@@ -559,14 +517,12 @@ def _apply_effective_service_caps_from_primary(
     effective_gen = settings_gen and primary_gen
     effective_ex = settings_ex and primary_ex
 
-    # Best-effort: update settings object for in-process consumers
     try:
         setattr(s, "enable_generate", effective_gen)
         setattr(s, "enable_extract", effective_ex)
     except Exception:
         pass
 
-    # Do not override explicit env/test overrides
     os.environ.setdefault("ENABLE_GENERATE", "1" if effective_gen else "0")
     os.environ.setdefault("ENABLE_EXTRACT", "1" if effective_ex else "0")
 
@@ -584,6 +540,10 @@ def load_models_config() -> ModelsConfig:
 
     if path and os.path.exists(path):
         raw = _load_yaml(path)
+
+        # ✅ IMPORTANT: expand ${VAR} before profile selection & normalization
+        raw = _expand_env(raw)
+
         data = _select_profile(raw)
 
         default_model = data.get("default_model")
@@ -616,53 +576,15 @@ def load_models_config() -> ModelsConfig:
         caps_defaults = _normalize_capabilities(defaults.get("capabilities", None), path=path, field="defaults.capabilities")
 
         norm_defaults: Dict[str, Any] = {
-            "backend": _validate_enum(defaults.get("backend", "local"), field="defaults.backend", path=path, allowed=_ALLOWED_BACKENDS) or "local",
-            "load_mode": _validate_enum(defaults.get("load_mode", "lazy"), field="defaults.load_mode", path=path, allowed=_ALLOWED_LOAD_MODES) or "lazy",
-            "device": _validate_enum(defaults.get("device", "auto"), field="defaults.device", path=path, allowed=_ALLOWED_DEVICES) or "auto",
-            "dtype": None,
+            "backend": _validate_enum(defaults.get("backend", "transformers"), field="defaults.backend", path=path, allowed=_ALLOWED_BACKENDS)
+            or "transformers",
+            "load_mode": _validate_enum(defaults.get("load_mode", "lazy"), field="defaults.load_mode", path=path, allowed=_ALLOWED_LOAD_MODES)
+            or "lazy",
             "capabilities": caps_defaults,
-            "text_only": defaults.get("text_only", None),
-            "max_context": defaults.get("max_context", None),
-            "trust_remote_code": bool(defaults.get("trust_remote_code", False)),
-            "quantization": defaults.get("quantization", None),
+            "transformers": defaults.get("transformers", {}) if isinstance(defaults.get("transformers", {}), dict) else {},
+            "llamacpp": defaults.get("llamacpp", {}) if isinstance(defaults.get("llamacpp", {}), dict) else {},
+            "remote": defaults.get("remote", {}) if isinstance(defaults.get("remote", {}), dict) else {},
         }
-
-        if norm_defaults["text_only"] is not None and not isinstance(norm_defaults["text_only"], bool):
-            raise AppError(
-                code="models_yaml_invalid",
-                message="models.yaml defaults.text_only must be a boolean",
-                status_code=500,
-                extra={"path": path, "field": "defaults.text_only", "value": norm_defaults["text_only"]},
-            )
-
-        if norm_defaults["max_context"] is not None and not isinstance(norm_defaults["max_context"], int):
-            raise AppError(
-                code="models_yaml_invalid",
-                message="models.yaml defaults.max_context must be an integer",
-                status_code=500,
-                extra={"path": path, "field": "defaults.max_context", "value": norm_defaults["max_context"]},
-            )
-
-        dtype_default = defaults.get("dtype", None)
-        if dtype_default is not None:
-            norm_defaults["dtype"] = _validate_enum(dtype_default, field="defaults.dtype", path=path, allowed=_ALLOWED_DTYPES)
-
-        quant_default = defaults.get("quantization", None)
-        if isinstance(quant_default, str):
-            quant_default = quant_default.strip().lower()
-        if quant_default not in _ALLOWED_QUANT:
-            raise AppError(
-                code="models_yaml_invalid",
-                message="models.yaml defaults.quantization has invalid value",
-                status_code=500,
-                extra={
-                    "path": path,
-                    "field": "defaults.quantization",
-                    "value": quant_default,
-                    "allowed": sorted([x for x in _ALLOWED_QUANT if x is not None]) + [None],
-                },
-            )
-        norm_defaults["quantization"] = quant_default
 
         specs: List[ModelSpec] = []
         for raw_item in models_list:
@@ -688,7 +610,6 @@ def load_models_config() -> ModelsConfig:
                     status_code=500,
                     extra={"path": path},
                 )
-
             if primary_id not in ids:
                 ids.insert(0, primary_id)
                 specs.insert(
@@ -698,12 +619,9 @@ def load_models_config() -> ModelsConfig:
                         backend=norm_defaults["backend"],
                         load_mode=norm_defaults["load_mode"],
                         capabilities=norm_defaults.get("capabilities"),
-                        dtype=norm_defaults["dtype"],
-                        device=norm_defaults["device"],
-                        text_only=norm_defaults["text_only"],
-                        max_context=norm_defaults["max_context"],
-                        trust_remote_code=norm_defaults["trust_remote_code"],
-                        quantization=norm_defaults["quantization"],
+                        transformers=dict(norm_defaults.get("transformers") or {}) or None,
+                        llamacpp=dict(norm_defaults.get("llamacpp") or {}) or None,
+                        remote=dict(norm_defaults.get("remote") or {}) or None,
                         notes="(auto-added because default_model was not listed)",
                     ),
                 )
@@ -716,7 +634,7 @@ def load_models_config() -> ModelsConfig:
         ordered_ids = [primary_id] + [x for x in ids if x != primary_id]
         ordered_specs = [spec_map[mid] for mid in ordered_ids if mid in spec_map]
 
-        # Best-effort: keep settings consistent for legacy code paths
+        # legacy wiring support
         try:
             s.model_id = primary_id  # type: ignore[attr-defined]
             s.allowed_models = ordered_ids  # type: ignore[attr-defined]
@@ -724,29 +642,19 @@ def load_models_config() -> ModelsConfig:
         except Exception:
             pass
 
-        # ✅ Model-driven service capability clamp: primary model decides extract enablement.
         try:
             primary_spec = next((m for m in ordered_specs if m.id == primary_id), None)
             if primary_spec is not None:
-                _apply_effective_service_caps_from_primary(
-                    s=s,
-                    primary=primary_spec,
-                    defaults_caps=caps_defaults,
-                )
+                _apply_effective_service_caps_from_primary(s=s, primary=primary_spec, defaults_caps=caps_defaults)
         except Exception:
-            # Never block startup based on best-effort capability sync
             pass
-
-        selected_req = data.get("_selected_profile_requested", None)
-        selected_src = data.get("_selected_profile_source", None)
-        selected_used = data.get("_selected_profile_used", None)
 
         logger.info(
             "models: loaded path=%s requested_profile=%r source=%r used_profile=%r primary_id=%s model_ids=%d",
             path,
-            selected_req,
-            selected_src,
-            selected_used,
+            data.get("_selected_profile_requested", None),
+            data.get("_selected_profile_source", None),
+            data.get("_selected_profile_used", None),
             primary_id,
             len(ordered_ids),
         )
@@ -784,23 +692,15 @@ def load_models_config() -> ModelsConfig:
     specs = [
         ModelSpec(
             id=mid,
-            backend="local",
+            backend="transformers",
             load_mode="lazy" if mid != primary_id else "eager",
             capabilities=None,
-            dtype=None,
-            device="auto",
-            text_only=None,
-            max_context=None,
-            trust_remote_code=False,
-            quantization=None,
+            transformers=None,
+            llamacpp=None,
+            remote=None,
             notes="(from settings)",
         )
         for mid in model_ids
     ]
 
-    return ModelsConfig(
-        primary_id=str(primary_id),
-        model_ids=[str(x) for x in model_ids],
-        models=specs,
-        defaults={"path": None},
-    )
+    return ModelsConfig(primary_id=str(primary_id), model_ids=[str(x) for x in model_ids], models=specs, defaults={"path": None})

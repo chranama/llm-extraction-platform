@@ -9,9 +9,7 @@ from typing import Sequence
 
 import cli.commands.compose as compose_cmd
 import cli.commands.dev as dev_cmd
-import cli.commands.eval as eval_cmd
 import cli.commands.k8s as k8s_cmd
-import cli.commands.policy as policy_cmd
 from cli.errors import CLIError, die
 from cli.types import GlobalConfig
 from cli.utils.paths import find_repo_root
@@ -20,18 +18,16 @@ from cli.utils.paths import find_repo_root
 # Defaults
 # -----------------------
 
-DEFAULT_ENV_FILE = ".env"
-
 DEFAULT_PROJECT_NAME = "llm-extraction-platform"
 DEFAULT_COMPOSE_YML = "deploy/compose/docker-compose.yml"
 DEFAULT_TOOLS_DIR = "tools"
-DEFAULT_COMPOSE_DOCTOR = "tools/compose_doctor.sh"
+DEFAULT_COMPOSE_DOCTOR = "tools/compose/compose_doctor.sh"
 DEFAULT_SERVER_DIR = "server"
 
 DEFAULT_MODELS_YAML = "config/models.yaml"
 
 DEFAULT_COMPOSE_DEFAULTS_YAML = "config/compose-defaults.yaml"
-DEFAULT_COMPOSE_DEFAULTS_PROFILE = "docker"  # docker | host | itest | jobs
+DEFAULT_COMPOSE_DEFAULTS_PROFILE = "docker"  # docker | host | itest | jobs (+ llama overlays)
 
 DEFAULT_API_PORT = "8000"
 DEFAULT_UI_PORT = "5173"
@@ -58,22 +54,30 @@ def _resolve_repo_path(repo_root: Path, raw: str) -> Path:
     return p.resolve()
 
 
+def _resolve_optional_repo_path(repo_root: Path, raw: str | None) -> Path | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    return _resolve_repo_path(repo_root, s)
+
+
 def _build_global_config(args: argparse.Namespace) -> GlobalConfig:
     repo_root = find_repo_root(Path.cwd(), compose_rel=DEFAULT_COMPOSE_YML)
 
-    env_file = _resolve_repo_path(repo_root, args.env_file or DEFAULT_ENV_FILE)
+    # Option A: NO implicit .env import.
+    # Only include a user env override when explicitly provided.
+    env_override_file = _resolve_optional_repo_path(repo_root, getattr(args, "env_override_file", None))
+
     compose_yml = _resolve_repo_path(repo_root, args.compose_yml or DEFAULT_COMPOSE_YML)
     tools_dir = _resolve_repo_path(repo_root, args.tools_dir or DEFAULT_TOOLS_DIR)
     compose_doctor = _resolve_repo_path(repo_root, args.compose_doctor or DEFAULT_COMPOSE_DOCTOR)
-
     server_dir = _resolve_repo_path(repo_root, args.server_dir or DEFAULT_SERVER_DIR)
 
-    # ✅ argparse flag is --models-yaml => args.models_yaml
     models_yaml = _resolve_repo_path(repo_root, getattr(args, "models_yaml", None) or DEFAULT_MODELS_YAML)
 
     return GlobalConfig(
         repo_root=repo_root,
-        env_file=env_file,
+        env_override_file=env_override_file,
         project_name=args.project_name or DEFAULT_PROJECT_NAME,
         compose_yml=compose_yml,
         tools_dir=tools_dir,
@@ -94,32 +98,48 @@ def _build_global_config(args: argparse.Namespace) -> GlobalConfig:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="llmctl",
-        description="Root CLI: compose workflows, dev paths, eval, policy, and kind/k8s helpers.",
+        description="Root CLI: compose workflows, dev paths, and kind/k8s helpers.",
     )
 
-    # Global options
-    p.add_argument("--env-file", default=os.getenv("LLMCTL_ENV_FILE", DEFAULT_ENV_FILE))
+    # ---- Global options ----
+
+    # Backwards-compat alias:
+    # - Old flag: --env-file
+    # - New flag: --env-override-file
+    # Both map to args.env_override_file
+    p.add_argument(
+        "--env-override-file",
+        dest="env_override_file",
+        default=os.getenv("LLMCTL_ENV_OVERRIDE_FILE", ""),
+        help="Optional env file to include AFTER rendered compose-defaults. (No implicit .env import.)",
+    )
+    p.add_argument(
+        "--env-file",
+        dest="env_override_file",
+        default=os.getenv("LLMCTL_ENV_FILE", os.getenv("LLMCTL_ENV_OVERRIDE_FILE", "")),
+        help="(Alias) Same as --env-override-file.",
+    )
+
     p.add_argument("--project-name", default=os.getenv("LLMCTL_PROJECT_NAME", DEFAULT_PROJECT_NAME))
     p.add_argument("--compose-yml", default=os.getenv("LLMCTL_COMPOSE_YML", DEFAULT_COMPOSE_YML))
     p.add_argument("--tools-dir", default=os.getenv("LLMCTL_TOOLS_DIR", DEFAULT_TOOLS_DIR))
     p.add_argument("--compose-doctor", default=os.getenv("LLMCTL_COMPOSE_DOCTOR", DEFAULT_COMPOSE_DOCTOR))
-
     p.add_argument("--server-dir", default=os.getenv("LLMCTL_SERVER_DIR", DEFAULT_SERVER_DIR))
 
     # Keep this around as a *host-path* convenience for tooling or future commands.
-    # (Compose itself should not inherit it due to compose.py denylist.)
+    # (Compose itself should not inherit it due to compose_runner denylist.)
     p.add_argument("--models-yaml", dest="models_yaml", default=os.getenv("LLMCTL_MODELS_YAML", DEFAULT_MODELS_YAML))
 
     # Internal compose defaults (YAML + selected profile)
     p.add_argument(
         "--compose-defaults-yaml",
         default=os.getenv("LLMCTL_COMPOSE_DEFAULTS_YAML", DEFAULT_COMPOSE_DEFAULTS_YAML),
-        help="YAML containing internal compose default env values (profiles: docker/host/itest/jobs).",
+        help="YAML containing internal compose default env values (profiles: docker/host/itest/jobs + overlays).",
     )
     p.add_argument(
         "--compose-defaults-profile",
         default=os.getenv("LLMCTL_COMPOSE_DEFAULTS_PROFILE", DEFAULT_COMPOSE_DEFAULTS_PROFILE),
-        help="Which defaults profile to render (docker|host|itest|jobs).",
+        help="Which defaults profile(s) to render (e.g. docker, host, itest, jobs, docker+llama+models-llama).",
     )
 
     p.add_argument("--api-port", default=os.getenv("API_PORT", DEFAULT_API_PORT))
@@ -135,11 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--verbose", action="store_true", help="Print the exact commands being executed.")
 
     sub = p.add_subparsers(dest="cmd", required=True)
-
     compose_cmd.register(sub)
     dev_cmd.register(sub)
-    eval_cmd.register(sub)
-    policy_cmd.register(sub)
     k8s_cmd.register(sub)
 
     return p
@@ -167,6 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise
     except Exception as e:
         die(f"Unexpected error: {type(e).__name__}: {e}", code=1)
+
     return 0
 
 

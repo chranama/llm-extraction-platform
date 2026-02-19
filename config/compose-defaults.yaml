@@ -10,6 +10,7 @@
 #   host    -> infra runs in docker, server runs on host (127.0.0.1 published ports)
 #   itest   -> integration-test infra + server_itest wiring
 #   jobs    -> eval/policy containers defaults (API_BASE_URL, policy paths)
+#   llama   -> llama.cpp server defaults (model file + tuning + service URL + pinned build/image ref)
 #
 # Notes:
 # - MODELS_YAML points to the profiled models file (config/models.yaml)
@@ -29,10 +30,19 @@ profiles:
     MODELS_PROFILE: "docker-portable"
     POLICY_DECISION_PATH: "/app/policy_out/latest.json"
     SLO_OUT_DIR: "/app/slo_out"
-    # ...rest unchanged...
+    SCHEMAS_DIR: "/app/schemas/model_output"
+
+    # Phase 0: docker memory caps (used by compose file)
+    SERVER_MEM_LIMIT: "12g"
+    SERVER_MEMSWAP_LIMIT: "12g"
+
+    # Phase 0: mem guard inputs (used by middleware)
+    CONTAINER_MEMORY_BYTES: "12884901888"  # 12 GiB
+    MEM_GUARD_ENABLED: "1"
+    MEM_GUARD_RSS_PCT: "0.85"
+    MAX_CONCURRENT_REQUESTS: "2"
 
   host:
-    # ✅ identify wiring instance
     DB_INSTANCE: "host"
 
     DATABASE_URL: "postgresql+asyncpg://llm:llm@127.0.0.1:5433/llm"
@@ -42,9 +52,9 @@ profiles:
     MODELS_PROFILE: "host"
     POLICY_DECISION_PATH: "policy_out/latest.json"
     SLO_OUT_DIR: "slo_out"
+    SCHEMAS_DIR: "schemas/model_output"
 
   itest:
-    # ✅ identify wiring instance
     DB_INSTANCE: "itest"
 
     ITEST_DATABASE_URL: "postgresql+asyncpg://llm:llm@postgres_itest:5432/llm_test"
@@ -54,9 +64,17 @@ profiles:
     MODELS_PROFILE: "test"
     POLICY_DECISION_PATH: "/app/policy_out/latest.json"
     SLO_OUT_DIR: "/app/slo_out"
+    SCHEMAS_DIR: "/app/schemas/model_output"
+
+    SERVER_MEM_LIMIT: "4g"
+    SERVER_MEMSWAP_LIMIT: "4g"
+
+    CONTAINER_MEMORY_BYTES: "4294967296"  # 4 GiB
+    MEM_GUARD_ENABLED: "1"
+    MEM_GUARD_RSS_PCT: "0.85"
+    MAX_CONCURRENT_REQUESTS: "2"
 
   jobs:
-    # optional (not required for server /readyz, but nice for consistency)
     DB_INSTANCE: "jobs"
 
     API_BASE_URL: "http://server:8000"
@@ -73,3 +91,62 @@ profiles:
 
     POLICY_GENERATE_PROFILE: "generate/portable"
     POLICY_GENERATE_SLO_PATH: "/work/slo_out/generate/latest.json"
+
+  # ==========================================================
+  # llama.cpp server defaults (Option A external llama-server)
+  #
+  # Use with compose runner multi-profile selection:
+  #   llmctl compose --defaults-profile docker+llama ...
+  #
+  # This profile ONLY provides wiring + llama-server knobs.
+  # Model selection remains owned by config/models.yaml via MODELS_PROFILE.
+  # Recommended pairing:
+  #   docker + llama + (optionally) models-llama
+  # ==========================================================
+  llama:
+    # Container-internal URL for llm_server to call (compose DNS)
+    LLAMA_SERVER_URL: "http://llama_server:8080"
+    LLAMA_SERVER_PORT: "8080"
+
+    # ---- arm64 native build + image pinning ----
+    # Used by deploy/compose/docker-compose.yml:
+    #   llama_server.image: ${LLAMA_SERVER_IMAGE}
+    #   llama_server.build.args.LLAMA_CPP_REF: ${LLAMA_CPP_REF}
+    #
+    # If you rebuild locally, tag the image with the same ref and you're deterministic.
+    LLAMA_CPP_REF: "b8069"
+    LLAMA_SERVER_IMAGE: "llmep-llama-server:b8069"
+
+    # Host path containing GGUF files (mounted read-only at /models)
+    # Set this in your .env.docker or shell for your machine.
+    # Example:
+    #   LLAMA_MODELS_DIR=/Users/chranama/models/gguf
+    LLAMA_MODELS_DIR: ""
+
+    # File inside /models (container path); override per-machine.
+    # Example:
+    #   LLAMA_MODEL_FILE=/models/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf
+    LLAMA_MODEL_FILE: ""
+
+    # Tuning knobs (safe-ish defaults; override as needed)
+    LLAMA_CTX_SIZE: "4096"
+    LLAMA_THREADS: ""          # empty => auto (entrypoint picks cpu count)
+    LLAMA_BATCH: "256"
+    LLAMA_UBATCH: ""           # optional micro-batch
+    LLAMA_N_GPU_LAYERS: "0"    # cpu-only by default
+    LLAMA_SEED: "0"
+    LLAMA_TEMP: "0.7"
+    LLAMA_TOP_P: "0.95"
+
+    # Optional behavior flags
+    LLAMA_MLOCK: "0"
+    LLAMA_NO_MMAP: "0"
+
+    # Optional host publishing for debugging
+    LLAMA_PUBLISH_PORT: "8080"
+
+  # Optional convenience profile to switch llm_server to models.yaml "llama-server" overlay
+  # Pair with docker+llama:
+  #   llmctl compose --defaults-profile docker+llama+models-llama ...
+  models-llama:
+    MODELS_PROFILE: "llama-server"

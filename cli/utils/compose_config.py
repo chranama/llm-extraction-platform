@@ -1,4 +1,5 @@
 # cli/utils/compose_config.py
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,22 +36,20 @@ def _normalize_profiles(profile: str | Sequence[str]) -> list[str]:
         s = profile.strip()
         if not s:
             return []
-        # allow "docker+jobs" or "docker,jobs"
         parts = [p.strip() for p in s.replace("+", ",").split(",")]
         return [p for p in parts if p]
     return [str(p).strip() for p in profile if str(p).strip()]
 
 
-def render_compose_env_file(
+def render_compose_env_dict(
     *,
     config_yaml_path: Path,
     profile: str | Sequence[str],
-    out_env_path: Path,
     profiles_key: str = "profiles",
     extra_env: Mapping[str, str] | None = None,
-) -> None:
+) -> dict[str, str]:
     """
-    Render a docker compose --env-file from YAML internal defaults.
+    Render a dict of env vars from YAML internal defaults.
 
     Supports merging multiple profiles. Merge order:
       profiles[0] -> profiles[1] -> ... -> profiles[n]
@@ -87,5 +86,26 @@ def render_compose_env_file(
         for k, v in extra_env.items():
             merged[str(k)] = "" if v is None else str(v)
 
+    return merged
+
+
+def write_env_file(*, out_env_path: Path, env: Mapping[str, str]) -> None:
     out_env_path.parent.mkdir(parents=True, exist_ok=True)
-    out_env_path.write_text("\n".join(_as_env_lines(merged)) + "\n")
+    out_env_path.write_text("\n".join(_as_env_lines(env)) + "\n")
+
+
+def render_compose_env_file(
+    *,
+    config_yaml_path: Path,
+    profile: str | Sequence[str],
+    out_env_path: Path,
+    profiles_key: str = "profiles",
+    extra_env: Mapping[str, str] | None = None,
+) -> None:
+    env = render_compose_env_dict(
+        config_yaml_path=config_yaml_path,
+        profile=profile,
+        profiles_key=profiles_key,
+        extra_env=extra_env,
+    )
+    write_env_file(out_env_path=out_env_path, env=env)

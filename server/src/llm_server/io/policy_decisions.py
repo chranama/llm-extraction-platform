@@ -1,6 +1,8 @@
 # server/src/llm_server/io/policy_decisions.py
 from __future__ import annotations
 
+import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +12,8 @@ from llm_contracts.runtime.policy_decision import (
     PolicyDecisionSnapshot as ContractsPolicyDecisionSnapshot,
     read_policy_decision,
 )
+
+logger = logging.getLogger("llm.policy")
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,7 @@ class PolicyDecisionSnapshot:
       - Fail-closed for gating
       - Shaping is advisory only
     """
+
     ok: bool
 
     # Scope
@@ -44,9 +49,7 @@ class PolicyDecisionSnapshot:
 # ------------------------------------------------------------------------------
 
 
-def _to_backend_snapshot(
-    s: ContractsPolicyDecisionSnapshot,
-) -> PolicyDecisionSnapshot:
+def _to_backend_snapshot(s: ContractsPolicyDecisionSnapshot) -> PolicyDecisionSnapshot:
     """
     Convert contracts snapshot -> backend snapshot.
 
@@ -63,23 +66,84 @@ def _to_backend_snapshot(
         cap = raw_cap
 
     return PolicyDecisionSnapshot(
-        ok=bool(s.ok),
-        model_id=s.model_id,
+        ok=bool(getattr(s, "ok", False)),
+        model_id=getattr(s, "model_id", None),
         enable_extract=(
-            bool(s.enable_extract)
-            if s.ok and s.enable_extract is not None
-            else False if not s.ok else None
+            bool(getattr(s, "enable_extract", False))
+            if getattr(s, "ok", False) and getattr(s, "enable_extract", None) is not None
+            else False if not getattr(s, "ok", False) else None
         ),
         generate_max_new_tokens_cap=cap,
-        raw=dict(s.raw or {}),
-        source_path=s.source_path,
-        error=s.error,
+        raw=dict(getattr(s, "raw", None) or {}),
+        source_path=getattr(s, "source_path", None),
+        error=getattr(s, "error", None),
     )
 
 
 # ------------------------------------------------------------------------------
 # Loading / caching
 # ------------------------------------------------------------------------------
+
+
+def _best_effort_parse_v2_json(p: Path) -> Optional[PolicyDecisionSnapshot]:
+    """
+    Fallback parser for policy_decision_v2 JSON.
+
+    Why this exists:
+      - If llm_contracts is behind (doesn't recognize v2 yet), read_policy_decision()
+        can throw and the backend ends up fail-closed with raw={}
+      - This keeps fail-closed semantics for gating, but allows v2 shaping + gating
+        to work immediately.
+
+    Notes:
+      - We intentionally keep validation minimal (backend is not the contracts authority)
+      - Any parse error returns None and caller handles fail-closed
+    """
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    if not isinstance(obj, dict):
+        return None
+
+    sv = obj.get("schema_version")
+    if sv != "policy_decision_v2":
+        return None
+
+    # Minimal field extraction with defensive typing
+    ok = bool(obj.get("ok", False))
+    model_id = obj.get("policy", {}).get("model_id") if isinstance(obj.get("policy"), dict) else obj.get("model_id")
+    if model_id is not None and not isinstance(model_id, str):
+        model_id = None
+
+    enable_extract = obj.get("enable_extract", None)
+    if enable_extract is not None:
+        enable_extract = bool(enable_extract)
+
+    cap = obj.get("generate_max_new_tokens_cap", None)
+    if not (isinstance(cap, int) and cap > 0):
+        cap = None
+
+    # Fail-closed gating semantics: if ok is False, extract must be disabled
+    eff_enable_extract: Optional[bool]
+    if not ok:
+        eff_enable_extract = False
+    else:
+        # ok=True:
+        # - enable_extract=None => no override
+        # - enable_extract=True/False => explicit override
+        eff_enable_extract = enable_extract if enable_extract is not None else None
+
+    return PolicyDecisionSnapshot(
+        ok=ok,
+        model_id=model_id,
+        enable_extract=eff_enable_extract,
+        generate_max_new_tokens_cap=cap,
+        raw=obj,
+        source_path=str(p),
+        error=None,
+    )
 
 
 def load_policy_decision_from_env() -> PolicyDecisionSnapshot:
@@ -120,10 +184,21 @@ def load_policy_decision_from_env() -> PolicyDecisionSnapshot:
             error="policy_decision_missing",
         )
 
+    # First try contracts parser (authoritative when it works)
     try:
         snap = read_policy_decision(p)
         return _to_backend_snapshot(snap)
     except Exception as e:
+        # Fallback: attempt to parse v2 JSON directly so policy works even if contracts lags
+        fb = _best_effort_parse_v2_json(p)
+        if fb is not None:
+            logger.warning(
+                "read_policy_decision failed; using best-effort v2 parser",
+                extra={"path": str(p), "error_type": type(e).__name__},
+            )
+            return fb
+
+        # Fail closed, but surface a more specific error string
         return PolicyDecisionSnapshot(
             ok=False,
             model_id=None,
@@ -162,9 +237,7 @@ def reload_policy_snapshot(request) -> PolicyDecisionSnapshot:
 # ------------------------------------------------------------------------------
 
 
-def policy_capability_overrides(
-    model_id: str, *, request
-) -> Optional[Dict[str, bool]]:
+def policy_capability_overrides(model_id: str, *, request) -> Optional[Dict[str, bool]]:
     """
     Capability overrides for models.yaml semantics.
 
@@ -189,9 +262,7 @@ def policy_capability_overrides(
     return {"extract": bool(snap.enable_extract)}
 
 
-def policy_generate_max_new_tokens_cap(
-    model_id: str, *, request
-) -> Optional[int]:
+def policy_generate_max_new_tokens_cap(model_id: str, *, request) -> Optional[int]:
     """
     Optional runtime shaping for /v1/generate.
 

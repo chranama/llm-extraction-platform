@@ -40,8 +40,9 @@ def _schemas_dir() -> Path:
     """
     Resolution order:
       1. SCHEMAS_DIR env var
-      2. project root /schemas
-      3. package-bundled schemas
+      2. project root /schemas/model_output (if exists)
+      3. project root /schemas
+      4. package-bundled schemas
     """
     import os
 
@@ -49,14 +50,19 @@ def _schemas_dir() -> Path:
     if env_dir:
         return Path(env_dir)
 
-    # project root /schemas
     root = Path(__file__).resolve().parents[3]
     root_schemas = root / "schemas"
+
+    mo = root_schemas / "model_output"
+    if mo.exists():
+        return mo
+
     if root_schemas.exists():
         return root_schemas
 
-    # fallback to package path
-    return Path(__file__).resolve().parents[1] / "schemas"
+    pkg_schemas = Path(__file__).resolve().parents[1] / "schemas"
+    pkg_mo = pkg_schemas / "model_output"
+    return pkg_mo if pkg_mo.exists() else pkg_schemas
 
 
 # Simple in-memory cache: schema_id -> parsed schema dict

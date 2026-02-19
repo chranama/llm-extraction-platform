@@ -1,134 +1,27 @@
-# src/llm_server/services/llm.py
+# server/src/llm_server/services/llm.py
 from __future__ import annotations
 
 import os
-import pwd
-from typing import Any, Dict, List, Optional
-
-import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-import transformers as tf
+from typing import Any, Dict, List, Optional, Tuple
 
 from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
-from llm_server.services.llm_api import HttpLLMClient
 from llm_server.services.llm_config import load_models_config, ModelSpec
 from llm_server.services.llm_registry import MultiModelManager
 
-# -----------------------------------
-# Configuration helpers (local)
-# -----------------------------------
+from llm_server.services.backends.transformers_backend import TransformersBackend, TransformersBackendConfig
+from llm_server.services.backends.llamacpp_backend import LlamaCppBackend, LlamaCppBackendConfig
+from llm_server.services.backends.backend_api import OpenAICompatClient, OpenAICompatClientConfig
 
-DTYPE_MAP = {
-    "float16": torch.float16,
-    "bfloat16": torch.bfloat16,
-    "float32": torch.float32,
-}
+# Gate config is the source-of-truth for total budget
+from llm_server.services.limits.config import load_generate_gate_config
+
+
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
 
 DEFAULT_STOPS: List[str] = ["\nUser:", "\nuser:", "User:", "###"]
-
-
-def _real_user_home() -> str:
-    try:
-        return pwd.getpwuid(os.getuid()).pw_dir
-    except Exception:
-        return os.path.expanduser("~")
-
-
-def _device_from_settings(cfg) -> str:
-    # explicit override wins
-    dev = getattr(cfg, "model_device", None)
-    if isinstance(dev, str) and dev.strip():
-        return dev.strip()
-    return "mps" if torch.backends.mps.is_available() else "cpu"
-
-
-def _resolve_hf_home(cfg) -> str:
-    cfg_val = getattr(cfg, "hf_home", None)
-    if isinstance(cfg_val, str) and cfg_val.strip():
-        return cfg_val.strip()
-
-    env_val = os.environ.get("HF_HOME")
-    if env_val and env_val.strip():
-        return env_val.strip()
-
-    xdg = os.environ.get("XDG_CACHE_HOME")
-    if xdg and xdg.strip():
-        return os.path.join(xdg, "huggingface")
-
-    return os.path.join(_real_user_home(), ".cache", "huggingface")
-
-
-def _hf_token() -> Optional[str]:
-    """
-    Canonical token resolution for gated HF repos.
-
-    Preferred env: HUGGINGFACE_HUB_TOKEN
-    Back-compat env: HF_TOKEN
-
-    NOTE: We also set HF_TOKEN from HUGGINGFACE_HUB_TOKEN (if missing)
-    because some codepaths / older libs still look for HF_TOKEN.
-    """
-    tok = os.environ.get("HUGGINGFACE_HUB_TOKEN")
-    if tok and tok.strip():
-        tok = tok.strip()
-        if not (os.environ.get("HF_TOKEN") or "").strip():
-            os.environ["HF_TOKEN"] = tok
-        return tok
-
-    tok2 = os.environ.get("HF_TOKEN")
-    if tok2 and tok2.strip():
-        return tok2.strip()
-
-    return None
-
-
-def _hf_kwargs() -> dict[str, Any]:
-    """
-    Common kwargs for HF Hub auth.
-    We intentionally pass token=... explicitly because relying on env
-    can be inconsistent across versions/call sites.
-    """
-    tok = _hf_token()
-    return {"token": tok} if tok else {}
-
-
-def _configure_hf_cache_env(cfg) -> dict[str, str]:
-    hf_home = _resolve_hf_home(cfg)
-    hub_cache = os.environ.get("HF_HUB_CACHE") or os.path.join(hf_home, "hub")
-
-    os.environ["HF_HOME"] = hf_home
-    os.environ["HF_HUB_CACHE"] = hub_cache
-    os.environ["TRANSFORMERS_CACHE"] = os.environ.get("TRANSFORMERS_CACHE") or hub_cache
-    os.environ["XDG_CACHE_HOME"] = os.environ.get("XDG_CACHE_HOME") or os.path.dirname(hf_home)
-
-    # Ensure token back-compat env is set if present
-    _hf_token()
-
-    try:
-        os.makedirs(hf_home, exist_ok=True)
-        os.makedirs(hub_cache, exist_ok=True)
-    except Exception as e:
-        raise AppError(
-            code="hf_cache_unwritable",
-            message="Hugging Face cache directory is not writable",
-            status_code=500,
-            extra={
-                "hf_home": hf_home,
-                "hf_hub_cache": hub_cache,
-                "error": str(e),
-                "env_HOME": os.environ.get("HOME"),
-                "real_user_home": _real_user_home(),
-            },
-        ) from e
-
-    return {
-        "hf_home": hf_home,
-        "hf_hub_cache": hub_cache,
-        "transformers_cache": os.environ.get("TRANSFORMERS_CACHE", ""),
-        "env_HOME": os.environ.get("HOME", ""),
-        "real_user_home": _real_user_home(),
-    }
 
 
 def _truthy_env(name: str, default: bool) -> bool:
@@ -138,16 +31,56 @@ def _truthy_env(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "y", "on")
 
 
+def _get_attr_or_key(obj: Any, key: str) -> Any:
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _get_nested(obj: Any, path: str) -> Any:
+    cur: Any = obj
+    for part in path.split("."):
+        cur = _get_attr_or_key(cur, part)
+        if cur is None:
+            return None
+    return cur
+
+
+def _as_str(x: Any) -> Optional[str]:
+    if isinstance(x, str):
+        s = x.strip()
+        return s if s else None
+    return None
+
+
+def _as_int(x: Any) -> Optional[int]:
+    if x is None or isinstance(x, bool):
+        return None
+    try:
+        return int(x)
+    except Exception:
+        return None
+
+
+def _as_float(x: Any) -> Optional[float]:
+    if x is None or isinstance(x, bool):
+        return None
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+
 def _caps_meta(sp: Optional[ModelSpec]) -> Optional[list[str]]:
     """
-    Normalize per-model capabilities for registry metadata.
-
-    Contract (aligned with MultiModelManager + unit tests):
-      - None => unspecified (registry treats as allow-all)
-      - list[str] => allowlist
-      - dict[str,bool] => keys with True are enabled
-      - str => single capability
-    Returned value is a stable, sorted list[str] (or None).
+    Preserve semantics:
+      - None => unspecified (fail-open)
+      - dict => True keys enabled
+      - list/tuple/set => allowlist
+      - str => single cap
+    Returns stable sorted list[str] (or None).
     """
     if sp is None:
         return None
@@ -167,263 +100,345 @@ def _caps_meta(sp: Optional[ModelSpec]) -> Optional[list[str]]:
     if isinstance(caps, dict):
         for k, v in caps.items():
             kk = _norm_one(k)
-            if not kk:
-                continue
-            if bool(v):
+            if kk and bool(v):
                 out.append(kk)
-
     elif isinstance(caps, (list, tuple, set)):
         for x in caps:
             s = _norm_one(x)
             if s:
                 out.append(s)
-
     elif isinstance(caps, str):
         s = _norm_one(caps)
         if s:
             out.append(s)
-
     else:
-        # unknown type => treat as unspecified/fail-open
         return None
 
-    # de-dupe + stable ordering (sorted)
     out = sorted(set(out))
     return out or None
 
 
-def _make_http_client(*, base_url: str, model_id: str, timeout: int = 60):
+def _normalize_backend_name(raw: Any) -> str:
+    """
+    Back-compat:
+      - "local" => "transformers"
+    New:
+      - "transformers" | "llamacpp" | "remote"
+    """
+    s = (str(raw or "")).strip().lower()
+    if not s:
+        return "transformers"
+    if s == "local":
+        return "transformers"
+    if s in ("transformers", "llamacpp", "remote"):
+        return s
+    if s.startswith("llama"):
+        return "llamacpp"
+    return s
+
+
+# ------------------------------------------------------------
+# Timeout alignment helpers
+# ------------------------------------------------------------
+
+def _timeout_alignment_buffer_seconds() -> float:
+    """
+    Buffer so the upstream HTTP call times out BEFORE the gate budget expires.
+    """
+    raw = os.getenv("LLM_TIMEOUT_ALIGNMENT_BUFFER_SECONDS", "1.0")
     try:
-        return HttpLLMClient(base_url=base_url, model_id=model_id, timeout=timeout)
-    except TypeError:
-        # test FakeHttpClient doesn’t accept timeout
-        return HttpLLMClient(base_url=base_url, model_id=model_id)
+        v = float(raw)
+    except Exception:
+        v = 1.0
+    # sane bounds
+    if v < 0.0:
+        v = 0.0
+    if v > 10.0:
+        v = 10.0
+    return v
 
-# ===================================
-# LOCAL MODEL MANAGER
-# ===================================
 
-
-class ModelManager:
+def _aligned_backend_timeout_seconds(*, requested: float) -> float:
     """
-    Local (in-process) HF Transformers backend.
+    Align backend HTTP timeout to the GenerateGate total timeout budget.
+
+    Rule:
+      T_http <= max(1.0, gate_timeout - buffer)
+
+    If gate config isn't enabled/available, returns requested.
     """
+    req = float(requested) if requested and requested > 0 else 60.0
+
+    try:
+        gate_cfg = load_generate_gate_config(settings=None)
+        gate_timeout = float(getattr(gate_cfg, "timeout_seconds", 0.0) or 0.0)
+        gate_enabled = bool(getattr(gate_cfg, "enabled", True))
+        if not gate_enabled or gate_timeout <= 0:
+            return req
+
+        buf = _timeout_alignment_buffer_seconds()
+        budget = max(1.0, gate_timeout - buf)
+        return float(min(req, budget))
+    except Exception:
+        # best-effort: never fail model construction due to alignment logic
+        return req
+
+
+def _aligned_connect_timeout_seconds(total_timeout_seconds: float) -> float:
+    """
+    Ensure connect timeout never exceeds total timeout (httpx will complain).
+    """
+    t = float(total_timeout_seconds) if total_timeout_seconds and total_timeout_seconds > 0 else 60.0
+    return float(min(5.0, t))
+
+
+def _requested_timeout_seconds(cfg_block: Any, *, settings: Any) -> float:
+    """
+    Read per-backend timeout_seconds with a Settings fallback.
+    """
+    return float(
+        _as_float(_get_nested(cfg_block, "timeout_seconds"))
+        or float(getattr(settings, "http_client_timeout", 60) or 60)
+    )
+
+
+def _requested_connect_timeout_seconds(cfg_block: Any, *, total_timeout_seconds: float) -> float:
+    """
+    Prefer explicit connect_timeout_seconds, else align to <= total.
+    """
+    raw = _as_float(_get_nested(cfg_block, "connect_timeout_seconds"))
+    if raw is not None and raw > 0:
+        return float(min(float(raw), float(total_timeout_seconds)))
+    return _aligned_connect_timeout_seconds(float(total_timeout_seconds))
+
+
+# ------------------------------------------------------------
+# Remote backend (OpenAI-compat)
+# ------------------------------------------------------------
+
+class RemoteBackend:
+    """
+    Generic OpenAI-compatible remote completion backend.
+    """
+    backend_name: str = "remote"
 
     def __init__(
         self,
         *,
         model_id: str,
-        device: str,
-        dtype: torch.dtype,
-        trust_remote_code: bool = False,
+        base_url: str,
+        api_key: str | None = None,
+        timeout_seconds: float = 60.0,
+        connect_timeout_seconds: float = 5.0,
+        remote_model_id: str | None = None,
     ) -> None:
-        self.model_id: str = model_id
-        self._device: str = device
-        self._dtype: torch.dtype = dtype
-        self._trust_remote_code: bool = bool(trust_remote_code)
-        self._tokenizer = None
-        self._model = None
+        self.model_id = model_id
+        self.remote_model_id = remote_model_id or model_id
 
-    @classmethod
-    def from_settings(cls, cfg) -> "ModelManager":
-        dtype_str = getattr(cfg, "model_dtype", "float16")
-        dtype = DTYPE_MAP.get(dtype_str, torch.float16)
-        device = _device_from_settings(cfg)
-        model_id = getattr(cfg, "model_id", "mistralai/Mistral-7B-v0.1")
-        return cls(model_id=model_id, device=device, dtype=dtype, trust_remote_code=False)
+        ct = float(min(float(connect_timeout_seconds), float(timeout_seconds))) if timeout_seconds > 0 else float(connect_timeout_seconds)
 
-    def _err_ctx(self) -> dict[str, Any]:
-        return {
-            "model_id": self.model_id,
-            "device": str(self._device),
-            "dtype": str(self._dtype),
-            "trust_remote_code": bool(self._trust_remote_code),
-            "env_HOME": os.environ.get("HOME"),
-            "HF_HOME": os.environ.get("HF_HOME"),
-            "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
-            "TRANSFORMERS_CACHE": os.environ.get("TRANSFORMERS_CACHE"),
-            "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
-            "real_user_home": _real_user_home(),
-            "has_hf_token": bool(_hf_token()),
-        }
-
-    def is_loaded(self) -> bool:
-        return (self._tokenizer is not None) and (self._model is not None)
+        self._client = OpenAICompatClient(
+            OpenAICompatClientConfig(
+                base_url=base_url,
+                api_key=api_key,
+                timeout_seconds=float(timeout_seconds),
+                connect_timeout_seconds=float(ct),
+            )
+        )
 
     def ensure_loaded(self) -> None:
-        try:
-            cfg = get_settings()
-            cache_ctx = _configure_hf_cache_env(cfg)
-            cache_dir = cache_ctx["hf_hub_cache"]
+        return None
 
-            # Always pass token explicitly (gated repos)
-            auth_kw = _hf_kwargs()
-
-            # Dtype safety: CPU should default to float32 unless user explicitly configured float32 already.
-            dtype = self._dtype
-            if str(self._device) == "cpu" and dtype in (torch.float16, torch.bfloat16):
-                dtype = torch.float32
-            if str(self._device) == "mps" and dtype == torch.bfloat16:
-                dtype = torch.float16
-
-            if self._tokenizer is None:
-                self._tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_id,
-                    use_fast=True,
-                    cache_dir=cache_dir,
-                    trust_remote_code=self._trust_remote_code,
-                    **auth_kw,
-                )
-                if getattr(self._tokenizer, "pad_token", None) is None:
-                    self._tokenizer.pad_token = self._tokenizer.eos_token
-
-            if self._model is None:
-                hf_cfg = AutoConfig.from_pretrained(
-                    self.model_id,
-                    trust_remote_code=self._trust_remote_code,
-                    **auth_kw,
-                )
-
-                try:
-                    self._model = AutoModelForCausalLM.from_pretrained(
-                        self.model_id,
-                        torch_dtype=dtype,
-                        low_cpu_mem_usage=True,
-                        cache_dir=cache_dir,
-                        trust_remote_code=self._trust_remote_code,
-                        **auth_kw,
-                    )
-                except ValueError:
-                    # fallback for custom architectures
-                    archs = getattr(hf_cfg, "architectures", None) or []
-                    if not archs:
-                        raise
-                    arch = archs[0]
-                    model_cls = getattr(tf, arch, None)
-                    if model_cls is None:
-                        raise
-                    self._model = model_cls.from_pretrained(
-                        self.model_id,
-                        torch_dtype=dtype,
-                        low_cpu_mem_usage=True,
-                        cache_dir=cache_dir,
-                        trust_remote_code=self._trust_remote_code,
-                        **auth_kw,
-                    )
-
-                self._model.to(self._device)
-                self._model.eval()
-
-        except AppError:
-            raise
-        except Exception as e:
-            raise AppError(
-                code="model_load_failed",
-                message="Failed to load local model",
-                status_code=500,
-                extra={**self._err_ctx(), "error": str(e)},
-            ) from e
-
-    @staticmethod
-    def _truncate_on_stop(text: str, stop: Optional[List[str]]) -> str:
-        if not stop:
-            return text
-        cut_positions = [text.find(s) for s in stop if s in text]
-        if cut_positions:
-            cut = min(cut_positions)
-            if cut >= 0:
-                return text[:cut]
-        return text
-
-    @torch.inference_mode()
     def generate(
         self,
+        *,
         prompt: str,
-        max_new_tokens: int = 256,
-        temperature: float = 0.7,
-        top_p: float = 0.95,
-        top_k: int | None = 0,
-        repetition_penalty: float = 1.0,
-        stop: Optional[List[str]] = None,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        stop: list[str] | None = None,
+        **kwargs: Any,
     ) -> str:
+        data = self._client.completions(
+            prompt=prompt,
+            max_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            stop=stop,
+            model=self.remote_model_id,
+            extra=kwargs if kwargs else None,
+        )
         try:
-            self.ensure_loaded()
+            choices = data.get("choices") or []
+            if isinstance(choices, list) and choices:
+                c0 = choices[0] or {}
+                if isinstance(c0, dict):
+                    return str(c0.get("text") or "")
+        except Exception:
+            pass
+        return ""
 
-            tok = self._tokenizer
-            model = self._model
-            if tok is None or model is None:
-                raise RuntimeError("Model not loaded")
 
-            stops = stop if (stop and len(stop) > 0) else DEFAULT_STOPS
-            inputs = tok(prompt, return_tensors="pt").to(self._device)
+# ------------------------------------------------------------
+# Backend builder
+# ------------------------------------------------------------
 
-            use_top_k = top_k if (top_k is not None and top_k > 0) else None
-            use_temperature = temperature if (temperature is not None and temperature > 0) else 0.0
-            use_top_p = top_p if top_p is not None else 0.95
+def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict[str, Any]]:
+    backend_name = _normalize_backend_name(getattr(sp, "backend", None) or "transformers")
+    caps = _caps_meta(sp)
+    load_mode = str(getattr(sp, "load_mode", "lazy") or "lazy")
 
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=use_temperature > 0,
-                temperature=use_temperature,
-                top_p=use_top_p,
-                top_k=use_top_k,
-                repetition_penalty=repetition_penalty,
-                eos_token_id=tok.eos_token_id,
-                pad_token_id=tok.pad_token_id,
-            )[0]
+    transformers_cfg = _get_attr_or_key(sp, "transformers")
+    llamacpp_cfg = _get_attr_or_key(sp, "llamacpp")
+    remote_cfg = _get_attr_or_key(sp, "remote")
 
-            text = tok.decode(output_ids, skip_special_tokens=True)
-            tail = text[len(prompt) :]
-            return self._truncate_on_stop(tail, stops)
+    # -------------------------
+    # transformers (in-process)
+    # -------------------------
+    if backend_name == "transformers":
+        hf_id = _as_str(_get_nested(transformers_cfg, "hf_id")) or sp.id
+        device = _as_str(_get_nested(transformers_cfg, "device")) or "auto"
+        dtype = _as_str(_get_nested(transformers_cfg, "dtype"))
+        trc = bool(_get_nested(transformers_cfg, "trust_remote_code") or False)
 
-        except AppError:
-            raise
-        except Exception as e:
+        b = TransformersBackend(
+            model_id=sp.id,
+            cfg=TransformersBackendConfig(
+                hf_id=hf_id,
+                device=device,
+                dtype=dtype,
+                trust_remote_code=trc,
+                default_temperature=float(_as_float(_get_nested(transformers_cfg, "default_temperature")) or 0.7),
+                default_top_p=float(_as_float(_get_nested(transformers_cfg, "default_top_p")) or 0.95),
+            ),
+        )
+        meta = {"backend": "transformers", "capabilities": caps, "load_mode": load_mode, "hf_id": hf_id}
+        return b, meta
+
+    # -------------------------
+    # llamacpp (external llama-server)
+    # -------------------------
+    if backend_name == "llamacpp":
+        server_url = _as_str(_get_nested(llamacpp_cfg, "server_url")) or _as_str(os.environ.get("LLAMA_SERVER_URL"))
+        if not server_url:
             raise AppError(
-                code="model_generate_failed",
-                message="Local model generation failed",
+                code="backend_config_invalid",
+                message="llamacpp backend requires server_url (set models.yaml llamacpp.server_url or env LLAMA_SERVER_URL)",
                 status_code=500,
-                extra={**self._err_ctx(), "error": str(e)},
-            ) from e
+                extra={"model_id": sp.id},
+            )
+
+        api_key = _as_str(_get_nested(llamacpp_cfg, "api_key")) or _as_str(os.environ.get("LLAMA_SERVER_API_KEY"))
+
+        requested_timeout = _requested_timeout_seconds(llamacpp_cfg, settings=settings)
+        timeout_seconds = _aligned_backend_timeout_seconds(requested=requested_timeout)
+
+        connect_timeout_seconds = _requested_connect_timeout_seconds(llamacpp_cfg, total_timeout_seconds=timeout_seconds)
+
+        model_name = _as_str(_get_nested(llamacpp_cfg, "model_name"))
+        default_temperature = float(_as_float(_get_nested(llamacpp_cfg, "default_temperature")) or 0.7)
+        default_top_p = float(_as_float(_get_nested(llamacpp_cfg, "default_top_p")) or 0.95)
+
+        b = LlamaCppBackend(
+            model_id=sp.id,
+            cfg=LlamaCppBackendConfig(
+                server_url=server_url,
+                api_key=api_key,
+                timeout_seconds=float(timeout_seconds),
+                connect_timeout_seconds=float(connect_timeout_seconds),
+                model_name=model_name,
+                default_temperature=default_temperature,
+                default_top_p=default_top_p,
+            ),
+        )
+        meta = {
+            "backend": "llamacpp",
+            "server_url": server_url,
+            "capabilities": caps,
+            "load_mode": "remote_process",
+            "timeout_seconds": float(timeout_seconds),
+            "connect_timeout_seconds": float(connect_timeout_seconds),
+        }
+        return b, meta
+
+    # -------------------------
+    # remote (OpenAI-compat)
+    # -------------------------
+    if backend_name == "remote":
+        base_url = _as_str(_get_nested(remote_cfg, "base_url")) or _as_str(getattr(settings, "llm_service_url", None))
+        if not base_url:
+            raise AppError(
+                code="remote_models_require_llm_service_url",
+                message="remote backend requires Settings.llm_service_url or models.yaml remote.base_url",
+                status_code=500,
+                extra={"model_id": sp.id},
+            )
+
+        api_key = _as_str(_get_nested(remote_cfg, "api_key")) or _as_str(os.environ.get("REMOTE_BACKEND_API_KEY"))
+
+        requested_timeout = _requested_timeout_seconds(remote_cfg, settings=settings)
+        timeout_seconds = _aligned_backend_timeout_seconds(requested=requested_timeout)
+
+        connect_timeout_seconds = _requested_connect_timeout_seconds(remote_cfg, total_timeout_seconds=timeout_seconds)
+
+        remote_model_id = _as_str(_get_nested(remote_cfg, "model_id")) or _as_str(_get_nested(remote_cfg, "model_name"))
+
+        b = RemoteBackend(
+            model_id=sp.id,
+            base_url=base_url,
+            api_key=api_key,
+            timeout_seconds=float(timeout_seconds),
+            connect_timeout_seconds=float(connect_timeout_seconds),
+            remote_model_id=remote_model_id,
+        )
+        meta = {
+            "backend": "remote",
+            "base_url": base_url,
+            "capabilities": caps,
+            "load_mode": "remote",
+            "timeout_seconds": float(timeout_seconds),
+            "connect_timeout_seconds": float(connect_timeout_seconds),
+        }
+        return b, meta
+
+    raise AppError(
+        code="backend_config_invalid",
+        message="Unknown backend in model spec",
+        status_code=500,
+        extra={"model_id": sp.id, "backend": backend_name, "allowed": ["transformers", "llamacpp", "remote"]},
+    )
 
 
-# ===================================
-# BUILDER / WIRING
-# ===================================
-
+# ------------------------------------------------------------
+# Public builder (wiring)
+# ------------------------------------------------------------
 
 def build_llm_from_settings() -> Any:
     """
-    Construct the service LLM backend.
+    Build model backend(s) based on models.yaml and profile selection.
 
-    Medium gating behavior (safe default):
-      - By default, expose ONLY the primary model locally.
-      - If ENABLE_MULTI_MODELS=1, expose additional models from models.yaml.
-
-    Any model with load_mode == "off" is excluded from the registry entirely.
-
-    Per-model capabilities are propagated into registry metadata for API gating/UI.
+    Behavior:
+      - If MODEL_LOAD_MODE=off => empty MultiModelManager
+      - If ENABLE_MULTI_MODELS=0 => return single backend object (default model)
+      - Else => MultiModelManager(models=..., default_id=..., model_meta=...)
     """
     cfg = load_models_config()
-    primary_id = cfg.primary_id
     s = get_settings()
-    http_timeout = int(getattr(s, "http_client_timeout", 60) or 60)
 
-    multi_enabled = _truthy_env("ENABLE_MULTI_MODELS", default=False)
+    primary_id = cfg.primary_id
+    spec_map: Dict[str, ModelSpec] = {sp.id: sp for sp in cfg.models}
 
-    # Global load mode override (env wins, then settings)
     global_load_mode = (os.getenv("MODEL_LOAD_MODE") or getattr(s, "model_load_mode", None) or "").strip().lower()
-
-    # If globally off, return an empty registry (unit tests expect this shape).
     if global_load_mode == "off":
         return MultiModelManager(models={}, default_id=primary_id, model_meta={})
 
-    spec_map: Dict[str, ModelSpec] = {sp.id: sp for sp in cfg.models}
     ordered_ids: List[str] = [
-        mid for mid in cfg.model_ids if (spec_map.get(mid) and spec_map[mid].load_mode != "off")
+        mid
+        for mid in cfg.model_ids
+        if (spec_map.get(mid) is not None and str(getattr(spec_map[mid], "load_mode", "lazy")).lower() != "off")
     ]
-
     if not ordered_ids:
         raise AppError(
             code="model_config_invalid",
@@ -437,71 +452,25 @@ def build_llm_from_settings() -> Any:
     else:
         primary_id = ordered_ids[0]
 
+    multi_enabled = _truthy_env("ENABLE_MULTI_MODELS", default=False)
     if not multi_enabled:
         ordered_ids = [primary_id]
 
-    def _need_service_url_for(mid: str) -> bool:
-        sp = spec_map.get(mid)
-        return bool(sp and sp.backend == "remote")
-
-    if any(_need_service_url_for(mid) for mid in ordered_ids):
-        if not getattr(s, "llm_service_url", None):
-            raise AppError(
-                code="remote_models_require_llm_service_url",
-                message="Remote models configured but llm_service_url is not set",
-                status_code=500,
-                extra={"primary_id": primary_id, "model_ids": ordered_ids},
-            )
-
-    # Single model shortcut
+    # single-model shortcut
     if len(ordered_ids) == 1:
-        sp = spec_map.get(primary_id)
-        backend = (sp.backend if sp else "local")
-
-        if backend == "remote":
-            return _make_http_client(base_url=s.llm_service_url, model_id=primary_id, timeout=http_timeout)
-
-        mgr = ModelManager.from_settings(s)
-        mgr.model_id = primary_id
-        if sp is not None:
-            trc = bool(getattr(sp, "trust_remote_code", False))
-            # internal flag for your real ModelManager
-            if hasattr(mgr, "_trust_remote_code"):
-                mgr._trust_remote_code = trc  # type: ignore[attr-defined]
-            # public attribute for test + compatibility
-            setattr(mgr, "trust_remote_code", trc)
-        return mgr
+        sp = spec_map[primary_id]
+        backend, _meta = _build_backend_for_model(sp=sp, settings=s)
+        return backend
 
     models: Dict[str, Any] = {}
     meta: Dict[str, Dict[str, Any]] = {}
 
     for mid in ordered_ids:
         sp = spec_map.get(mid)
-        backend = (sp.backend if sp else "local")
-        caps = _caps_meta(sp)
-
-        if backend == "remote":
-            models[mid] = _make_http_client(base_url=s.llm_service_url, model_id=mid, timeout=http_timeout)
-            meta[mid] = {
-                "backend": "http_remote",
-                "load_mode": "remote",
-                "capabilities": caps,
-            }
+        if sp is None:
             continue
-
-        mm = ModelManager.from_settings(s)
-        mm.model_id = mid
-        if sp is not None:
-            trc = bool(getattr(sp, "trust_remote_code", False))
-            if hasattr(mm, "_trust_remote_code"):
-                mm._trust_remote_code = trc  # type: ignore[attr-defined]
-            setattr(mm, "trust_remote_code", trc)
-
-        models[mid] = mm
-        meta[mid] = {
-            "backend": "local_hf",
-            "load_mode": "lazy(default eager-by-lifespan)" if mid == primary_id else "lazy",
-            "capabilities": caps,
-        }
+        backend, m = _build_backend_for_model(sp=sp, settings=s)
+        models[mid] = backend
+        meta[mid] = m
 
     return MultiModelManager(models=models, default_id=primary_id, model_meta=meta)

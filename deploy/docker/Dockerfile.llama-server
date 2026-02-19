@@ -1,0 +1,77 @@
+# deploy/docker/Dockerfile.llama-server
+#
+# Native build of llama.cpp llama-server for arm64 (Apple Silicon / aarch64 Linux)
+# Fix: include shared libs (e.g. libmtmd.so.0) in runtime image.
+
+############################
+# 1) Build llama.cpp server
+############################
+FROM debian:bookworm-slim AS build
+
+ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
+ARG LLAMA_CPP_REF=b8069
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git cmake ninja-build build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+RUN git init \
+ && git remote add origin "${LLAMA_CPP_REPO}" \
+ && git fetch --depth 1 origin "refs/tags/${LLAMA_CPP_REF}:refs/tags/${LLAMA_CPP_REF}" || true \
+ && git fetch --depth 1 origin "${LLAMA_CPP_REF}" \
+ && git checkout -q FETCH_HEAD
+
+# Build llama-server
+RUN cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLAMA_BUILD_SERVER=ON \
+    -DLLAMA_BUILD_EXAMPLES=OFF \
+    -DLLAMA_BUILD_TESTS=OFF \
+    -DGGML_NATIVE=OFF \
+    -DGGML_CPU_ARM_ARCH=armv8.2-a+fp16 \
+    -DGGML_LLAMAFILE=OFF \
+ && cmake --build build --target llama-server -j
+
+RUN test -x build/bin/llama-server || (echo "llama-server not found at build/bin/llama-server" >&2; ls -R build >&2; exit 2)
+
+# Harvest llama.cpp-built shared libs that llama-server depends on (libmtmd.so*, libggml*.so*, libllama*.so*, etc.)
+# We intentionally DO NOT copy system libs (glibc, libstdc++, etc.).
+RUN set -eux; \
+    mkdir -p /out/bin /out/lib; \
+    cp -a build/bin/llama-server /out/bin/; \
+    find build -type f \( \
+        -name 'libmtmd.so*' -o \
+        -name 'libllama.so*' -o \
+        -name 'libggml*.so*' -o \
+        -name 'libcommon.so*' \
+    \) -exec cp -a {} /out/lib/ \; || true; \
+    echo "== harvested libs =="; ls -la /out/lib || true; \
+    echo "== ldd (may show not-found until runtime has libs installed) =="; ldd /out/bin/llama-server || true
+
+############################
+# 2) Runtime image
+############################
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl bash coreutils \
+    libgomp1 \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Binary + harvested libs
+COPY --from=build /out/bin/llama-server /usr/local/bin/llama-server
+COPY --from=build /out/lib/ /usr/local/lib/
+
+ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
+RUN ldconfig
+
+COPY deploy/docker/llama-server/entrypoint.sh /app/entrypoint.sh
+COPY deploy/docker/llama-server/healthcheck.sh /app/healthcheck.sh
+RUN chmod +x /app/entrypoint.sh /app/healthcheck.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/app/entrypoint.sh"]
