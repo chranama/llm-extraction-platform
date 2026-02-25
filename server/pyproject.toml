@@ -73,6 +73,8 @@ llm = "llm_server.cli:main"
 # ---------- uv configuration ----------
 
 [tool.uv.sources]
+# Default-safe path: CPU wheels for deterministic local/CI resolution.
+# This keeps `uv sync` stable without requiring CUDA-specific indexes.
 torch = [
   { index = "pytorch-cpu" },
 ]
@@ -83,6 +85,23 @@ torchaudio = [
   { index = "pytorch-cpu" },
 ]
 llm-contracts = { path = "../contracts", editable = true }
+
+# CUDA scaffold (opt-in):
+# If you want CUDA 12.1 wheels, switch the three source entries above to:
+#
+# torch = [
+#   { index = "pytorch-cu121" },
+# ]
+# torchvision = [
+#   { index = "pytorch-cu121" },
+# ]
+# torchaudio = [
+#   { index = "pytorch-cu121" },
+# ]
+#
+# Then sync with:
+#   uv sync --extra cuda121
+# Keep this opt-in to avoid CPU/CUDA mixed-index resolver conflicts in default flows.
 
 [tool.uv]
 package = true
