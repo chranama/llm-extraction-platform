@@ -32,8 +32,78 @@ class TransformersBackend(LLMBackend):
         self._tok = None
         self._model = None
 
+    def is_loaded(self) -> bool:
+        return bool(self._loaded and self._tok is not None and self._model is not None)
+
+    def model_info(self) -> dict[str, Any]:
+        """
+        Best-effort local metadata snapshot.
+        Never throws. Must be safe to call from readiness/health paths.
+        """
+        out: dict[str, Any] = {
+            "ok": True,
+            "backend": self.backend_name,
+            "model_id": self.model_id,
+            "hf_id": (self._cfg.hf_id or "").strip() or None,
+            "loaded": bool(self.is_loaded()),
+            "config": {
+                "device": (self._cfg.device or "").strip() or None,
+                "dtype": (self._cfg.dtype or "").strip() or None,
+                "trust_remote_code": bool(self._cfg.trust_remote_code),
+            },
+        }
+
+        # These are best-effort and should not trigger any loading.
+        try:
+            model = self._model
+            if model is not None:
+                # device + dtype reflect runtime reality
+                try:
+                    dev = getattr(model, "device", None)
+                    out["device"] = str(dev) if dev is not None else None
+                except Exception:
+                    out["device"] = None
+
+                try:
+                    dt = getattr(model, "dtype", None)
+                    out["dtype"] = str(dt) if dt is not None else None
+                except Exception:
+                    out["dtype"] = None
+
+                # Some models carry config metadata
+                try:
+                    cfg = getattr(model, "config", None)
+                    if cfg is not None:
+                        name_or_path = getattr(cfg, "_name_or_path", None)
+                        if isinstance(name_or_path, str) and name_or_path.strip():
+                            out["hf_name_or_path"] = name_or_path.strip()
+                except Exception:
+                    pass
+
+            # Library versions are helpful for correlation
+            try:
+                import torch  # type: ignore
+
+                out["torch_version"] = getattr(torch, "__version__", None)
+            except Exception:
+                out["torch_version"] = None
+
+            try:
+                import transformers  # type: ignore
+
+                out["transformers_version"] = getattr(transformers, "__version__", None)
+            except Exception:
+                out["transformers_version"] = None
+
+        except Exception as e:
+            # Never throw; convert to degraded snapshot
+            out["ok"] = False
+            out["error"] = f"{type(e).__name__}: {e}"
+
+        return out
+
     def ensure_loaded(self) -> None:
-        if self._loaded:
+        if self.is_loaded():
             return
 
         try:
@@ -136,7 +206,12 @@ class TransformersBackend(LLMBackend):
         if not isinstance(prompt, str) or not prompt.strip():
             raise AppError(code="invalid_request", message="prompt must be a non-empty string", status_code=400)
 
-        self.ensure_loaded()
+        # NOTE:
+        # Lazy loading is now controlled by deps.py + RuntimeModelLoader.
+        # If we get here and weights are not loaded, treat as not ready.
+        if not self.is_loaded():
+            raise AppError(code="backend_not_ready", message="Transformers backend not loaded", status_code=503)
+
         tok = self._tok
         model = self._model
         if tok is None or model is None:
@@ -166,8 +241,7 @@ class TransformersBackend(LLMBackend):
         if isinstance(top_k, int) and top_k > 0:
             gen_kwargs["top_k"] = int(top_k)
 
-        # NOTE: stop handling is non-trivial in pure HF generate(). Keeping signature stable; improve later if needed.
-        _ = stop
+        _ = stop  # stop handling is non-trivial with HF generate()
 
         with torch.no_grad():
             out_ids = model.generate(**inputs, **gen_kwargs)
@@ -181,7 +255,7 @@ class TransformersBackend(LLMBackend):
 
         return GenerateResult(
             text=text,
-            usage=GenerateUsage(),  # route does token counting already
+            usage=GenerateUsage(),
             timings=GenerateTimings(total_ms=dt_ms, backend_ms=dt_ms),
             raw=None,
         )

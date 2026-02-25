@@ -9,11 +9,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from llm_eval.config import dig, get_api_key, load_eval_yaml
-from llm_eval.io.run_artifacts import (
-    default_outdir,
-    write_eval_run_artifacts,
-)
-from llm_eval.io.run_pointer import (
+from llm_eval.io.run_artifacts import default_outdir, write_eval_run_artifacts
+from llm_eval.io.run_pointers import (
     default_eval_out_pointer_path,
     write_eval_latest_pointer,
 )
@@ -90,26 +87,8 @@ def _task_factories() -> dict[str, TaskFactory]:
 
         return make_extraction_runner(base_url=base_url, api_key=api_key, config=cfg)
 
-    def generate_paraloq_json_extraction(base_url: str, api_key: str, cfg: Optional[EvalConfig]) -> BaseEvalRunner:
-        from llm_eval.runners.paraloq_json_extraction_runner import GenerateParaloqJsonExtractionRunner
-
-        return GenerateParaloqJsonExtractionRunner(base_url=base_url, api_key=api_key, config=cfg)
-
-    def generate_squad_v2(base_url: str, api_key: str, cfg: Optional[EvalConfig]) -> BaseEvalRunner:
-        from llm_eval.runners.squad_v2_runner import GenerateSquadV2Runner
-
-        return GenerateSquadV2Runner(base_url=base_url, api_key=api_key, config=cfg)
-
-    def generate_docred(base_url: str, api_key: str, cfg: Optional[EvalConfig]) -> BaseEvalRunner:
-        from llm_eval.runners.docred_runner import GenerateDocREDRunner
-
-        return GenerateDocREDRunner(base_url=base_url, api_key=api_key, config=cfg)
-
     return {
         "extraction_sroie": extraction_sroie,
-        "generate_paraloq_json_extraction": generate_paraloq_json_extraction,
-        "generate_squad_v2": generate_squad_v2,
-        "generate_docred": generate_docred,
     }
 
 
@@ -356,7 +335,6 @@ async def amain(argv: list[str] | None = None) -> None:
                 run_dir=outdir,
                 summary_path=str(paths.summary_json),
                 extra={
-                    # non-authoritative conveniences (safe to drop later)
                     "base_url": base_url,
                     "model_override": model_override,
                     "max_examples": max_examples,

@@ -1,29 +1,33 @@
 # server/src/llm_server/api/generate.py
 from __future__ import annotations
 
-import os
-from functools import lru_cache
-from typing import Any, List, Optional, Tuple
+from typing import Any, List
 
-import anyio
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
-from transformers import AutoTokenizer
 
-from llm_server.api.deps import (
-    fingerprint_pydantic,
-    get_api_key,
-    get_llm,
-    make_cache_redis_key,
-    require_capability,
-    resolve_model,
-    sha32,
-)
+from llm_server.core.errors import AppError
 from llm_server.core.redis import get_redis_from_request
 from llm_server.core.time import monotonic_elapsed_ms, monotonic_now, request_latency_ms
-from llm_server.io.policy_decisions import policy_generate_max_new_tokens_cap
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
-from llm_server.services.inference import (
+
+from llm_server.services.api_deps.core.auth import get_api_key
+from llm_server.services.api_deps.core.cache_keys import (
+    fingerprint_pydantic,
+    make_cache_redis_key,
+    sha32,
+)
+from llm_server.services.api_deps.core.llm_access import get_llm
+from llm_server.services.api_deps.core.model_load_mode import effective_model_load_mode_from_request
+from llm_server.services.api_deps.enforcement.assessed_gate import require_assessed_gate
+from llm_server.services.api_deps.enforcement.capabilities import require_capability
+from llm_server.services.api_deps.enforcement.model_ready import require_inprocess_loaded_if_needed
+from llm_server.services.api_deps.generate.generate_policy import apply_generate_cap
+from llm_server.services.api_deps.generate.generate_runner import run_generate_rich_offloop
+from llm_server.services.api_deps.generate.token_counting import count_tokens_split
+from llm_server.services.api_deps.routing.models import resolve_model
+from llm_server.services.limits.generate_gating import get_generate_gate
+from llm_server.services.llm_runtime.inference import (
     CacheSpec,
     get_cached_output,
     record_token_metrics,
@@ -31,7 +35,6 @@ from llm_server.services.inference import (
     write_cache,
     write_inference_log,
 )
-from llm_server.services.limits.generate_gating import get_generate_gate
 
 router = APIRouter()
 
@@ -79,163 +82,22 @@ class BatchGenerateResponse(BaseModel):
     clamped: bool | None = None
 
 
-@lru_cache(maxsize=16)
-def _get_tokenizer(model_id: str):
-    return AutoTokenizer.from_pretrained(model_id, use_fast=True)
+def _reject_if_mode_off(request: Request) -> None:
+    """
+    Enforce that /v1/generate* does not run when model_load_mode=off.
 
-
-def _token_count_hf(model_id: str, prompt: str, completion: str | None) -> tuple[int | None, int | None]:
-    try:
-        tok = _get_tokenizer(model_id)
-        prompt_ids = tok(prompt, add_special_tokens=False).input_ids
-        prompt_tokens = len(prompt_ids)
-        if completion:
-            completion_ids = tok(completion, add_special_tokens=False).input_ids
-            completion_tokens = len(completion_ids)
-        else:
-            completion_tokens = 0
-        return prompt_tokens, completion_tokens
-    except Exception:
-        return None, None
-
-
-def _detect_backend_name(model: Any) -> str | None:
-    try:
-        v = getattr(model, "backend_name", None)
-        if isinstance(v, str) and v.strip():
-            return v.strip().lower()
-    except Exception:
-        pass
-    return None
-
-
-def _llamacpp_tokenize(model: Any, texts: list[str]) -> list[list[int]] | None:
-    try:
-        client = getattr(model, "_client", None)
-        tok_fn = getattr(client, "tokenize", None)
-        if not callable(tok_fn):
-            return None
-
-        data = tok_fn(content=texts)
-        toks = data.get("tokens") if isinstance(data, dict) else None
-        if not isinstance(toks, list):
-            return None
-
-        if toks and all(isinstance(x, int) for x in toks):
-            return [toks] if len(texts) == 1 else None
-
-        if toks and all(isinstance(x, list) for x in toks):
-            out: list[list[int]] = []
-            for row in toks:
-                if isinstance(row, list) and all(isinstance(x, int) for x in row):
-                    out.append(row)
-                else:
-                    return None
-            return out if len(out) == len(texts) else None
-
-        if not toks:
-            return [[] for _ in texts]
-
-        return None
-    except Exception:
-        return None
-
-
-def count_tokens_split(
-    *,
-    model: Any,
-    model_id: str,
-    prompt: str,
-    completion: str | None,
-    usage_from_backend: Any | None,
-) -> tuple[int | None, int | None]:
-    if os.getenv("TOKEN_COUNTING", "1").strip().lower() in {"0", "false", "no", "off"}:
-        return None, None
-
-    if isinstance(usage_from_backend, dict):
-        pt = usage_from_backend.get("prompt_tokens")
-        ct = usage_from_backend.get("completion_tokens")
-        pt_i = int(pt) if isinstance(pt, int) else None
-        ct_i = int(ct) if isinstance(ct, int) else None
-        if pt_i is not None or ct_i is not None:
-            return pt_i, ct_i
-
-    if _detect_backend_name(model) == "llamacpp":
-        texts: list[str] = [prompt]
-        if completion is not None:
-            texts.append(completion)
-
-        toks = _llamacpp_tokenize(model, texts)
-        if toks is not None:
-            pt = len(toks[0]) if len(toks) >= 1 else None
-            ct = len(toks[1]) if (completion is not None and len(toks) >= 2) else (0 if completion is not None else None)
-            return pt, ct
-
-        return None, None
-
-    return _token_count_hf(model_id, prompt, completion)
-
-
-def _normalize_positive_int(x: Any) -> Optional[int]:
-    if x is None or isinstance(x, bool):
-        return None
-    try:
-        i = int(x)
-    except Exception:
-        return None
-    return i if i > 0 else None
-
-
-def _apply_generate_cap(
-    request: Request,
-    *,
-    model_id: str,
-    requested: int | None,
-) -> Tuple[int | None, int | None, bool]:
-    cap_raw = policy_generate_max_new_tokens_cap(model_id, request=request)
-    cap_i = _normalize_positive_int(cap_raw)
-    req_i = _normalize_positive_int(requested)
-
-    if cap_i is None:
-        return requested, None, False
-
-    if req_i is None:
-        return cap_i, cap_i, False
-
-    eff = min(req_i, cap_i)
-    clamped = req_i > cap_i
-    return eff, cap_i, clamped
-
-
-async def _run_generate_rich_offloop(model: Any, **kwargs: Any) -> tuple[str, dict[str, Any] | None]:
-    def _run() -> tuple[str, dict[str, Any] | None]:
-        gen_rich = getattr(model, "generate_rich", None)
-        if callable(gen_rich):
-            r = gen_rich(**kwargs)
-            text = str(getattr(r, "text", "") or "")
-            usage_obj = getattr(r, "usage", None)
-            usage_dict: dict[str, Any] | None = None
-            if usage_obj is not None:
-                try:
-                    pt = getattr(usage_obj, "prompt_tokens", None)
-                    ct = getattr(usage_obj, "completion_tokens", None)
-                    tt = getattr(usage_obj, "total_tokens", None)
-                    usage_dict = {
-                        "prompt_tokens": int(pt) if isinstance(pt, int) else None,
-                        "completion_tokens": int(ct) if isinstance(ct, int) else None,
-                        "total_tokens": int(tt) if isinstance(tt, int) else None,
-                    }
-                except Exception:
-                    usage_dict = None
-            return text, usage_dict
-
-        gen = getattr(model, "generate", None)
-        if not callable(gen):
-            return "", None
-        out = gen(**kwargs)
-        return (out if isinstance(out, str) else str(out)), None
-
-    return await anyio.to_thread.run_sync(_run)
+    NOTE:
+      - In FastAPI, Depends(get_llm) would execute before entering the handler.
+      - So we avoid Depends(get_llm) entirely and only call get_llm(request) after this check.
+    """
+    mode = effective_model_load_mode_from_request(request)
+    if mode == "off":
+        raise AppError(
+            code="model_disabled",
+            message="Model is disabled (model_load_mode=off).",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            extra={"model_load_mode": mode},
+        )
 
 
 @router.post("/v1/generate")
@@ -243,18 +105,28 @@ async def generate(
     request: Request,
     body: GenerateRequest,
     api_key=Depends(get_api_key),
-    llm: Any = Depends(get_llm),
 ):
+    # IMPORTANT: avoid touching llm dependency in model_load_mode=off
+    _reject_if_mode_off(request)
+
+    llm: Any = get_llm(request)
+
     model_id, model = resolve_model(llm, body.model, capability="generate", request=request)
     require_capability(model_id, "generate", request=request)
-    set_request_meta(request, route="/v1/generate", model_id=model_id, cached=False)
 
+    # NEW: assessed gate enforcement (policy-driven allow/block)
+    require_assessed_gate(request=request, model_id=model_id, capability="generate")
+
+    # Enforcement boundary (MODEL_LOAD_MODE semantics)
+    await require_inprocess_loaded_if_needed(request=request, model_id=model_id, backend_obj=model)
+
+    set_request_meta(request, route="/v1/generate", model_id=model_id, cached=False)
     request_id = getattr(request.state, "request_id", None)
 
-    effective_max_new_tokens, policy_cap, clamped = _apply_generate_cap(
+    effective_max_new_tokens, policy_cap, clamped = apply_generate_cap(
         request,
         model_id=model_id,
-        requested=body.max_new_tokens,
+        requested_max_new_tokens=body.max_new_tokens,
     )
 
     prompt_hash = sha32(body.prompt)
@@ -341,7 +213,7 @@ async def generate(
         gate = get_generate_gate()
 
         async def _do_generate() -> Any:
-            return await _run_generate_rich_offloop(
+            return await run_generate_rich_offloop(
                 model,
                 prompt=body.prompt,
                 max_new_tokens=effective_max_new_tokens,
@@ -420,18 +292,28 @@ async def generate_batch(
     request: Request,
     body: BatchGenerateRequest,
     api_key=Depends(get_api_key),
-    llm: Any = Depends(get_llm),
 ):
+    # IMPORTANT: avoid touching llm dependency in model_load_mode=off
+    _reject_if_mode_off(request)
+
+    llm: Any = get_llm(request)
+
     model_id, model = resolve_model(llm, body.model, capability="generate", request=request)
     require_capability(model_id, "generate", request=request)
-    set_request_meta(request, route="/v1/generate/batch", model_id=model_id, cached=False)
 
+    # NEW: assessed gate enforcement (policy-driven allow/block)
+    require_assessed_gate(request=request, model_id=model_id, capability="generate")
+
+    # Enforcement boundary (MODEL_LOAD_MODE semantics)
+    await require_inprocess_loaded_if_needed(request=request, model_id=model_id, backend_obj=model)
+
+    set_request_meta(request, route="/v1/generate/batch", model_id=model_id, cached=False)
     request_id = getattr(request.state, "request_id", None)
 
-    effective_batch_max_new, policy_cap, clamped = _apply_generate_cap(
+    effective_batch_max_new, policy_cap, clamped = apply_generate_cap(
         request,
         model_id=model_id,
-        requested=body.max_new_tokens,
+        requested_max_new_tokens=body.max_new_tokens,
     )
     if effective_batch_max_new is None:
         effective_batch_max_new = int(body.max_new_tokens)
@@ -460,7 +342,6 @@ async def generate_batch(
 
     async with db_session.get_sessionmaker()() as session:
         for prompt in body.prompts:
-            # Per-item latency is an internal span, not the request lifecycle baseline.
             item_t0 = monotonic_now()
 
             prompt_hash = sha32(prompt)
@@ -488,8 +369,9 @@ async def generate_batch(
             if isinstance(out, str) and cached_flag:
                 output = out
             else:
+
                 async def _do_generate_one() -> Any:
-                    return await _run_generate_rich_offloop(
+                    return await run_generate_rich_offloop(
                         model,
                         prompt=prompt,
                         max_new_tokens=effective_batch_max_new,

@@ -4,51 +4,40 @@ from __future__ import annotations
 import os
 import secrets
 import time
-import orjson
 from contextlib import asynccontextmanager
 from typing import Any
 
+import anyio
+import orjson
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from llm_server.core import errors, limits, logging as logging_config, metrics
 from llm_server.core.config import get_settings
-from llm_server.core import logging as logging_config
-from llm_server.core import metrics, limits
-from llm_server.core import errors
-from llm_server.core.redis import init_redis, close_redis
-from llm_server.services.llm import build_llm_from_settings
+from llm_server.core.redis import close_redis, init_redis
 from llm_server.io.policy_decisions import load_policy_decision_from_env
-
-# ✅ NEW: early reject middleware
+from llm_server.services.llm_runtime.llm_build import build_llm_from_settings
+from llm_server.services.llm_runtime.llm_config import load_models_config
+from llm_server.services.llm_runtime.llm_loader import RuntimeModelLoader
 from llm_server.services.limits.early_reject_middleware import EarlyRejectGenerateMiddleware
+
+# NEW: config contracts validation
+from llm_contracts.config import validate_assessment_for_extract, validate_models_config
 
 _REQUEST_ID_HEADER = "X-Request-ID"
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """
-    Sets minimal request context early so exception handlers can log failures with:
-      - latency_ms (request.state.start_ts baseline)
-      - route/model_id/cached fallbacks
-      - request_id (prefer client-provided X-Request-ID; otherwise generate)
-
-    IMPORTANT: must be added LAST so it runs FIRST (outermost middleware).
-    """
-
     async def dispatch(self, request: Request, call_next) -> Response:
-        # Canonical request start (wall clock) for request-lifecycle latency semantics.
         request.state.start_ts = time.time()
 
-        # Prefer client-provided request id; headers are case-insensitive in Starlette.
         rid = request.headers.get(_REQUEST_ID_HEADER) or request.headers.get("x-request-id")
         if not (isinstance(rid, str) and rid.strip()):
-            # Avoid uuid dependency; stable 32-hex token (similar shape to uuid4().hex).
             rid = secrets.token_hex(16)
         request.state.request_id = rid
 
-        # Best-effort defaults (handlers may overwrite)
         if not isinstance(getattr(request.state, "route", None), str):
             request.state.route = request.url.path
         if not isinstance(getattr(request.state, "model_id", None), str):
@@ -58,7 +47,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
         resp = await call_next(request)
 
-        # Canonical response header casing
         try:
             if _REQUEST_ID_HEADER not in resp.headers:
                 resp.headers[_REQUEST_ID_HEADER] = rid
@@ -113,10 +101,39 @@ def _cors_origins(settings: Any) -> list[str]:
         if not isinstance(x, str):
             continue
         s = x.strip()
-        if not s:
-            continue
-        out.append(s)
+        if s:
+            out.append(s)
     return out
+
+
+async def _warmup_generate_offloop(model_backend: Any, *, prompt: str, max_new_tokens: int) -> None:
+    def _run() -> None:
+        gen = getattr(model_backend, "generate", None)
+        if callable(gen):
+            _ = gen(prompt=prompt, max_new_tokens=max_new_tokens, temperature=0.0)
+
+    try:
+        await anyio.to_thread.run_sync(_run)
+    except Exception:
+        return
+
+
+def _validate_models_config_or_raise(cfg: Any, *, mode: str) -> None:
+    """
+    Validate normalized models_config using llm_contracts.config.
+
+    - Always validates structural shape.
+    - Validates Option A assessed semantics (require_for_extract => per-model assessed boolean).
+    """
+    # Structural validation
+    r1 = validate_models_config(cfg, allow_generic_deployment_key=(os.getenv("ALLOW_GENERIC_DEPLOYMENT_KEY", "").strip() == "1"))
+    if not r1.ok:
+        raise RuntimeError(f"models_config invalid: {r1.error}")
+
+    # Assessed semantics validation (Option A)
+    r2 = validate_assessment_for_extract(cfg)
+    if not r2.ok:
+        raise RuntimeError(f"models_config assessment invalid: {r2.error}")
 
 
 @asynccontextmanager
@@ -126,6 +143,7 @@ async def lifespan(app: FastAPI):
     s = getattr(app.state, "settings", None) or get_settings()
     app.state.settings = s
 
+    # ---- policy snapshot (best-effort) ----
     try:
         snap = load_policy_decision_from_env()
         app.state.policy_snapshot = snap
@@ -157,53 +175,75 @@ async def lifespan(app: FastAPI):
     origins = _cors_origins(s)
     logging.getLogger("uvicorn.error").info("CORS enabled=%s allow_origins=%s", bool(origins), origins)
 
+    # ---- redis ----
     try:
         app.state.redis = await init_redis()
     except Exception as e:
         logging.getLogger("uvicorn.error").exception("Redis init failed: %s", e)
         app.state.redis = None
 
-    app.state.llm = None
+    # ---- runtime state ----
     app.state.model_load_mode = mode
-    app.state.model_loaded = False
     app.state.model_error = None
+    app.state.model_loaded = False
+    app.state.runtime_default_model_id = None
 
-    if mode != "off":
+    # ---- models config + llm registry (NO WEIGHTS) ----
+    try:
+        cfg = load_models_config()
+        # NEW: validate immediately after load, before any registry build depends on it
+        _validate_models_config_or_raise(cfg, mode=mode)
+        app.state.models_config = cfg
+    except Exception as e:
+        app.state.models_config = None
+        app.state.model_error = repr(e)
+        logging.getLogger("uvicorn.error").exception("models_config init failed: %s", e)
+
+        # Match your “abort in eager” behavior (models config is foundational)
+        if mode in ("eager", "on"):
+            raise
+
+    try:
+        app.state.llm = build_llm_from_settings()
+    except Exception as e:
+        app.state.llm = None
+        app.state.model_error = repr(e)
+
+        if mode in ("eager", "on"):
+            logging.getLogger("uvicorn.error").exception("LLM registry init failed; aborting startup: %s", e)
+            raise
+
+        logging.getLogger("uvicorn.error").exception("LLM registry init failed (lazy/off continues): %s", e)
+
+    # ---- runtime loader (the ONLY explicit weight-loading path) ----
+    app.state.runtime_model_loader = RuntimeModelLoader(app.state)
+
+    # ---- eager load path (explicit) ----
+    if mode in ("eager", "on"):
         try:
-            llm = build_llm_from_settings()
-            app.state.llm = llm
+            r = await app.state.runtime_model_loader.load_default()
+            app.state.model_loaded = bool(r.loaded)
 
-            if mode in ("eager", "on"):
-                if not hasattr(llm, "ensure_loaded"):
-                    app.state.model_loaded = False
-                    app.state.model_error = "LLM backend has no ensure_loaded(); cannot eager load"
-                else:
-                    llm.ensure_loaded()
-                    app.state.model_loaded = True
+            if _model_warmup_enabled(s, mode):
+                prompt = _warmup_prompt()
+                max_new = _warmup_max_new_tokens()
 
-                    if _model_warmup_enabled(s, mode):
-                        prompt = _warmup_prompt()
-                        max_new = _warmup_max_new_tokens()
+                llm = getattr(app.state, "llm", None)
+                warm_backend = llm
+                try:
+                    if hasattr(llm, "default") and callable(getattr(llm, "default")):
+                        warm_backend = llm.default()
+                except Exception:
+                    warm_backend = llm
 
-                        warm_backend = llm
-                        if hasattr(llm, "default") and callable(getattr(llm, "default")):
-                            warm_backend = llm.default()
-
-                        _ = warm_backend.generate(prompt=prompt, max_new_tokens=max_new, temperature=0.0)
-
-            else:
-                app.state.model_loaded = False
+                if warm_backend is not None:
+                    await _warmup_generate_offloop(warm_backend, prompt=prompt, max_new_tokens=max_new)
 
         except Exception as e:
             app.state.model_error = repr(e)
-
-            if mode in ("eager", "on"):
-                logging.getLogger("uvicorn.error").exception("LLM eager init failed; aborting startup: %s", e)
-                raise
-
-            logging.getLogger("uvicorn.error").exception("LLM init failed (lazy mode continues): %s", e)
-            app.state.llm = None
             app.state.model_loaded = False
+            logging.getLogger("uvicorn.error").exception("LLM eager init failed; aborting startup: %s", e)
+            raise
 
     yield
 
@@ -233,7 +273,7 @@ def create_app() -> FastAPI:
             allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],
-            expose_headers=[_REQUEST_ID_HEADER],  # canonical casing for browsers
+            expose_headers=[_REQUEST_ID_HEADER],
             max_age=600,
         )
 
@@ -242,13 +282,10 @@ def create_app() -> FastAPI:
     metrics.setup(app)
     errors.setup(app)
 
-    # ✅ early reject should run early, but keep RequestContext outermost.
     app.add_middleware(EarlyRejectGenerateMiddleware)
-
-    # IMPORTANT: add LAST so it runs FIRST (outermost middleware).
     app.add_middleware(RequestContextMiddleware)
 
-    from llm_server.api import health, generate, models, admin, extract
+    from llm_server.api import admin, extract, generate, health, models
 
     app.include_router(health.router)
     app.include_router(generate.router)

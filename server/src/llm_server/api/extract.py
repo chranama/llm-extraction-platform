@@ -2,23 +2,12 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Optional
-import anyio
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from llm_server.api.deps import (
-    fingerprint_pydantic,
-    get_api_key,
-    get_llm,
-    make_extract_redis_key,
-    require_capability,
-    resolve_model,
-    sha32,
-)
 from llm_server.core.errors import AppError
 from llm_server.core.metrics import (
     EXTRACTION_CACHE_HITS,
@@ -26,35 +15,52 @@ from llm_server.core.metrics import (
     EXTRACTION_REQUESTS,
     EXTRACTION_VALIDATION_FAILURES,
 )
-from llm_server.core.redis import get_redis_from_request
 from llm_server.core.schema_registry import (
     SchemaLoadError,
     SchemaNotFoundError,
     list_schemas,
     load_schema,
 )
+from llm_server.core.time import request_latency_ms
 from llm_server.core.validation import (
     DependencyMissingError,
     JSONSchemaValidationError,
     validate_jsonschema,
 )
-from llm_server.core.time import request_latency_ms
-from llm_server.io.policy_decisions import policy_generate_max_new_tokens_cap
+
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
-from llm_server.services.inference import (
+
+from llm_server.services.api_deps.core.auth import get_api_key
+from llm_server.services.api_deps.core.cache_keys import (
+    fingerprint_pydantic,
+    make_extract_redis_key,
+    sha32,
+)
+from llm_server.services.api_deps.core.llm_access import get_llm
+from llm_server.services.api_deps.enforcement.assessed_gate import require_assessed_gate
+from llm_server.services.api_deps.enforcement.capabilities import require_capability
+from llm_server.services.api_deps.enforcement.model_ready import require_inprocess_loaded_if_needed
+from llm_server.services.api_deps.generate.generate_policy import apply_generate_cap
+from llm_server.services.api_deps.generate.generate_runner import run_generate_rich_offloop
+from llm_server.services.api_deps.generate.token_counting import count_tokens_split
+from llm_server.services.api_deps.routing.models import resolve_model
+from llm_server.services.api_deps.extract.constants import REDIS_TTL_SECONDS
+from llm_server.services.api_deps.extract.prompts import build_extraction_prompt, build_repair_prompt
+from llm_server.services.api_deps.extract.json_parse import validate_first_matching
+from llm_server.services.api_deps.extract.truncation import maybe_raise_truncation_error
+from llm_server.services.api_deps.extract.stage import failure_stage_for_app_error, set_stage
+
+from llm_server.services.llm_runtime.inference import (
     CacheSpec,
     get_cached_output,
+    record_token_metrics,
     set_request_meta,
     write_cache,
     write_inference_log,
 )
+from llm_server.services.limits.generate_gating import get_generate_gate
 
 router = APIRouter()
-
-REDIS_TTL_SECONDS = 3600
-
-_JSON_BEGIN = "<<<JSON>>>"
-_JSON_END = "<<<END>>>"
 
 
 class ExtractRequest(BaseModel):
@@ -76,263 +82,6 @@ class ExtractResponse(BaseModel):
     data: dict[str, Any]
     cached: bool
     repair_attempted: bool
-
-
-def _strip_wrapping_code_fences(s: str) -> str:
-    s = s.strip()
-    if not s.startswith("```"):
-        return s
-    s = re.sub(r"^\s*```[a-zA-Z0-9]*\s*\n?", "", s)
-    s = re.sub(r"\n?\s*```\s*$", "", s)
-    return s.strip()
-
-
-def _schema_summary(schema: dict[str, Any]) -> str:
-    required = schema.get("required") or []
-    props = schema.get("properties") or {}
-
-    lines: list[str] = []
-    if required:
-        lines.append(f"REQUIRED_FIELDS: {', '.join(required)}")
-
-    lines.append("FIELDS:")
-    for k, v in props.items():
-        if not isinstance(v, dict):
-            continue
-        t = v.get("type", "any")
-        enum = v.get("enum")
-        pat = v.get("pattern")
-        desc = v.get("description")
-
-        pieces = [f"- {k}: {t}"]
-        if enum:
-            pieces.append(f"enum={enum}")
-        if pat:
-            pieces.append(f"pattern={pat}")
-        if desc:
-            pieces.append(f"desc={str(desc)[:80]}")
-        lines.append("  " + " | ".join(pieces))
-
-    ap = schema.get("additionalProperties", None)
-    if ap is False:
-        lines.append("CONSTRAINT: additionalProperties=false (no extra keys).")
-
-    return "\n".join(lines)
-
-
-def _build_extraction_prompt(schema_id: str, schema: dict[str, Any], text: str) -> str:
-    summary = _schema_summary(schema)
-    return (
-        "You are a structured information extraction engine.\n"
-        "Return ONLY a JSON object that matches the contract below.\n"
-        "No markdown. No code fences. No commentary.\n"
-        "If a value is unknown: omit the field unless it is REQUIRED.\n"
-        "If a REQUIRED field is missing in the text: set it to null.\n\n"
-        f"OUTPUT FORMAT:\n{_JSON_BEGIN}\n<JSON_OBJECT>\n{_JSON_END}\n\n"
-        f"SCHEMA_ID: {schema_id}\n"
-        f"{summary}\n\n"
-        f"INPUT_TEXT:\n{text}\n"
-    )
-
-
-def _build_repair_prompt(
-    schema_id: str,
-    schema: dict[str, Any],
-    text: str,
-    bad_output: str,
-    error_hint: str,
-) -> str:
-    summary = _schema_summary(schema)
-    return (
-        "Your previous output did NOT match the contract.\n"
-        "Fix it. Return ONLY the corrected JSON object.\n"
-        "No markdown. No code fences. No commentary.\n\n"
-        f"OUTPUT FORMAT:\n{_JSON_BEGIN}\n<JSON_OBJECT>\n{_JSON_END}\n\n"
-        f"SCHEMA_ID: {schema_id}\n"
-        f"{summary}\n\n"
-        f"INPUT_TEXT:\n{text}\n\n"
-        f"PREVIOUS_OUTPUT:\n{bad_output}\n\n"
-        f"ERROR_HINT:\n{error_hint}\n"
-    )
-
-
-def _iter_json_objects(raw: str) -> list[dict[str, Any]]:
-    s = _strip_wrapping_code_fences(raw)
-    dec = json.JSONDecoder()
-
-    objs: list[dict[str, Any]] = []
-    i = 0
-    n = len(s)
-
-    while i < n:
-        j = s.find("{", i)
-        if j == -1:
-            break
-        try:
-            obj, end = dec.raw_decode(s[j:])
-            if isinstance(obj, dict):
-                objs.append(obj)
-            i = j + max(end, 1)
-        except Exception:
-            i = j + 1
-
-    return objs
-
-
-def _validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str, Any]:
-    if raw_output is None:
-        raise AppError(
-            code="invalid_json",
-            message="Model output was empty.",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
-
-    s = raw_output.strip()
-
-    if _JSON_BEGIN in s and _JSON_END in s:
-        try:
-            inner = s.split(_JSON_BEGIN, 1)[1].split(_JSON_END, 1)[0].strip()
-            inner = _strip_wrapping_code_fences(inner)
-            obj = json.loads(inner)
-            if not isinstance(obj, dict):
-                raise ValueError("Delimited JSON was not an object")
-            validate_jsonschema(schema, obj)
-            return obj
-        except DependencyMissingError as e:
-            raise AppError(code=e.code, message=e.message, status_code=500) from e
-        except JSONSchemaValidationError as e:
-            raise AppError(
-                code=e.code,
-                message=e.message,
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                extra={"errors": e.errors, "raw_preview": (raw_output or "")[:500]},
-            ) from e
-        except Exception:
-            pass
-
-    candidates = _iter_json_objects(s)
-    if not candidates:
-        raise AppError(
-            code="invalid_json",
-            message="Model output did not contain any JSON object.",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            extra={"raw_preview": (raw_output or "")[:500]},
-        )
-
-    last_validation_error: Optional[JSONSchemaValidationError] = None
-
-    for obj in candidates:
-        try:
-            validate_jsonschema(schema, obj)
-            return obj
-        except DependencyMissingError as e:
-            raise AppError(code=e.code, message=e.message, status_code=500) from e
-        except JSONSchemaValidationError as e:
-            last_validation_error = e
-            continue
-        except Exception:
-            continue
-
-    extra: dict[str, Any] = {"raw_preview": (raw_output or "")[:500], "candidates_found": len(candidates)}
-    if last_validation_error is not None:
-        extra["errors"] = last_validation_error.errors
-
-    raise AppError(
-        code="schema_validation_failed",
-        message="No JSON object in the model output conformed to the schema.",
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        extra=extra,
-    )
-
-
-def _failure_stage_for_app_error(e: AppError, *, is_repair: bool) -> str | None:
-    if getattr(e, "status_code", None) != status.HTTP_422_UNPROCESSABLE_CONTENT:
-        return None
-    if e.code == "invalid_json":
-        return "repair_parse" if is_repair else "parse"
-    if e.code == "schema_validation_failed":
-        return "repair_validate" if is_repair else "validate"
-    return "repair_validate" if is_repair else "validate"
-
-
-def _set_stage(request: Request, stage: str) -> None:
-    try:
-        request.state.error_stage = stage
-    except Exception:
-        pass
-
-
-# ------------------------------------------------------------------------------
-# Policy clamp + truncation detection
-# ------------------------------------------------------------------------------
-
-def _apply_generate_cap_for_extract(request: Request, *, model_id: str, requested: int | None) -> tuple[int | None, int | None]:
-    cap = policy_generate_max_new_tokens_cap(model_id, request=request)
-    if cap is None:
-        return requested, None
-
-    try:
-        cap_i = int(cap)
-        if cap_i <= 0:
-            return requested, None
-    except Exception:
-        return requested, None
-
-    if requested is None:
-        return cap_i, cap_i
-
-    try:
-        req_i = int(requested)
-        if req_i <= 0:
-            return cap_i, cap_i
-        return min(req_i, cap_i), cap_i
-    except Exception:
-        return cap_i, cap_i
-
-
-def _maybe_raise_truncation_error(
-    *,
-    raw_output: str,
-    effective_max_new_tokens: int | None,
-    applied_cap: int | None,
-    stage: str,
-) -> None:
-    if not applied_cap:
-        return
-    if effective_max_new_tokens is None:
-        return
-
-    s = (raw_output or "").strip()
-    if not s:
-        return
-
-    has_begin = _JSON_BEGIN in s
-    has_end = _JSON_END in s
-    brace_delta = s.count("{") - s.count("}")
-
-    looks_truncated = False
-    if has_begin and not has_end:
-        looks_truncated = True
-    if brace_delta > 0:
-        looks_truncated = True
-
-    if not looks_truncated:
-        return
-
-    raise AppError(
-        code="possible_truncation",
-        message="Model output appears truncated; max_new_tokens may be too low for extraction.",
-        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        extra={
-            "stage": stage,
-            "effective_max_new_tokens": int(effective_max_new_tokens),
-            "applied_policy_cap": int(applied_cap) if applied_cap is not None else None,
-            "has_json_begin": bool(has_begin),
-            "has_json_end": bool(has_end),
-            "brace_delta": int(brace_delta),
-            "raw_preview": s[:500],
-        },
-    )
 
 
 @router.get("/v1/schemas")
@@ -370,25 +119,34 @@ async def extract(
     llm: Any = Depends(get_llm),
 ):
     stage = "start"
-    _set_stage(request, stage)
+    set_stage(request, stage)
 
     request_id = getattr(request.state, "request_id", None)
 
     try:
         stage = "resolve_model"
-        _set_stage(request, stage)
+        set_stage(request, stage)
         model_id, model = resolve_model(llm, body.model, capability="extract", request=request)
 
         stage = "require_capability"
-        _set_stage(request, stage)
+        set_stage(request, stage)
         require_capability(model_id, "extract", request=request)
 
-        set_request_meta(request, route="/v1/extract", model_id=model_id, cached=False)
+        # NEW: assessed gate enforcement (policy-driven allow/block)
+        stage = "assessed_gate"
+        set_stage(request, stage)
+        require_assessed_gate(request=request, model_id=model_id, capability="extract")
 
+        # Enforcement boundary (MODEL_LOAD_MODE semantics)
+        stage = "enforcement"
+        set_stage(request, stage)
+        await require_inprocess_loaded_if_needed(request=request, model_id=model_id, backend_obj=model)
+
+        set_request_meta(request, route="/v1/extract", model_id=model_id, cached=False)
         EXTRACTION_REQUESTS.labels(schema_id=body.schema_id, model_id=model_id).inc()
 
         stage = "load_schema"
-        _set_stage(request, stage)
+        set_stage(request, stage)
         try:
             schema = load_schema(body.schema_id)
         except SchemaNotFoundError as e:
@@ -406,16 +164,18 @@ async def extract(
                 extra={"schema_id": e.schema_id, "stage": "load_schema"},
             ) from e
 
+        # Apply the SAME generate cap policy as /v1/generate
         stage = "apply_policy_clamp"
-        _set_stage(request, stage)
-        effective_max_new_tokens, applied_cap = _apply_generate_cap_for_extract(
+        set_stage(request, stage)
+        effective_max_new_tokens, policy_cap, clamped = apply_generate_cap(
             request,
             model_id=model_id,
-            requested=body.max_new_tokens,
+            requested_max_new_tokens=body.max_new_tokens,
         )
+        applied_cap = policy_cap
 
         stage = "build_cache_keys"
-        _set_stage(request, stage)
+        set_stage(request, stage)
         prompt_hash = sha32(f"{body.schema_id}\n{body.text}")
         params_fp = fingerprint_pydantic(
             body.model_copy(update={"max_new_tokens": effective_max_new_tokens}),
@@ -432,19 +192,17 @@ async def extract(
             redis_ttl_seconds=REDIS_TTL_SECONDS,
         )
 
-        stage = "redis_get"
-        _set_stage(request, stage)
-        redis = get_redis_from_request(request)
-
         stage = "db_session_open"
-        _set_stage(request, stage)
+        set_stage(request, stage)
+
+        gate = get_generate_gate()
 
         async with db_session.get_sessionmaker()() as session:
             stage = "cache_read"
-            _set_stage(request, stage)
+            set_stage(request, stage)
             cached_out, cached_flag, layer = await get_cached_output(
                 session,
-                redis,
+                None,
                 cache=cache,
                 kind="single",
                 enabled=bool(body.cache),
@@ -452,7 +210,7 @@ async def extract(
 
             if isinstance(cached_out, str) and cached_flag:
                 stage = "cache_validate"
-                _set_stage(request, stage)
+                set_stage(request, stage)
                 data: dict[str, Any] | None
                 try:
                     data_obj = json.loads(cached_out)
@@ -476,7 +234,7 @@ async def extract(
                     latency = request_latency_ms(request)
 
                     stage = "log_cached"
-                    _set_stage(request, stage)
+                    set_stage(request, stage)
                     await write_inference_log(
                         session,
                         api_key=api_key.key,
@@ -488,14 +246,20 @@ async def extract(
                             "schema_id": body.schema_id,
                             "cache": True,
                             "repair": body.repair,
-                            "max_new_tokens": effective_max_new_tokens,
-                            "policy_cap_applied": applied_cap,
+                            "requested_max_new_tokens": body.max_new_tokens,
+                            "effective_max_new_tokens": effective_max_new_tokens,
+                            "policy_generate_max_new_tokens_cap": policy_cap,
+                            "clamped": clamped,
                         },
                         prompt=body.text,
                         output=json.dumps(data, ensure_ascii=False),
                         latency_ms=latency,
                         prompt_tokens=None,
                         completion_tokens=None,
+                        status_code=200,
+                        cached=True,
+                        error_code=None,
+                        error_stage=None,
                         commit=True,
                     )
 
@@ -508,23 +272,36 @@ async def extract(
                     )
 
             stage = "build_prompt"
-            _set_stage(request, stage)
-            prompt = _build_extraction_prompt(body.schema_id, schema, body.text)
+            set_stage(request, stage)
+            prompt = build_extraction_prompt(body.schema_id, schema, body.text)
 
             stage = "model_generate"
-            _set_stage(request, stage)
-            result = await anyio.to_thread.run_sync(
-                lambda: model.generate(
+            set_stage(request, stage)
+
+            async def _do_generate() -> Any:
+                return await run_generate_rich_offloop(
+                    model,
                     prompt=prompt,
                     max_new_tokens=effective_max_new_tokens,
                     temperature=body.temperature,
                 )
+
+            gen_result = await gate.run(
+                _do_generate,
+                request_id=str(request_id) if request_id is not None else None,
+                model_id=model_id,
             )
-            output = result if isinstance(result, str) else str(result)
+
+            if isinstance(gen_result, tuple) and len(gen_result) == 2:
+                output = gen_result[0] if isinstance(gen_result[0], str) else str(gen_result[0])
+                usage_from_backend = gen_result[1] if isinstance(gen_result[1], dict) else None
+            else:
+                output = gen_result if isinstance(gen_result, str) else str(gen_result)
+                usage_from_backend = None
 
             stage = "truncation_check"
-            _set_stage(request, stage)
-            _maybe_raise_truncation_error(
+            set_stage(request, stage)
+            maybe_raise_truncation_error(
                 raw_output=output,
                 effective_max_new_tokens=effective_max_new_tokens,
                 applied_cap=applied_cap,
@@ -534,11 +311,11 @@ async def extract(
             repair_attempted = False
 
             stage = "validate_output"
-            _set_stage(request, stage)
+            set_stage(request, stage)
             try:
-                data = _validate_first_matching(schema, output)
+                data = validate_first_matching(schema, output)
             except AppError as e:
-                st = _failure_stage_for_app_error(e, is_repair=False)
+                st = failure_stage_for_app_error(e, is_repair=False)
                 if st is not None:
                     EXTRACTION_VALIDATION_FAILURES.labels(schema_id=body.schema_id, model_id=model_id, stage=st).inc()
 
@@ -553,13 +330,13 @@ async def extract(
                 EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="attempted").inc()
 
                 stage = "repair_prompt"
-                _set_stage(request, stage)
+                set_stage(request, stage)
                 error_hint = json.dumps(
                     {"code": e.code, "message": e.message, **(e.extra or {})},
                     ensure_ascii=False,
                 )
 
-                repair_prompt = _build_repair_prompt(
+                repair_prompt = build_repair_prompt(
                     body.schema_id,
                     schema,
                     body.text,
@@ -568,19 +345,32 @@ async def extract(
                 )
 
                 stage = "repair_generate"
-                _set_stage(request, stage)
-                repair_result = await anyio.to_thread.run_sync(
-                    lambda: model.generate(
+                set_stage(request, stage)
+
+                async def _do_repair() -> Any:
+                    return await run_generate_rich_offloop(
+                        model,
                         prompt=repair_prompt,
                         max_new_tokens=effective_max_new_tokens,
                         temperature=0.0,
                     )
+
+                repair_result = await gate.run(
+                    _do_repair,
+                    request_id=str(request_id) if request_id is not None else None,
+                    model_id=model_id,
                 )
-                repaired = repair_result if isinstance(repair_result, str) else str(repair_result)
+
+                if isinstance(repair_result, tuple) and len(repair_result) == 2:
+                    repaired = repair_result[0] if isinstance(repair_result[0], str) else str(repair_result[0])
+                    repair_usage_from_backend = repair_result[1] if isinstance(repair_result[1], dict) else None
+                else:
+                    repaired = repair_result if isinstance(repair_result, str) else str(repair_result)
+                    repair_usage_from_backend = None
 
                 stage = "repair_truncation_check"
-                _set_stage(request, stage)
-                _maybe_raise_truncation_error(
+                set_stage(request, stage)
+                maybe_raise_truncation_error(
                     raw_output=repaired,
                     effective_max_new_tokens=effective_max_new_tokens,
                     applied_cap=applied_cap,
@@ -588,16 +378,14 @@ async def extract(
                 )
 
                 stage = "repair_validate"
-                _set_stage(request, stage)
+                set_stage(request, stage)
                 try:
-                    data = _validate_first_matching(schema, repaired)
+                    data = validate_first_matching(schema, repaired)
                     EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="success").inc()
                 except AppError as e2:
-                    st2 = _failure_stage_for_app_error(e2, is_repair=True)
+                    st2 = failure_stage_for_app_error(e2, is_repair=True)
                     if st2 is not None:
-                        EXTRACTION_VALIDATION_FAILURES.labels(
-                            schema_id=body.schema_id, model_id=model_id, stage=st2
-                        ).inc()
+                        EXTRACTION_VALIDATION_FAILURES.labels(schema_id=body.schema_id, model_id=model_id, stage=st2).inc()
                     EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="failure").inc()
 
                     if isinstance(e2.extra, dict):
@@ -606,22 +394,33 @@ async def extract(
                         e2.extra = {"stage": st2 or "repair_validate"}  # type: ignore[assignment]
                     raise
 
+                usage_from_backend = repair_usage_from_backend or usage_from_backend
+
             request.state.cached = False
             latency = request_latency_ms(request)
 
+            prompt_tokens, completion_tokens = count_tokens_split(
+                model=model,
+                model_id=model_id,
+                prompt=prompt,
+                completion=json.dumps(data, ensure_ascii=False),
+                usage_from_backend=usage_from_backend,
+            )
+            record_token_metrics(model_id, prompt_tokens, completion_tokens)
+
             stage = "cache_write"
-            _set_stage(request, stage)
+            set_stage(request, stage)
             out_json = json.dumps(data, ensure_ascii=False)
             await write_cache(
                 session,
-                redis,
+                None,
                 cache=cache,
                 output=out_json,
                 enabled=bool(body.cache),
             )
 
             stage = "log_uncached"
-            _set_stage(request, stage)
+            set_stage(request, stage)
             await write_inference_log(
                 session,
                 api_key=api_key.key,
@@ -633,14 +432,20 @@ async def extract(
                     "schema_id": body.schema_id,
                     "cache": body.cache,
                     "repair": body.repair,
-                    "max_new_tokens": effective_max_new_tokens,
-                    "policy_cap_applied": applied_cap,
+                    "requested_max_new_tokens": body.max_new_tokens,
+                    "effective_max_new_tokens": effective_max_new_tokens,
+                    "policy_generate_max_new_tokens_cap": policy_cap,
+                    "clamped": clamped,
                 },
                 prompt=body.text,
                 output=out_json,
                 latency_ms=latency,
-                prompt_tokens=None,
-                completion_tokens=None,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                status_code=200,
+                cached=False,
+                error_code=None,
+                error_stage=None,
                 commit=True,
             )
 

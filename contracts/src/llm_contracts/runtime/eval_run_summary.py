@@ -10,8 +10,20 @@ from llm_contracts.schema import atomic_write_json_internal, read_json_internal,
 
 Pathish = Union[str, Path]
 
-EVAL_RUN_SUMMARY_SCHEMA = "eval_run_summary_v1.schema.json"
-EVAL_RUN_SUMMARY_VERSION = "eval_run_summary_v1"
+# ----------------------------
+# Schema contract (now v2)
+# ----------------------------
+
+EVAL_RUN_SUMMARY_SCHEMA_V2 = "eval_run_summary_v2.schema.json"
+EVAL_RUN_SUMMARY_VERSION_V2 = "eval_run_summary_v2"
+
+# Back-compat (read old artifacts)
+EVAL_RUN_SUMMARY_SCHEMA_V1 = "eval_run_summary_v1.schema.json"
+EVAL_RUN_SUMMARY_VERSION_V1 = "eval_run_summary_v1"
+
+# Keep these names for existing imports; v2 is now canonical.
+EVAL_RUN_SUMMARY_SCHEMA = EVAL_RUN_SUMMARY_SCHEMA_V2
+EVAL_RUN_SUMMARY_VERSION = EVAL_RUN_SUMMARY_VERSION_V2
 
 
 def _utc_now_iso() -> str:
@@ -23,8 +35,10 @@ class EvalRunSummarySnapshot:
     """
     Stable, minimal contract for an eval run summary (summary.json).
 
-    This is the primary cross-component artifact policy consumes for extract gating.
-    Keep `raw` for forward compatibility.
+    v2 change:
+      - adds deployment metadata (for eval/policy correlation)
+
+    Backwards-compatible with v1 summaries (deployment fields will be None).
     """
     ok: bool
     schema_version: str
@@ -42,6 +56,10 @@ class EvalRunSummarySnapshot:
     thresholds_profile: Optional[str] = None
     thresholds_version: Optional[str] = None
 
+    # NEW (v2): deployment correlation
+    deployment_key: Optional[str] = None
+    deployment: Optional[Dict[str, Any]] = None
+
     counts: Optional[Dict[str, int]] = None
     warnings: Optional[list[Dict[str, Any]]] = None
     notes: Optional[Dict[str, Any]] = None
@@ -49,6 +67,35 @@ class EvalRunSummarySnapshot:
     raw: Dict[str, Any] = None  # type: ignore[assignment]
     source_path: Optional[str] = None
     error: Optional[str] = None
+
+
+def _opt_str(payload: Dict[str, Any], key: str) -> Optional[str]:
+    v = payload.get(key)
+    return v if isinstance(v, str) and v.strip() else None
+
+
+def _opt_dict(payload: Dict[str, Any], key: str) -> Optional[Dict[str, Any]]:
+    v = payload.get(key)
+    return dict(v) if isinstance(v, dict) else None
+
+
+def _validate_summary(payload: Dict[str, Any]) -> None:
+    """
+    Validate against v2 if possible; fall back to v1 for old artifacts.
+    """
+    schema_version = str(payload.get("schema_version", "")).strip()
+
+    if schema_version == EVAL_RUN_SUMMARY_VERSION_V2:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA_V2, payload)
+        return
+    if schema_version == EVAL_RUN_SUMMARY_VERSION_V1:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA_V1, payload)
+        return
+
+    try:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA_V2, payload)
+    except Exception:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA_V1, payload)
 
 
 def build_eval_run_summary_payload_v1(
@@ -62,13 +109,20 @@ def build_eval_run_summary_payload_v1(
     schema_id: Optional[str] = None,
     thresholds_profile: Optional[str] = None,
     thresholds_version: Optional[str] = None,
+    # NEW (v2)
+    deployment_key: Optional[str] = None,
+    deployment: Optional[Dict[str, Any]] = None,
     counts: Optional[Dict[str, int]] = None,
     warnings: Optional[list[Dict[str, Any]]] = None,
     notes: Optional[Dict[str, Any]] = None,
     generated_at: Optional[str] = None,
 ) -> Dict[str, Any]:
+    """
+    NOTE: function name kept for backwards compatibility with call sites.
+    It now emits v2 payloads (schema_version=eval_run_summary_v2).
+    """
     payload: Dict[str, Any] = {
-        "schema_version": EVAL_RUN_SUMMARY_VERSION,
+        "schema_version": EVAL_RUN_SUMMARY_VERSION_V2,
         "generated_at": generated_at or _utc_now_iso(),
         "task": task,
         "run_id": run_id,
@@ -79,6 +133,9 @@ def build_eval_run_summary_payload_v1(
         "metrics": dict(metrics or {}),
         "thresholds_profile": thresholds_profile,
         "thresholds_version": thresholds_version,
+        # v2 fields
+        "deployment_key": deployment_key,
+        "deployment": dict(deployment) if isinstance(deployment, dict) else deployment,
         "counts": counts,
         "warnings": warnings or [],
         "notes": notes,
@@ -87,15 +144,15 @@ def build_eval_run_summary_payload_v1(
     # Keep compact and deterministic
     payload = {k: v for k, v in payload.items() if v is not None}
 
-    validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
+    validate_internal(EVAL_RUN_SUMMARY_SCHEMA_V2, payload)
     return payload
 
 
 def parse_eval_run_summary(payload: Dict[str, Any], *, source_path: Optional[str] = None) -> EvalRunSummarySnapshot:
-    validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
+    _validate_summary(payload)
 
     schema_version = str(payload["schema_version"]).strip()
-    if schema_version != EVAL_RUN_SUMMARY_VERSION:
+    if schema_version not in (EVAL_RUN_SUMMARY_VERSION_V2, EVAL_RUN_SUMMARY_VERSION_V1):
         raise ValueError(f"Unsupported eval run summary schema_version: {schema_version}")
 
     task = str(payload["task"]).strip()
@@ -116,6 +173,10 @@ def parse_eval_run_summary(payload: Dict[str, Any], *, source_path: Optional[str
 
     notes = payload.get("notes") if isinstance(payload.get("notes"), dict) else None
 
+    # v2 fields (optional; None for v1)
+    deployment_key = _opt_str(payload, "deployment_key")
+    deployment = _opt_dict(payload, "deployment")
+
     return EvalRunSummarySnapshot(
         ok=True,
         schema_version=schema_version,
@@ -127,8 +188,14 @@ def parse_eval_run_summary(payload: Dict[str, Any], *, source_path: Optional[str
         metrics=dict(metrics),
         model_id=payload.get("model_id") if isinstance(payload.get("model_id"), str) else None,
         schema_id=payload.get("schema_id") if isinstance(payload.get("schema_id"), str) else None,
-        thresholds_profile=payload.get("thresholds_profile") if isinstance(payload.get("thresholds_profile"), str) else None,
-        thresholds_version=payload.get("thresholds_version") if isinstance(payload.get("thresholds_version"), str) else None,
+        thresholds_profile=payload.get("thresholds_profile")
+        if isinstance(payload.get("thresholds_profile"), str)
+        else None,
+        thresholds_version=payload.get("thresholds_version")
+        if isinstance(payload.get("thresholds_version"), str)
+        else None,
+        deployment_key=deployment_key,
+        deployment=deployment,
         counts=cast(Optional[Dict[str, int]], counts),
         warnings=cast(Optional[list[Dict[str, Any]]], warnings),
         notes=cast(Optional[Dict[str, Any]], notes),
@@ -141,10 +208,14 @@ def parse_eval_run_summary(payload: Dict[str, Any], *, source_path: Optional[str
 def read_eval_run_summary(path: Pathish) -> EvalRunSummarySnapshot:
     p = Path(path).resolve()
     try:
-        payload = read_json_internal(EVAL_RUN_SUMMARY_SCHEMA, p)
+        # Prefer v2 schema read; fall back to v1 for old artifacts.
+        try:
+            payload = read_json_internal(EVAL_RUN_SUMMARY_SCHEMA_V2, p)
+        except Exception:
+            payload = read_json_internal(EVAL_RUN_SUMMARY_SCHEMA_V1, p)
+
         return parse_eval_run_summary(payload, source_path=str(p))
     except Exception as e:
-        # Fail-closed snapshot: callers decide how to treat missing/invalid summary.
         return EvalRunSummarySnapshot(
             ok=False,
             schema_version="",
@@ -158,6 +229,8 @@ def read_eval_run_summary(path: Pathish) -> EvalRunSummarySnapshot:
             schema_id=None,
             thresholds_profile=None,
             thresholds_version=None,
+            deployment_key=None,
+            deployment=None,
             counts=None,
             warnings=None,
             notes=None,
@@ -168,4 +241,5 @@ def read_eval_run_summary(path: Pathish) -> EvalRunSummarySnapshot:
 
 
 def write_eval_run_summary(path: Pathish, payload: Dict[str, Any]) -> Path:
-    return atomic_write_json_internal(EVAL_RUN_SUMMARY_SCHEMA, path, payload)
+    # Caller should pass a v2 payload. Validate + atomic write via schema.
+    return atomic_write_json_internal(EVAL_RUN_SUMMARY_SCHEMA_V2, path, payload)

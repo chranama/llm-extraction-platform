@@ -49,6 +49,97 @@ class LlamaCppBackend(LLMBackend):
         # External service; nothing to load in-process.
         return None
 
+    # ------------------------------------------------------------------
+    # Non-blocking metadata probe (snapshots/logging only)
+    # ------------------------------------------------------------------
+
+    def model_info(self) -> dict[str, Any]:
+        """
+        Best-effort backend metadata probe.
+
+        Must:
+        - never throw
+        - never gate readiness
+        - be safe for health/snapshot usage
+        """
+        out: dict[str, Any] = {
+            "ok": True,
+            "backend": self.backend_name,
+            "model_id": self.model_id,
+            "loaded": None,  # external backend; not meaningful
+            "config": {
+                "server_url": str(self._cfg.server_url),
+                "requested_model": str(self._cfg.model_name or self.model_id),
+                "timeout_seconds": float(self._cfg.timeout_seconds),
+            },
+            "runtime": {},
+        }
+
+        # --------------------------
+        # Health probe
+        # --------------------------
+        try:
+            health = self._client.health()
+            out["runtime"]["health"] = health
+        except Exception as e:
+            out["runtime"]["health_error"] = repr(e)
+
+        # --------------------------
+        # /v1/models
+        # --------------------------
+        try:
+            models_payload = self._client.models()
+            out["runtime"]["models_raw"] = models_payload
+
+            chosen: Optional[str] = None
+
+            if isinstance(models_payload, dict):
+                data = models_payload.get("data")
+                if isinstance(data, list) and data:
+                    d0 = data[0]
+                    if isinstance(d0, dict):
+                        chosen = d0.get("id")
+                        out["runtime"]["owned_by"] = d0.get("owned_by")
+                        if isinstance(d0.get("meta"), dict):
+                            out["runtime"]["model_meta"] = d0.get("meta")
+
+                if chosen is None:
+                    models_list = models_payload.get("models")
+                    if isinstance(models_list, list) and models_list:
+                        m0 = models_list[0]
+                        if isinstance(m0, dict):
+                            for k in ("model", "name", "id"):
+                                if isinstance(m0.get(k), str) and m0.get(k):
+                                    chosen = m0.get(k)
+                                    break
+                            if isinstance(m0.get("details"), dict):
+                                out["runtime"]["model_details"] = m0.get("details")
+
+            if chosen:
+                out["runtime"]["active_model_id"] = chosen
+
+        except Exception as e:
+            out["runtime"]["models_error"] = repr(e)
+
+        # --------------------------
+        # Version/build
+        # --------------------------
+        for path in ("/version", "/v1/version", "/build", "/v1/build"):
+            try:
+                v = self._client.raw_get(path)
+                if isinstance(v, dict) and v:
+                    out["runtime"]["server_version"] = v
+                    out["runtime"]["server_version_path"] = path
+                    break
+            except Exception:
+                continue
+
+        return out
+
+    # ------------------------------------------------------------------
+    # Generation
+    # ------------------------------------------------------------------
+
     def generate(
         self,
         *,
@@ -200,7 +291,7 @@ class LlamaCppBackend(LLMBackend):
             return ok, {"health": data}
         except Exception as e:
             return False, {"error": repr(e)}
-        
+
     def can_generate(self) -> tuple[bool, dict[str, Any]]:
         """
         Strong readiness: prove the backend can actually generate output.

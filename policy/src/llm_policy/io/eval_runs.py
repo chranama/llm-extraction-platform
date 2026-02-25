@@ -111,6 +111,8 @@ def load_eval_run_dir(
 
     Enhancements vs previous version:
       - supports run_dir="latest" (follows eval_out/latest.json pointer via llm_contracts)
+      - consumes deployment provenance from summary + rows (v2 contracts)
+      - FAIL-CLOSED: missing/malformed deployment provenance => error issues
     """
     run_path = resolve_eval_run_dir(run_dir)
     issues: list[ContractIssue] = []
@@ -135,9 +137,83 @@ def load_eval_run_dir(
                     )
                 )
 
+    # -----------------------------
+    # FAIL-CLOSED: deployment provenance checks
+    # -----------------------------
+    summary_dk = summary.deployment_key.strip() if isinstance(summary.deployment_key, str) and summary.deployment_key.strip() else None
+    summary_dep = summary.deployment if isinstance(summary.deployment, dict) and summary.deployment else None
+
+    if summary_dk is None:
+        issues.append(
+            ContractIssue(
+                severity=IssueSeverity.error,
+                code="missing_deployment_key",
+                message="summary.deployment_key missing/empty (policy must fail-closed)",
+                context={"path": str(summary_path)},
+            )
+        )
+
+    if summary_dep is None:
+        issues.append(
+            ContractIssue(
+                severity=IssueSeverity.error,
+                code="missing_deployment",
+                message="summary.deployment missing/empty/not an object (policy must fail-closed)",
+                context={"path": str(summary_path)},
+            )
+        )
+
+    # If results are present, require row-level provenance too.
+    if load_results and rows:
+        missing_row_dk = 0
+        missing_row_dep = 0
+        mismatched_dk = 0
+
+        for r in rows:
+            row_dk = r.deployment_key.strip() if isinstance(r.deployment_key, str) and r.deployment_key.strip() else None
+            row_dep = r.deployment if isinstance(r.deployment, dict) and r.deployment else None
+
+            if row_dk is None:
+                missing_row_dk += 1
+            if row_dep is None:
+                missing_row_dep += 1
+
+            if summary_dk is not None and row_dk is not None and row_dk != summary_dk:
+                mismatched_dk += 1
+
+        if missing_row_dk:
+            issues.append(
+                ContractIssue(
+                    severity=IssueSeverity.error,
+                    code="missing_row_deployment_key",
+                    message="One or more rows missing deployment_key (policy must fail-closed)",
+                    context={"missing_rows": missing_row_dk, "n_rows": len(rows)},
+                )
+            )
+
+        if missing_row_dep:
+            issues.append(
+                ContractIssue(
+                    severity=IssueSeverity.error,
+                    code="missing_row_deployment",
+                    message="One or more rows missing deployment (policy must fail-closed)",
+                    context={"missing_rows": missing_row_dep, "n_rows": len(rows)},
+                )
+            )
+
+        if mismatched_dk:
+            issues.append(
+                ContractIssue(
+                    severity=IssueSeverity.error,
+                    code="deployment_key_mismatch",
+                    message="One or more rows have deployment_key that does not match summary.deployment_key (policy must fail-closed)",
+                    context={"mismatched_rows": mismatched_dk, "n_rows": len(rows), "summary_deployment_key": summary_dk},
+                )
+            )
+
     artifact = EvalArtifact(summary=summary, results=rows or None)
 
-    # Add any issues derived from the parsed summary itself (e.g. missing fields)
+    # Add any issues derived from the parsed summary itself (includes deployment requirements)
     issues.extend(summary.contract_issues())
 
     return LoadResult(artifact=artifact, issues=_dedupe_issues(issues))

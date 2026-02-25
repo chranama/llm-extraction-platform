@@ -82,7 +82,6 @@ def _validate_eval_summary_payload(payload: dict[str, Any]) -> None:
       2) parse into the stable dataclass (catches version mismatches, etc.)
     """
     validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
-    # Also ensures schema_version matches expected value in the parser
     parse_eval_run_summary(payload)
 
 
@@ -92,6 +91,73 @@ def _validate_eval_result_row_payload(payload: dict[str, Any]) -> None:
     """
     validate_internal(EVAL_RESULT_ROW_SCHEMA, payload)
     parse_eval_result_row(payload)
+
+
+def _infer_deployment_from_summary_or_rows(
+    *,
+    summary_payload: dict[str, Any],
+    results: list[dict[str, Any]],
+) -> tuple[Optional[str], Optional[dict[str, Any]]]:
+    """
+    Best-effort: infer deployment_key + deployment snapshot.
+
+    Precedence:
+      1) summary.{deployment_key,deployment}
+      2) first row.{deployment_key,deployment}
+      3) None
+    """
+    dk = summary_payload.get("deployment_key")
+    dep = summary_payload.get("deployment")
+
+    if isinstance(dk, str) and dk.strip() and isinstance(dep, dict):
+        return dk.strip(), cast(dict[str, Any], dep)
+
+    if results:
+        r0 = results[0] if isinstance(results[0], dict) else {}
+        dk0 = r0.get("deployment_key")
+        dep0 = r0.get("deployment")
+        if isinstance(dk0, str) and dk0.strip() and isinstance(dep0, dict):
+            return dk0.strip(), cast(dict[str, Any], dep0)
+
+    # allow partials (key only / deployment only)
+    dk_out: Optional[str] = dk.strip() if isinstance(dk, str) and dk.strip() else None
+    dep_out: Optional[dict[str, Any]] = dict(dep) if isinstance(dep, dict) else None
+    return dk_out, dep_out
+
+
+def _inject_deployment_into_rows(
+    *,
+    results: list[dict[str, Any]],
+    deployment_key: Optional[str],
+    deployment: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Ensure each result row carries deployment fields (v2 contract).
+
+    Rules:
+      - Never overwrite explicit row values.
+      - If summary had values and row is missing, inject them.
+    """
+    if not results:
+        return results
+
+    dk = deployment_key.strip() if isinstance(deployment_key, str) and deployment_key.strip() else None
+    dep = dict(deployment) if isinstance(deployment, dict) else None
+
+    if dk is None and dep is None:
+        return results
+
+    out: list[dict[str, Any]] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        r = dict(row)
+        if dk is not None and not (isinstance(r.get("deployment_key"), str) and str(r.get("deployment_key")).strip()):
+            r["deployment_key"] = dk
+        if dep is not None and not isinstance(r.get("deployment"), dict):
+            r["deployment"] = dep
+        out.append(r)
+    return out
 
 
 def write_eval_run_artifacts(
@@ -109,10 +175,12 @@ def write_eval_run_artifacts(
     Contract:
       - summary MUST include 'task' and 'run_id' before writing.
       - We inject 'run_dir' (absolute-ish string path) before validation/write.
-      - summary.json is validated against schemas/internal/eval_run_summary_v1.schema.json
-        via llm_contracts.runtime.eval_run_summary.
-      - each row in results.jsonl is validated against schemas/internal/eval_result_row_v1.schema.json
-        via llm_contracts.runtime.eval_result_row.
+      - summary.json is validated against the current eval run summary schema (v2 after upgrade).
+      - each row in results.jsonl is validated against the current eval result row schema (v2 after upgrade).
+      - Deployment info is expected in BOTH summary + rows (not pointer):
+          - deployment_key
+          - deployment (object)
+        If missing from rows, we inject from the summary (best-effort).
       - Atomic writes for summary/report/config so downstream consumers never see partial JSON.
       - results.jsonl is written to tmp then replaced (atomic at file level).
     """
@@ -122,12 +190,32 @@ def write_eval_run_artifacts(
     summary_payload = dict(summary)
     summary_payload["run_dir"] = str(paths.outdir)
 
+    # Best-effort deployment propagation:
+    # - infer from summary or first row
+    # - ensure summary includes it (if inferred)
+    # - ensure each row includes it (if summary has it)
+    inferred_dk, inferred_dep = _infer_deployment_from_summary_or_rows(summary_payload=summary_payload, results=results)
+
+    if inferred_dk is not None and not (
+        isinstance(summary_payload.get("deployment_key"), str) and str(summary_payload.get("deployment_key")).strip()
+    ):
+        summary_payload["deployment_key"] = inferred_dk
+
+    if inferred_dep is not None and not isinstance(summary_payload.get("deployment"), dict):
+        summary_payload["deployment"] = inferred_dep
+
+    results_payload = _inject_deployment_into_rows(
+        results=results,
+        deployment_key=summary_payload.get("deployment_key") if isinstance(summary_payload.get("deployment_key"), str) else None,
+        deployment=summary_payload.get("deployment") if isinstance(summary_payload.get("deployment"), dict) else None,
+    )
+
     # Validate summary contract (fail loudly if not schema-safe)
     _validate_eval_summary_payload(cast(dict[str, Any], summary_payload))
 
     # Validate result rows contract (fail loudly if any row is invalid)
-    if results:
-        for i, row in enumerate(results, start=1):
+    if results_payload:
+        for i, row in enumerate(results_payload, start=1):
             if not isinstance(row, dict):
                 raise TypeError(f"results[{i}] must be a dict, got {type(row).__name__}")
             _validate_eval_result_row_payload(cast(dict[str, Any], row))
@@ -135,8 +223,8 @@ def write_eval_run_artifacts(
     # Persist after validation passes
     _atomic_write_json(paths.summary_json, summary_payload)
 
-    if results:
-        _write_jsonl(paths.results_jsonl, results)
+    if results_payload:
+        _write_jsonl(paths.results_jsonl, results_payload)
 
     _atomic_write_text(paths.report_txt, report_txt)
     _atomic_write_text(paths.report_md, report_md)
@@ -152,11 +240,9 @@ def default_eval_out_pointer_path() -> Path:
     Conventional host path for a pointer artifact that indicates the latest run.
     Mirrors policy_out/latest.json style, but for eval.
 
-    NOTE: You now have a *separate* internal contract for eval pointers:
-      - contracts/src/llm_contracts/runtime/eval_run_pointer.py
-      - schema: eval_run_pointer_v1.schema.json
-
-    This function remains for backward compatibility with existing eval code.
+    NOTE:
+      - The pointer is convenience-only.
+      - Deployment info belongs in run summary + rows (not the pointer).
     """
     return Path("eval_out") / "latest.json"
 
@@ -173,11 +259,8 @@ def write_eval_latest_pointer(
     """
     Back-compat pointer writer used by eval/.
 
-    If you want to fully align to contracts/, switch callers to
-    llm_contracts.runtime.eval_run_pointer.build_eval_run_pointer_payload_v1
-    + write_eval_run_pointer. For now we keep this minimal-diff.
-
     Writes a tiny pointer artifact for "latest eval run".
+    Deployment info is intentionally NOT stored here.
     """
     p = Path(pointer_path)
     payload: dict[str, Any] = {

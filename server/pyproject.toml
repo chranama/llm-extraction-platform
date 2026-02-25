@@ -74,16 +74,16 @@ llm = "llm_server.cli:main"
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu" },
-  { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cpu", marker = "extra != 'cuda121'" },
+  { index = "pytorch-cu121", marker = "extra == 'cuda121'" },
 ]
 torchvision = [
-  { index = "pytorch-cpu" },
-  { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cpu", marker = "extra != 'cuda121'" },
+  { index = "pytorch-cu121", marker = "extra == 'cuda121'" },
 ]
 torchaudio = [
-  { index = "pytorch-cpu" },
-  { index = "pytorch-cu121", extra = "cuda121" },
+  { index = "pytorch-cpu", marker = "extra != 'cuda121'" },
+  { index = "pytorch-cu121", marker = "extra == 'cuda121'" },
 ]
 llm-contracts = { path = "../contracts", editable = true }
 

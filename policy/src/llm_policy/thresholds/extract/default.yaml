@@ -1,10 +1,11 @@
 # policy/src/llm_policy/thresholds/extract/default.yaml
-version: "v1"
+version: "v2"
 task: null
 
 metrics:
+  # All rates are percent units: 0..100
   schema_validity_rate:
-    min: 0.90
+    min: 90.0
 
   required_present_rate:
     min: null
@@ -19,11 +20,17 @@ metrics:
     max: null
 
 params:
+  # Warning-only (non-blocking)
   min_n_total: 20
-  min_field_exact_match_rate: {}
 
-  # If you still want these around for other policies, keep them in params.
-  # If nothing uses them anymore, delete them.
-  max_error_rate: 0.05
-  max_5xx_rate: 0.01
-  max_transport_error_rate: 0.01
+  # Phase 2.2 switch: when n_total is below this, compare CI-low if available
+  min_n_for_point_estimate: 200
+
+  # Phase 2.1 system budgets (fail-closed, "system_unhealthy")
+  max_http_5xx_rate: 1.0
+  max_timeout_rate: 1.0
+  # optional but useful as a broad health gate
+  max_non_200_rate: 5.0
+
+  # Optional per-field requirements (percent units)
+  min_field_exact_match_rate: {}

@@ -40,6 +40,109 @@ def _iter_issues(items: Optional[Iterable[Any]]) -> Iterable[Mapping[str, Any]]:
         yield _to_mapping(it)
 
 
+# ------------------------------------------------------------------------------
+# Deployment provenance helpers (pure formatting)
+# ------------------------------------------------------------------------------
+
+
+def _safe_json_one_line(x: Any) -> str:
+    try:
+        return json.dumps(x, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        return str(x)
+
+
+def _extract_provenance(metrics: Mapping[str, Any]) -> Dict[str, Any]:
+    """
+    Pull deployment + key provenance out of decision.metrics.
+
+    We keep this tolerant:
+      - deployment may be missing (gate is enforced elsewhere)
+      - deployment may be dict or string depending on legacy writers
+    """
+    dep = metrics.get("deployment")
+    dep_key = metrics.get("deployment_key")
+
+    # Legacy/alt keys (just in case)
+    if dep is None:
+        dep = metrics.get("deployment_info") or metrics.get("eval_deployment")
+    if dep_key is None:
+        dep_key = metrics.get("deployment_id") or metrics.get("eval_deployment_key")
+
+    return {
+        "deployment_key": dep_key,
+        "deployment": dep,
+        "eval_run_dir": metrics.get("run_dir") or metrics.get("eval_run_dir"),
+        "eval_task": metrics.get("task") or metrics.get("eval_task"),
+        "eval_run_id": metrics.get("run_id") or metrics.get("eval_run_id"),
+        "model_id": metrics.get("model_id") or metrics.get("model") or metrics.get("eval_model_id"),
+        "base_url": metrics.get("base_url") or metrics.get("eval_base_url"),
+    }
+
+
+def _render_provenance_text(metrics: Mapping[str, Any]) -> str:
+    p = _extract_provenance(metrics)
+
+    lines: list[str] = []
+    lines.append("PROVENANCE:")
+
+    # Keep this short and top-loaded for log scanning.
+    def add(k: str, v: Any) -> None:
+        if v is None:
+            lines.append(f"- {k}: (missing)")
+        else:
+            if isinstance(v, (dict, list)):
+                lines.append(f"- {k}: {_safe_json_one_line(v)}")
+            else:
+                lines.append(f"- {k}: {v}")
+
+    add("deployment_key", p.get("deployment_key"))
+    add("deployment", p.get("deployment"))
+
+    # Eval identifiers
+    add("task", p.get("eval_task"))
+    add("run_id", p.get("eval_run_id"))
+    add("run_dir", p.get("eval_run_dir"))
+
+    # Helpful context (often used when comparing environments)
+    if p.get("base_url") is not None:
+        add("base_url", p.get("base_url"))
+    if p.get("model_id") is not None:
+        add("model_id", p.get("model_id"))
+
+    return "\n".join(lines)
+
+
+def _render_provenance_md(metrics: Mapping[str, Any]) -> str:
+    p = _extract_provenance(metrics)
+
+    def cell(v: Any) -> str:
+        if v is None:
+            return "`(missing)`"
+        if isinstance(v, (dict, list)):
+            return f"`{_safe_json_one_line(v)}`"
+        return f"`{v}`"
+
+    lines: list[str] = []
+    lines.append("## Provenance")
+    lines.append("")
+    lines.append("| Field | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| deployment_key | {cell(p.get('deployment_key'))} |")
+    lines.append(f"| deployment | {cell(p.get('deployment'))} |")
+    lines.append(f"| task | {cell(p.get('eval_task'))} |")
+    lines.append(f"| run_id | {cell(p.get('eval_run_id'))} |")
+    lines.append(f"| run_dir | {cell(p.get('eval_run_dir'))} |")
+
+    # Optional but useful
+    if p.get("base_url") is not None:
+        lines.append(f"| base_url | {cell(p.get('base_url'))} |")
+    if p.get("model_id") is not None:
+        lines.append(f"| model_id | {cell(p.get('model_id'))} |")
+
+    return "\n".join(lines)
+
+
 def render_decision_text(decision: Decision) -> str:
     """
     Human-oriented single-decision summary for terminals.
@@ -68,6 +171,12 @@ def render_decision_text(decision: Decision) -> str:
         lines.append(f"contract_errors={ce}")
         lines.append(f"contract_warnings={cw}")
 
+    # --- Provenance block (deployment + eval identifiers) ---
+    metrics_any = getattr(decision, "metrics", None) or {}
+    if isinstance(metrics_any, dict) and metrics_any:
+        lines.append("")
+        lines.append(_render_provenance_text(metrics_any))
+
     reasons = list(_iter_issues(getattr(decision, "reasons", None)))
     if reasons:
         lines.append("")
@@ -86,8 +195,8 @@ def render_decision_text(decision: Decision) -> str:
             msg = w.get("message", "")
             lines.append(f"- {code}: {msg}")
 
-    metrics = getattr(decision, "metrics", None) or {}
-    if metrics:
+    metrics = metrics_any
+    if isinstance(metrics, dict) and metrics:
         lines.append("")
         lines.append("METRICS:")
         for k in sorted(metrics.keys()):
@@ -124,6 +233,11 @@ def render_decision_md(decision: Decision) -> str:
         lines.append(f"| contract_errors | `{ce}` |")
         lines.append(f"| contract_warnings | `{cw}` |")
 
+    metrics = getattr(decision, "metrics", None) or {}
+    if isinstance(metrics, dict) and metrics:
+        lines.append("")
+        lines.append(_render_provenance_md(metrics))
+
     reasons = list(_iter_issues(getattr(decision, "reasons", None)))
     if reasons:
         lines.append("")
@@ -142,8 +256,7 @@ def render_decision_md(decision: Decision) -> str:
             msg = w.get("message", "")
             lines.append(f"- **{code}** — {msg}")
 
-    metrics = getattr(decision, "metrics", None) or {}
-    if metrics:
+    if isinstance(metrics, dict) and metrics:
         lines.append("")
         lines.append("## Metrics")
         lines.append("")

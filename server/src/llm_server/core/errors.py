@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 from llm_server.core.time import request_latency_ms
-from llm_server.services.inference import write_failure_log
+from llm_server.services.llm_runtime.inference import write_failure_log
 
 logger = logging.getLogger("llm.errors")
 

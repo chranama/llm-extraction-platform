@@ -6,7 +6,7 @@ import types
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services import llm as llm_mod
+from llm_server.services.llm_runtime import llm_build as llm_mod
 
 
 class FakeModelsConfig:
@@ -154,7 +154,7 @@ def test_enable_multi_models_1_returns_multimodelmanager(monkeypatch):
 
     llm = llm_mod.build_llm_from_settings()
 
-    from llm_server.services.llm_registry import MultiModelManager
+    from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
     assert isinstance(llm, MultiModelManager)
     assert llm.default_id == "primary"
@@ -180,7 +180,7 @@ def test_load_mode_off_excludes_models(monkeypatch):
 
     llm = llm_mod.build_llm_from_settings()
 
-    from llm_server.services.llm_registry import MultiModelManager
+    from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
     assert isinstance(llm, MultiModelManager)
     assert _mm_models_set(llm) == set()

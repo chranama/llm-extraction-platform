@@ -324,6 +324,49 @@ services:
     memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
 
   # ==========================
+  # Server (CPU) + HOST llama-server Demo B (explicit profile)
+  #
+  # Purpose:
+  # - Run llm_server in docker
+  # - Route generation to a llama-server running on the host
+  # - Do NOT depend_on the in-compose llama_server service
+  #
+  # Notes:
+  # - macOS/Windows: host.docker.internal works out of the box
+  # - Linux: extra_hosts enables host.docker.internal via host-gateway
+  # ==========================
+  server_llama_host:
+    <<: *server_base
+    profiles: ["server-llama-host"]
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      <<: *server_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      MODELS_PROFILE: ${MODELS_PROFILE:-llama-server}
+      LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://host.docker.internal:8080}
+      # 🔓 no longer required at compose-time
+      DATABASE_URL: ${DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../policy_out:/app/policy_out:rw
+      - ../../slo_out:/app/slo_out:rw
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    mem_limit: ${SERVER_MEM_LIMIT:-12g}
+    memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
+
+  # ==========================
   # Server (GPU)
   # ==========================
   server_gpu:
@@ -474,10 +517,6 @@ services:
       POLICY_GENERATE_PROFILE: ${POLICY_GENERATE_PROFILE:-generate/portable}
       POLICY_GENERATE_SLO_PATH: ${POLICY_GENERATE_SLO_PATH:-/work/slo_out/generate/latest.json}
       POLICY_OUT_PATH: ${POLICY_OUT_PATH:-/work/policy_out/latest.json}
-      POLICY_ARGS: ${POLICY_ARGS:-}
-      POLICY_PIPELINE: ${POLICY_PIPELINE:-extract_plus_generate_clamp}
-      POLICY_PATCH_MODELS: ${POLICY_PATCH_MODELS:-0}
-      POLICY_MODEL_ID: ${POLICY_MODEL_ID:-}
     volumes:
       - ../..:/work:rw
       - ../../results:/work/results:rw
@@ -486,25 +525,12 @@ services:
       - ../../policy_out:/work/policy_out:rw
       - ../../slo_out:/work/slo_out:rw
     working_dir: /work
-    # use the image ENTRYPOINT ["policy"]
-    command:
-      - "run"
-      - "--pipeline"
-      - "${POLICY_PIPELINE:-extract_plus_generate_clamp}"
-      - "--run-dir"
-      - "${POLICY_RUN_DIR:-latest}"
-      - "--threshold-profile"
-      - "${POLICY_THRESHOLD_PROFILE:-extract/default}"
-      - "--thresholds-root"
-      - "${POLICY_THRESHOLDS_ROOT:-/app/policy/src/llm_policy/thresholds}"
-      - "--generate-threshold-profile"
-      - "${POLICY_GENERATE_PROFILE:-generate/portable}"
-      - "--generate-slo-path"
-      - "${POLICY_GENERATE_SLO_PATH:-/work/slo_out/generate/latest.json}"
-      - "--artifact-out"
-      - "${POLICY_OUT_PATH:-/work/policy_out/latest.json}"
-      - "--report"
-      - "text"
+    # NOTE:
+    # No command here. Dockerfile.policy sets:
+    #   ENTRYPOINT ["policy"]
+    #   CMD ["--help"]
+    # For smoke tests, invoke explicitly:
+    #   docker compose --profile policy run --rm policy <subcommand> ...
 
 volumes:
   pg_data:

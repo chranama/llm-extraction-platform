@@ -98,7 +98,7 @@ def _run_doctor(cfg: GlobalConfig, verbose: bool) -> None:
         "PROM_PORT": cfg.prom_port,
         "GRAFANA_PORT": cfg.grafana_port,
         "PROM_HOST_PORT": cfg.prom_host_port,
-        "ENV_FILE": str(cfg.env_file),
+        "ENV_FILE": str(cfg.env_override_file),
         "COMPOSE_YML": str(cfg.compose_yml),
     }
     run(["bash", str(cfg.compose_doctor)], env=env, verbose=verbose)

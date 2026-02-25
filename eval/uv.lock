@@ -1010,13 +1010,30 @@ wheels = [
 ]
 
 [[package]]
+name = "llm-contracts"
+version = "0.1.0"
+source = { editable = "../contracts" }
+dependencies = [
+    { name = "jsonschema" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jsonschema", specifier = ">=4.21,<5" },
+    { name = "pydantic", specifier = ">=2.6,<3" },
+]
+
+[[package]]
 name = "llm-eval"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "datasets" },
+    { name = "fiftyone" },
     { name = "httpx" },
     { name = "jsonschema" },
+    { name = "llm-contracts" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pydantic-settings" },
@@ -1027,16 +1044,12 @@ dependencies = [
 all = [
     { name = "black" },
     { name = "coverage" },
-    { name = "fiftyone" },
     { name = "matplotlib" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "seaborn" },
-]
-datasets = [
-    { name = "fiftyone" },
 ]
 lint = [
     { name = "black" },
@@ -1058,10 +1071,11 @@ requires-dist = [
     { name = "black", marker = "extra == 'lint'", specifier = ">=24" },
     { name = "coverage", marker = "extra == 'test'", specifier = ">=7" },
     { name = "datasets", specifier = ">=2.21" },
-    { name = "fiftyone", marker = "extra == 'datasets'", specifier = ">=1.0.0" },
+    { name = "fiftyone", specifier = ">=1.0.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.21,<5.0" },
-    { name = "llm-eval", extras = ["datasets", "test", "lint", "viz"], marker = "extra == 'all'" },
+    { name = "llm-contracts", editable = "../contracts" },
+    { name = "llm-eval", extras = ["test", "lint", "viz"], marker = "extra == 'all'" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.9" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
@@ -1073,7 +1087,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.5" },
     { name = "seaborn", marker = "extra == 'viz'", specifier = ">=0.13" },
 ]
-provides-extras = ["datasets", "test", "lint", "viz", "all"]
+provides-extras = ["test", "lint", "viz", "all"]
 
 [[package]]
 name = "markupsafe"

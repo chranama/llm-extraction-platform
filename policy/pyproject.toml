@@ -55,10 +55,17 @@ exclude = ["tests*"]
 [tool.setuptools.package-data]
 llm_policy = ["**/*.yaml", "**/*.yml", "**/*.json"]
 
+[tool.uv.sources]
+llm-contracts = { path = "../contracts", editable = true }
+
 [tool.pytest.ini_options]
-addopts = "-q --cov=llm_policy --cov-report=term-missing"
+addopts = "-q -ra --strict-markers"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "unit: fast tests with fakes/mocks; no external services required",
+  "integration: integration tests; slower",
+]
 
 [tool.ruff]
 line-length = 100

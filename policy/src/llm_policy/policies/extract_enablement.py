@@ -1,14 +1,9 @@
 # policy/src/llm_policy/policies/extract_enablement.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from llm_policy.types.decision import (
-    Decision,
-    DecisionReason,
-    DecisionStatus,
-    DecisionWarning,
-)
+from llm_policy.types.decision import Decision, DecisionReason, DecisionStatus, DecisionWarning
 from llm_policy.types.eval_artifact import EvalArtifact
 from llm_policy.types.extract_thresholds import ExtractThresholds
 
@@ -21,70 +16,98 @@ def _warning(code: str, message: str, context: Optional[dict[str, Any]] = None) 
     return DecisionWarning(code=code, message=message, context=context or {})
 
 
-def _coerce_reasons(items: Any) -> list[DecisionReason]:
-    if not items or not isinstance(items, list):
-        return []
-
-    out: list[DecisionReason] = []
-    for it in items:
-        if isinstance(it, DecisionReason):
-            out.append(it)
-        elif isinstance(it, DecisionWarning):
-            out.append(_reason(it.code, it.message, dict(it.context or {})))
-        elif isinstance(it, dict):
-            code = str(it.get("code") or "issue")
-            msg = str(it.get("message") or "")
-            if not msg:
-                continue
-            ctx_any = it.get("context") or it.get("extra")
-            ctx = ctx_any if isinstance(ctx_any, dict) else {}
-            out.append(_reason(code, msg, ctx))
-    return out
-
-
-def _coerce_warnings(items: Any) -> list[DecisionWarning]:
-    if not items or not isinstance(items, list):
-        return []
-
-    out: list[DecisionWarning] = []
-    for it in items:
-        if isinstance(it, DecisionWarning):
-            out.append(it)
-        elif isinstance(it, DecisionReason):
-            out.append(_warning(it.code, it.message, dict(it.context or {})))
-        elif isinstance(it, dict):
-            code = str(it.get("code") or "warning")
-            msg = str(it.get("message") or "")
-            if not msg:
-                continue
-            ctx_any = it.get("context") or it.get("extra")
-            ctx = ctx_any if isinstance(ctx_any, dict) else {}
-            out.append(_warning(code, msg, ctx))
-    return out
-
-
 def _get_metric_threshold(thresholds: ExtractThresholds, metric: str) -> tuple[Optional[float], Optional[float]]:
-    """
-    Return (min, max) for a metric from thresholds.metrics if present.
-    """
     mt = thresholds.metrics.get(metric)
     if mt is None:
         return None, None
-    min_v = mt.min if mt.min is not None else None
-    max_v = mt.max if mt.max is not None else None
-    return min_v, max_v
+    return (mt.min if mt.min is not None else None), (mt.max if mt.max is not None else None)
 
 
 def _get_param(thresholds: ExtractThresholds, key: str, default: Any) -> Any:
-    """
-    Read a policy knob from thresholds.params with a default.
-    """
     try:
         if isinstance(thresholds.params, dict) and key in thresholds.params:
             return thresholds.params.get(key)
     except Exception:
         pass
     return default
+
+
+def _as_float(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def _issue_severity_str(issue: Any) -> str:
+    """
+    ContractIssue.severity is an Enum in types/eval_artifact.py.
+    Normalize it to "error" / "warn" / "info" for robust comparisons.
+    """
+    sev = getattr(issue, "severity", None)
+    if sev is None:
+        return "info"
+    # Enum -> value
+    if hasattr(sev, "value"):
+        try:
+            return str(sev.value)
+        except Exception:
+            pass
+    return str(sev)
+
+
+def _issue_context(issue: Any) -> dict[str, Any]:
+    """
+    ContractIssue may use `.context` OR `.extra` depending on version.
+    Be tolerant.
+    """
+    extra = getattr(issue, "extra", None)
+    if isinstance(extra, dict):
+        return dict(extra)
+    ctx = getattr(issue, "context", None)
+    if isinstance(ctx, dict):
+        return dict(ctx)
+    # If your ContractIssue supports merged_context(), prefer it (future-proof)
+    mc = getattr(issue, "merged_context", None)
+    if callable(mc):
+        try:
+            out = mc()
+            if isinstance(out, dict):
+                return dict(out)
+        except Exception:
+            pass
+    return {}
+
+
+def _choose_metric_for_gating(
+    *,
+    value_pct: Optional[float],
+    ci95_low_pct: Optional[float],
+    n_total: int,
+    min_n_for_point_estimate: int,
+) -> Tuple[Optional[float], str]:
+    """
+    Phase 2.2:
+      - If n_total < min_n_for_point_estimate and ci95_low exists: use ci95_low
+      - Else: use point estimate
+    Returns (chosen_value, source) where source in {"ci95_low","point","missing"}.
+    """
+    if value_pct is None and ci95_low_pct is None:
+        return None, "missing"
+
+    if n_total < int(min_n_for_point_estimate or 0) and ci95_low_pct is not None:
+        return float(ci95_low_pct), "ci95_low"
+
+    if value_pct is not None:
+        return float(value_pct), "point"
+
+    # Fallback: point missing but CI present
+    if ci95_low_pct is not None:
+        return float(ci95_low_pct), "ci95_low"
+
+    return None, "missing"
 
 
 def decide_extract_enablement(
@@ -96,35 +119,33 @@ def decide_extract_enablement(
     """
     Extract enablement policy (pure).
 
-    Responsibilities:
-      - Decide allow/deny for extract
-      - Populate enable_extract, status, reasons, warnings, metrics
-      - NEVER decide pipeline
-      - NEVER assume generate clamp is present
+    Phase 2:
+      2.1 System unhealthy => inconclusive deny (fail-closed)
+      2.2 CI-low gating only when sample is small
 
-    Fail-closed:
-      - Missing required metrics => deny
+    Units:
+      - All rates are percent units: 0..100
     """
-
     s = artifact.summary
 
     # -----------------------------
     # Policy knobs (params)
     # -----------------------------
     min_n_total = int(_get_param(thresholds, "min_n_total", 0) or 0)
+    min_n_for_point_estimate = int(_get_param(thresholds, "min_n_for_point_estimate", 200) or 200)
 
-    # NOTE: `min_field_exact_match_rate` is stored under params as a mapping:
-    #   params.min_field_exact_match_rate: { field_name: 0.8, ... }
+    max_http_5xx_rate = _as_float(_get_param(thresholds, "max_http_5xx_rate", None))
+    max_timeout_rate = _as_float(_get_param(thresholds, "max_timeout_rate", None))
+    max_non_200_rate = _as_float(_get_param(thresholds, "max_non_200_rate", None))
+
     mfem_any = _get_param(thresholds, "min_field_exact_match_rate", {}) or {}
     min_field_exact_match_rate: dict[str, float] = {}
     if isinstance(mfem_any, dict):
         for k, v in mfem_any.items():
-            try:
-                if v is None:
-                    continue
-                min_field_exact_match_rate[str(k)] = float(v)
-            except Exception:
+            fv = _as_float(v)
+            if fv is None:
                 continue
+            min_field_exact_match_rate[str(k)] = float(fv)
 
     # -----------------------------
     # Begin decision
@@ -134,6 +155,25 @@ def decide_extract_enablement(
     reasons: list[DecisionReason] = []
     warnings: list[DecisionWarning] = []
     metrics: Dict[str, Any] = {}
+
+    # Contract issues -> fail-closed deny (but keep as reasons/warnings, not crashes)
+    for iss in artifact.contract_issues():
+        sev = _issue_severity_str(iss)
+        iss_code = str(getattr(iss, "code", "") or "")
+        ctx = {"code": iss_code, **_issue_context(iss)}
+        msg = str(getattr(iss, "message", "") or "")
+        if not msg:
+            msg = "Eval artifact contract issue"
+
+        # Specialize deployment provenance failures (cleaner dashboards/logs)
+        is_deploy_issue = iss_code.startswith("missing_deployment") or iss_code.startswith("missing_row_deployment") or iss_code == "deployment_key_mismatch"
+
+        if sev == "error":
+            reasons.append(_reason("deployment_contract_error" if is_deploy_issue else "artifact_contract_error", msg, ctx))
+        elif sev == "warn":
+            warnings.append(_warning("artifact_contract_warn", msg, ctx))
+        else:
+            warnings.append(_warning("artifact_contract_info", msg, ctx))
 
     # Sample size warning (non-blocking)
     if min_n_total > 0 and n_total < min_n_total:
@@ -145,139 +185,195 @@ def decide_extract_enablement(
             )
         )
 
-    # ---- Schema validity ----
-    sv = getattr(s, "schema_validity_rate", None)
-    min_sv, _max_sv = _get_metric_threshold(thresholds, "schema_validity_rate")
-    if sv is None:
-        reasons.append(_reason("missing_metric", "schema_validity_rate is missing from summary"))
-    else:
-        metrics["schema_validity_rate"] = float(sv)
-        if min_sv is not None and float(sv) < float(min_sv):
+    # Always include core provenance in metrics for explainability
+    metrics.update(
+        {
+            "n_total": int(n_total),
+            "n_ok": int(getattr(s, "n_ok", 0) or 0),
+            "task": str(getattr(s, "task", "") or ""),
+            "run_id": str(getattr(s, "run_id", "") or ""),
+            "run_dir": str(getattr(s, "run_dir", "") or ""),
+            # NEW: deployment provenance (helpful for debugging denials)
+            "deployment_key": str(getattr(s, "deployment_key", "") or ""),
+            "deployment": getattr(s, "deployment", None),
+        }
+    )
+
+    # -----------------------------
+    # Phase 2.1: System health gates (fail-closed)
+    # -----------------------------
+    http_5xx_rate = _as_float(getattr(s, "http_5xx_rate", None))
+    timeout_rate = _as_float(getattr(s, "timeout_rate", None))
+    non_200_rate = _as_float(getattr(s, "non_200_rate", None))
+
+    metrics["http_5xx_rate"] = http_5xx_rate
+    metrics["timeout_rate"] = timeout_rate
+    metrics["non_200_rate"] = non_200_rate
+
+    # Missing system metrics is fail-closed when the corresponding budget exists
+    if max_http_5xx_rate is not None and http_5xx_rate is None:
+        reasons.append(_reason("missing_metric", "http_5xx_rate is missing from summary"))
+    if max_timeout_rate is not None and timeout_rate is None:
+        reasons.append(_reason("missing_metric", "timeout_rate is missing from summary"))
+    if max_non_200_rate is not None and non_200_rate is None:
+        reasons.append(_reason("missing_metric", "non_200_rate is missing from summary"))
+
+    # Enforce budgets (all in percent units)
+    if max_http_5xx_rate is not None and http_5xx_rate is not None and http_5xx_rate > max_http_5xx_rate:
+        reasons.append(
+            _reason(
+                "system_unhealthy",
+                f"http_5xx_rate={http_5xx_rate:.3f}% exceeds budget max_http_5xx_rate={max_http_5xx_rate:.3f}%",
+                {
+                    "metric": "http_5xx_rate",
+                    "current_pct": http_5xx_rate,
+                    "max_pct": max_http_5xx_rate,
+                    "counts": getattr(s, "http_5xx_counts", None),
+                },
+            )
+        )
+
+    if max_timeout_rate is not None and timeout_rate is not None and timeout_rate > max_timeout_rate:
+        reasons.append(
+            _reason(
+                "system_unhealthy",
+                f"timeout_rate={timeout_rate:.3f}% exceeds budget max_timeout_rate={max_timeout_rate:.3f}%",
+                {
+                    "metric": "timeout_rate",
+                    "current_pct": timeout_rate,
+                    "max_pct": max_timeout_rate,
+                    "counts": getattr(s, "timeout_counts", None),
+                },
+            )
+        )
+
+    if max_non_200_rate is not None and non_200_rate is not None and non_200_rate > max_non_200_rate:
+        reasons.append(
+            _reason(
+                "system_unhealthy",
+                f"non_200_rate={non_200_rate:.3f}% exceeds budget max_non_200_rate={max_non_200_rate:.3f}%",
+                {
+                    "metric": "non_200_rate",
+                    "current_pct": non_200_rate,
+                    "max_pct": max_non_200_rate,
+                    "counts": getattr(s, "non_200_counts", None),
+                },
+            )
+        )
+
+    # -----------------------------
+    # Phase 2.2: Quality gates with CI-low switching
+    # -----------------------------
+    def gate_min(metric: str, reason_code: str) -> None:
+        """
+        Compare chosen(metric) >= thresholds.metrics.<metric>.min
+        where chosen is CI-low if sample small and CI exists, else point estimate.
+        """
+        min_v, _max_v = _get_metric_threshold(thresholds, metric)
+        if min_v is None:
+            # Not required by thresholds; still record if present.
+            v = _as_float(getattr(s, metric, None))
+            if v is not None:
+                metrics[metric] = v
+            return
+
+        v = _as_float(getattr(s, metric, None))
+        ci_low = _as_float(getattr(s, f"{metric}_ci95_low", None))
+
+        chosen, source = _choose_metric_for_gating(
+            value_pct=v,
+            ci95_low_pct=ci_low,
+            n_total=n_total,
+            min_n_for_point_estimate=min_n_for_point_estimate,
+        )
+
+        # record for explainability
+        metrics[metric] = v
+        if ci_low is not None:
+            metrics[f"{metric}_ci95_low"] = ci_low
+        metrics[f"{metric}__gate_source"] = source
+        metrics[f"{metric}__gate_value"] = chosen
+
+        if chosen is None:
+            reasons.append(_reason("missing_metric", f"{metric} is missing from summary (and no ci95_low present)"))
+            return
+
+        if float(chosen) < float(min_v):
             reasons.append(
                 _reason(
-                    "schema_validity_too_low",
-                    f"{float(sv):.3f} < min_schema_validity_rate={float(min_sv):.3f}",
-                    {"current": float(sv), "min": float(min_sv)},
+                    reason_code,
+                    f"{metric}({source})={float(chosen):.3f}% < min={float(min_v):.3f}%",
+                    {
+                        "metric": metric,
+                        "source": source,
+                        "current_pct": float(chosen),
+                        "min_pct": float(min_v),
+                        "point_pct": v,
+                        "ci95_low_pct": ci_low,
+                        "n_total": n_total,
+                        "min_n_for_point_estimate": min_n_for_point_estimate,
+                    },
                 )
             )
 
-    # ---- Required present rate ----
-    rp = getattr(s, "required_present_rate", None)
-    min_rp, _max_rp = _get_metric_threshold(thresholds, "required_present_rate")
-    if min_rp is not None:
-        if rp is None:
-            reasons.append(_reason("missing_metric", "required_present_rate is missing from summary"))
-        else:
-            metrics["required_present_rate"] = float(rp)
-            if float(rp) < float(min_rp):
-                reasons.append(
-                    _reason(
-                        "required_present_too_low",
-                        f"{float(rp):.3f} < min_required_present_rate={float(min_rp):.3f}",
-                        {"current": float(rp), "min": float(min_rp)},
-                    )
-                )
-    else:
-        # still record if present
-        if rp is not None:
-            metrics["required_present_rate"] = float(rp)
+    gate_min("schema_validity_rate", "schema_validity_too_low")
+    gate_min("required_present_rate", "required_present_too_low")
+    gate_min("doc_required_exact_match_rate", "doc_required_em_too_low")
 
-    # ---- Doc EM ----
-    em = getattr(s, "doc_required_exact_match_rate", None)
-    min_em, _max_em = _get_metric_threshold(thresholds, "doc_required_exact_match_rate")
-    if min_em is not None:
-        if em is None:
-            reasons.append(_reason("missing_metric", "doc_required_exact_match_rate missing from summary"))
-        else:
-            metrics["doc_required_exact_match_rate"] = float(em)
-            if float(em) < float(min_em):
-                reasons.append(
-                    _reason(
-                        "doc_required_em_too_low",
-                        f"{float(em):.3f} < min_doc_required_exact_match_rate={float(min_em):.3f}",
-                        {"current": float(em), "min": float(min_em)},
-                    )
-                )
-    else:
-        if em is not None:
-            metrics["doc_required_exact_match_rate"] = float(em)
-
-    # ---- Per-field EM (params) ----
+    # ---- Per-field EM (params, percent units) ----
     fem = getattr(s, "field_exact_match_rate", None) or {}
     if isinstance(fem, dict):
         metrics["field_exact_match_rate"] = fem
         for field, minv in min_field_exact_match_rate.items():
             cur = fem.get(field)
             if cur is None:
+                reasons.append(_reason("missing_metric", f"field_exact_match_rate.{field} missing", {"field": field}))
+                continue
+
+            cur_f = _as_float(cur)
+            if cur_f is None:
                 reasons.append(
                     _reason(
-                        "missing_metric",
-                        f"field_exact_match_rate.{field} missing",
-                        {"field": field},
+                        "metric_parse_error",
+                        f"field_exact_match_rate.{field} not numeric",
+                        {"field": field, "value": cur},
                     )
                 )
-            else:
-                try:
-                    cur_f = float(cur)
-                    if cur_f < float(minv):
-                        reasons.append(
-                            _reason(
-                                "field_em_too_low",
-                                f"{field}: {cur_f:.3f} < min={float(minv):.3f}",
-                                {"field": field, "current": cur_f, "min": float(minv)},
-                            )
-                        )
-                except Exception:
-                    reasons.append(
-                        _reason(
-                            "metric_parse_error",
-                            f"field_exact_match_rate.{field} not numeric",
-                            {"field": field, "value": cur},
-                        )
+                continue
+
+            if cur_f < float(minv):
+                reasons.append(
+                    _reason(
+                        "field_em_too_low",
+                        f"{field}: {cur_f:.3f}% < min={float(minv):.3f}%",
+                        {"field": field, "current_pct": cur_f, "min_pct": float(minv)},
                     )
+                )
     else:
         metrics["field_exact_match_rate"] = {}
 
-    # ---- Latency ----
-    lat_p95 = getattr(s, "latency_p95_ms", None)
-    _min_p95, max_p95 = _get_metric_threshold(thresholds, "latency_p95_ms")
-    if max_p95 is not None and lat_p95 is not None:
-        metrics["latency_p95_ms"] = float(lat_p95)
-        if float(lat_p95) > float(max_p95):
-            reasons.append(
-                _reason(
-                    "latency_p95_too_high",
-                    f"{float(lat_p95):.1f}ms > max={float(max_p95):.1f}ms",
-                    {"current_ms": float(lat_p95), "max_ms": float(max_p95)},
+    # ---- Latency (max thresholds; CI not needed) ----
+    for metric in ("latency_p95_ms", "latency_p99_ms"):
+        _min_v, max_v = _get_metric_threshold(thresholds, metric)
+        v = _as_float(getattr(s, metric, None))
+        if v is not None:
+            metrics[metric] = float(v)
+
+        if max_v is not None:
+            if v is None:
+                reasons.append(_reason("missing_metric", f"{metric} is missing from summary"))
+            elif float(v) > float(max_v):
+                reasons.append(
+                    _reason(
+                        f"{metric}_too_high",
+                        f"{metric}={float(v):.1f}ms > max={float(max_v):.1f}ms",
+                        {"metric": metric, "current_ms": float(v), "max_ms": float(max_v)},
+                    )
                 )
-            )
-    else:
-        if lat_p95 is not None:
-            metrics["latency_p95_ms"] = float(lat_p95)
 
-    lat_p99 = getattr(s, "latency_p99_ms", None)
-    _min_p99, max_p99 = _get_metric_threshold(thresholds, "latency_p99_ms")
-    if max_p99 is not None and lat_p99 is not None:
-        metrics["latency_p99_ms"] = float(lat_p99)
-        if float(lat_p99) > float(max_p99):
-            reasons.append(
-                _reason(
-                    "latency_p99_too_high",
-                    f"{float(lat_p99):.1f}ms > max={float(max_p99):.1f}ms",
-                    {"current_ms": float(lat_p99), "max_ms": float(max_p99)},
-                )
-            )
-    else:
-        if lat_p99 is not None:
-            metrics["latency_p99_ms"] = float(lat_p99)
-
-    metrics.update(
-        {
-            "n_total": int(getattr(s, "n_total", 0) or 0),
-            "n_ok": int(getattr(s, "n_ok", 0) or 0),
-        }
-    )
-
+    # -----------------------------
+    # Finalize decision
+    # -----------------------------
     enable = len(reasons) == 0
     status = DecisionStatus.allow if enable else DecisionStatus.deny
 

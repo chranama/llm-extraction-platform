@@ -18,6 +18,8 @@ from llm_policy.io.policy_decisions import (
     default_policy_out_path,
     write_policy_decision_artifact,
 )
+from llm_policy.onboarding.demo import apply_model_onboarding
+from llm_policy.onboarding.runner import evaluate_model_onboarding
 from llm_policy.policies.extract_enablement import decide_extract_enablement
 from llm_policy.policies.generate_slo_clamp import decide_generate_slo_clamp, thresholds_from_mapping
 from llm_policy.reports.writer import render_decision_md, render_decision_text
@@ -27,7 +29,6 @@ from llm_policy.types.decision import (
     DecisionWarning,
     PipelineType,
 )
-
 
 # ------------------------------------------------------------------------------
 # CLI
@@ -41,125 +42,170 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    def _add_common(subp: argparse.ArgumentParser) -> None:
-        subp.add_argument(
-            "--pipeline",
-            required=True,
-            choices=[
-                "extract_only",
-                "generate_clamp_only",
-                "extract_plus_generate_clamp",
-            ],
-            help="Policy pipeline to execute",
-        )
-
-        subp.add_argument(
-            "--run-dir",
-            type=str,
-            default=os.getenv("POLICY_RUN_DIR", "latest"),
-            help=(
-                "Path to eval run directory (contains summary.json), or 'latest' "
-                "(default: $POLICY_RUN_DIR or 'latest')."
-            ),
-        )
-
-        subp.add_argument(
-            "--threshold-profile",
-            type=str,
-            default=None,
-            help="Extract threshold profile, e.g. extract/sroie",
-        )
-
-        subp.add_argument(
-            "--thresholds-root",
-            type=str,
-            default=None,
-            help="Override thresholds root directory",
-        )
-
-        # Generate clamp (Phase 2)
-        subp.add_argument(
-            "--generate-threshold-profile",
-            type=str,
-            default=os.getenv("POLICY_GENERATE_PROFILE", "generate/portable"),
-            help="Generate clamp threshold profile",
-        )
-
-        subp.add_argument(
-            "--no-generate-clamp",
-            action="store_true",
-            help="Disable generate SLO clamp enrichment (debug only)",
-        )
-
-        subp.add_argument(
-            "--generate-slo-path",
-            type=str,
-            default=os.getenv("POLICY_GENERATE_SLO_PATH", "").strip() or None,
-            help="Override path to generate SLO snapshot JSON",
-        )
-
-        # Reporting / artifacts
-        subp.add_argument(
-            "--report",
-            type=str,
-            default="text",
-            choices=["text", "md"],
-            help="Human report format",
-        )
-
-        subp.add_argument(
-            "--report-out",
-            type=str,
-            default=None,
-            help="Write human report to file (optional)",
-        )
-
-        subp.add_argument(
-            "--artifact-out",
-            type=str,
-            default=None,
-            help="Write runtime policy decision artifact JSON to this path",
-        )
-
-        subp.add_argument(
-            "--no-write-artifact",
-            action="store_true",
-            help="Do not write runtime policy artifact (debug only)",
-        )
-
-    # decide-extract
-    d = sub.add_parser(
-        "decide-extract",
-        help="Run policy decision pipeline and emit runtime policy artifact",
+    # ------------------------------------------------------------------
+    # runtime-decision (runtime policy artifact, optional generate clamp)
+    # ------------------------------------------------------------------
+    rd = sub.add_parser(
+        "runtime-decision",
+        help="Compute runtime policy decision and write policy_decision_v2 artifact.",
     )
-    _add_common(d)
 
-    # run (high-level)
-    r = sub.add_parser(
-        "run",
-        help="High-level entrypoint: decide pipeline, write artifact, optionally patch models.yaml",
+    rd.add_argument(
+        "--pipeline",
+        required=True,
+        choices=[
+            "extract_only",
+            "generate_clamp_only",
+            "extract_plus_generate_clamp",
+        ],
+        help="Policy pipeline to execute.",
     )
-    _add_common(r)
 
-    # patching controls (run only)
-    r.add_argument(
-        "--patch-models",
+    rd.add_argument(
+        "--run-dir",
+        type=str,
+        default=os.getenv("POLICY_RUN_DIR", "latest"),
+        help=(
+            "Path to eval run directory (contains summary.json), or 'latest' "
+            "(default: $POLICY_RUN_DIR or 'latest')."
+        ),
+    )
+
+    rd.add_argument(
+        "--threshold-profile",
+        type=str,
+        default=None,
+        help="Extract threshold profile, e.g. extract/sroie (optional).",
+    )
+
+    rd.add_argument(
+        "--thresholds-root",
+        type=str,
+        default=None,
+        help="Override thresholds root directory (optional).",
+    )
+
+    # Generate clamp wiring (triggered only if pipeline includes generate clamp)
+    rd.add_argument(
+        "--generate-threshold-profile",
+        type=str,
+        default=os.getenv("POLICY_GENERATE_PROFILE", "generate/portable"),
+        help="Generate clamp threshold profile.",
+    )
+
+    rd.add_argument(
+        "--no-generate-clamp",
         action="store_true",
-        help="If pipeline includes extract, patch models.yaml capabilities for --model-id based on decision.",
+        help="Disable generate SLO clamp enrichment (debug only).",
     )
-    r.add_argument("--models-yaml", type=str, default=os.getenv("POLICY_MODELS_YAML", "").strip() or None)
-    r.add_argument("--model-id", type=str, default=os.getenv("POLICY_MODEL_ID", "").strip() or None)
 
-    # patch-models (unchanged)
-    pm = sub.add_parser(
-        "patch-models",
-        help="Apply a decision to models.yaml by editing capabilities",
+    rd.add_argument(
+        "--generate-slo-path",
+        type=str,
+        default=os.getenv("POLICY_GENERATE_SLO_PATH", "").strip() or None,
+        help="Override path to generate SLO snapshot JSON.",
     )
-    pm.add_argument("--models-yaml", type=str, required=True)
-    pm.add_argument("--model-id", type=str, required=True)
-    pm.add_argument("--enable-extract", action="store_true")
-    pm.add_argument("--disable-extract", action="store_true")
-    pm.add_argument("--dry-run", action="store_true")
+
+    # Reporting / artifacts
+    rd.add_argument(
+        "--report",
+        type=str,
+        default="text",
+        choices=["text", "md"],
+        help="Human report format.",
+    )
+
+    rd.add_argument(
+        "--report-out",
+        type=str,
+        default=None,
+        help="Write human report to file (optional).",
+    )
+
+    rd.add_argument(
+        "--artifact-out",
+        type=str,
+        default=None,
+        help="Write runtime policy decision artifact JSON to this path (optional).",
+    )
+
+    rd.add_argument(
+        "--no-write-artifact",
+        action="store_true",
+        help="Do not write runtime policy artifact (debug only).",
+    )
+
+    # ------------------------------------------------------------------
+    # model-onboarding (closed loop: evaluate + patch models.yaml)
+    # ------------------------------------------------------------------
+    mo = sub.add_parser(
+        "model-onboarding",
+        help="Evaluate onboarding and (optionally) patch models.yaml capabilities.extract.",
+    )
+
+    mo_sub = mo.add_subparsers(dest="subcmd", required=True)
+
+    mo_eval = mo_sub.add_parser("evaluate", help="Evaluate onboarding policy against an eval run dir.")
+    mo_eval.add_argument(
+        "--eval-run-dir",
+        type=str,
+        default=os.getenv("POLICY_RUN_DIR", "latest"),
+        help="Eval run directory, or 'latest' (default: $POLICY_RUN_DIR or 'latest').",
+    )
+    mo_eval.add_argument(
+        "--threshold-profile",
+        type=str,
+        default=None,
+        help="Extract threshold profile, e.g. extract/sroie (optional).",
+    )
+    mo_eval.add_argument(
+        "--thresholds-root",
+        type=str,
+        default=None,
+        help="Override thresholds root directory (optional).",
+    )
+    mo_eval.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress pretty printed decision output.",
+    )
+
+    mo_apply = mo_sub.add_parser("apply", help="Evaluate onboarding and patch models.yaml.")
+    mo_apply.add_argument(
+        "--models-yaml",
+        type=str,
+        required=True,
+        help="Path to config/models.yaml to patch.",
+    )
+    mo_apply.add_argument(
+        "--model-id",
+        type=str,
+        required=True,
+        help="Model id to patch in base and all profiles.",
+    )
+    mo_apply.add_argument(
+        "--eval-run-dir",
+        type=str,
+        default=os.getenv("POLICY_RUN_DIR", "latest"),
+        help="Eval run directory, or 'latest' (default: $POLICY_RUN_DIR or 'latest').",
+    )
+    mo_apply.add_argument(
+        "--threshold-profile",
+        type=str,
+        default=None,
+        help="Extract threshold profile, e.g. extract/sroie (optional).",
+    )
+    mo_apply.add_argument(
+        "--thresholds-root",
+        type=str,
+        default=None,
+        help="Override thresholds root directory (optional).",
+    )
+    mo_apply.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress pretty printed decision + patch output.",
+    )
 
     return p
 
@@ -178,6 +224,43 @@ def _emit(s: str, out: Optional[str]) -> None:
         print(s, end="")
 
 
+def _provenance_prefix(decision: Decision) -> str:
+    """
+    Render a short provenance header so deployment context is visible immediately.
+
+    We keep this CLI-owned (not in writer.py) to avoid changing existing report formatting.
+    """
+    pipeline = str(getattr(decision, "pipeline", "") or "")
+    if pipeline not in ("extract_only", "extract_plus_generate_clamp"):
+        return ""
+
+    m = getattr(decision, "metrics", None) or {}
+    if not isinstance(m, dict):
+        return ""
+
+    dep_key = m.get("deployment_key")
+    dep = m.get("deployment")
+    eval_run_dir = getattr(decision, "eval_run_dir", None)
+
+    # Keep it short & stable.
+    lines = [
+        "== Provenance ==",
+        f"eval_run_dir: {str(eval_run_dir or '')}",
+        f"deployment_key: {str(dep_key or '')}",
+    ]
+
+    # deployment is often a dict; show as compact JSON on one line.
+    if dep is not None:
+        try:
+            dep_s = json.dumps(dep, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            dep_s = str(dep)
+        lines.append(f"deployment: {dep_s}")
+
+    lines.append("")  # spacer
+    return "\n".join(lines)
+
+
 def _render_human(decision: Decision, fmt: str) -> str:
     # For generate-only, "enable_extract" is not meaningful; display as None
     # even if the internal Decision model defaults it to False.
@@ -189,9 +272,11 @@ def _render_human(decision: Decision, fmt: str) -> str:
     else:
         decision_for_report = decision
 
+    prefix = _provenance_prefix(decision_for_report)
+
     if fmt == "md":
-        return render_decision_md(decision_for_report)
-    return render_decision_text(decision_for_report)
+        return prefix + render_decision_md(decision_for_report)
+    return prefix + render_decision_text(decision_for_report)
 
 
 def _artifact_path_or_default(raw: Optional[str]) -> str:
@@ -232,11 +317,7 @@ def _normalize_generate_only(decision: Decision) -> Decision:
     """
     if not _is_generate_only(decision):
         return decision
-
-    # Force allow + ok semantics (ok() is derived; we rely on allow status)
     decision = decision.model_copy(update={"status": "allow"})
-    # Even if Decision.enable_extract is typed as bool in the model, we do NOT rely on it
-    # for artifact writing in generate-only mode (we force null at payload level).
     return decision
 
 
@@ -244,9 +325,6 @@ def _write_generate_only_artifact(decision: Decision, out_path: str) -> None:
     """
     Write a policy_decision_v2 artifact for generate_clamp_only while forcibly
     satisfying the contract: enable_extract must be null.
-
-    We bypass write_policy_decision_artifact() here because the Decision model
-    may coerce enable_extract to False, violating the schema.
     """
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -260,8 +338,7 @@ def _write_generate_only_artifact(decision: Decision, out_path: str) -> None:
         "pipeline": getattr(decision, "pipeline", "generate_clamp_only"),
         "status": "allow",
         "ok": True,
-        # 🔒 Contract: must be null in generate_clamp_only
-        "enable_extract": None,
+        "enable_extract": None,  # contract: must be null in generate_clamp_only
         "generate_max_new_tokens_cap": getattr(decision, "generate_max_new_tokens_cap", None),
         "contract_errors": int(getattr(decision, "contract_errors", 0) or 0),
         "contract_warnings": int(getattr(decision, "contract_warnings", 0) or 0),
@@ -273,7 +350,6 @@ def _write_generate_only_artifact(decision: Decision, out_path: str) -> None:
         "metrics": getattr(decision, "metrics", {}) or {},
     }
 
-    # Validate against the internal schema contract
     validate_internal(POLICY_DECISION_SCHEMA, payload)
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
@@ -282,7 +358,7 @@ def _write_generate_only_artifact(decision: Decision, out_path: str) -> None:
 
 
 # ------------------------------------------------------------------------------
-# Pipeline execution
+# Pipeline execution (runtime-decision)
 # ------------------------------------------------------------------------------
 
 
@@ -308,7 +384,6 @@ def _apply_generate_clamp(args, decision: Decision) -> Decision:
         enabled=True,
     )
 
-    # If snapshot is missing/unreadable, do not clamp; keep provenance as warning.
     if not slo_ok:
         updated = updated.model_copy(
             update={
@@ -340,14 +415,10 @@ def _apply_generate_clamp(args, decision: Decision) -> Decision:
     return updated
 
 
-def _build_decision(args) -> Decision:
+def _build_runtime_decision(args) -> Decision:
     pipeline: PipelineType = args.pipeline  # validated by argparse
 
-    # Base decision
-    decision = Decision(
-        policy="llm_policy",
-        pipeline=pipeline,
-    )
+    decision = Decision(policy="llm_policy", pipeline=pipeline)
 
     # Extract enablement
     if pipeline in ("extract_only", "extract_plus_generate_clamp"):
@@ -357,60 +428,22 @@ def _build_decision(args) -> Decision:
         if args.thresholds_root:
             pcfg = PolicyConfig(thresholds_root=args.thresholds_root)
 
-        profile, th = load_extract_thresholds(cfg=pcfg, profile=args.threshold_profile)
-
+        prof, th = load_extract_thresholds(cfg=pcfg, profile=args.threshold_profile)
         decision = decide_extract_enablement(
             artifact,
             thresholds=th,
-            thresholds_profile=profile,
+            thresholds_profile=prof,
         ).model_copy(update={"pipeline": pipeline})
 
     # Generate clamp
     if pipeline in ("generate_clamp_only", "extract_plus_generate_clamp"):
         decision = _apply_generate_clamp(args, decision)
 
-    # Enforce shaping-only semantics at the end (after clamp logic may have mutated status)
     decision = _normalize_generate_only(decision)
-
     return decision
 
 
-def _maybe_patch_models(args, decision: Decision) -> None:
-    """
-    If requested and pipeline includes extract:
-      - patch models.yaml capabilities for model_id based on decision.enable_extract.
-    """
-    if not getattr(args, "patch_models", False):
-        return
-
-    pipeline = str(getattr(decision, "pipeline", "") or "")
-    if "extract" not in pipeline:
-        return
-
-    models_yaml = (getattr(args, "models_yaml", None) or "").strip()
-    model_id = (getattr(args, "model_id", None) or "").strip()
-    if not models_yaml:
-        raise ValueError("--models-yaml is required when --patch-models is set")
-    if not model_id:
-        raise ValueError("--model-id is required when --patch-models is set")
-
-    enable_extract = getattr(decision, "enable_extract", None)
-    if not isinstance(enable_extract, bool):
-        return
-
-    argv = ["patch-models", "--models-yaml", models_yaml, "--model-id", model_id]
-    argv += ["--enable-extract"] if enable_extract else ["--disable-extract"]
-
-    rc = main(argv)
-    if rc != 0:
-        raise RuntimeError(f"patch-models failed (rc={rc})")
-
-
 def _write_artifact(decision: Decision, out_path: str) -> None:
-    """
-    Use the standard writer for non-generate-only pipelines.
-    For generate_clamp_only, force enable_extract=null via a schema-valid payload.
-    """
     if _is_generate_only(decision):
         _write_generate_only_artifact(decision, out_path)
         return
@@ -425,8 +458,11 @@ def _write_artifact(decision: Decision, out_path: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    if args.cmd == "decide-extract":
-        decision = _build_decision(args)
+    # ------------------------
+    # runtime-decision
+    # ------------------------
+    if args.cmd == "runtime-decision":
+        decision = _build_runtime_decision(args)
 
         if not args.no_write_artifact:
             out_path = _artifact_path_or_default(args.artifact_out)
@@ -436,38 +472,41 @@ def main(argv: list[str] | None = None) -> int:
         rendered = _render_human(decision, args.report)
         _emit(rendered, args.report_out)
 
-        # generate-only is always allow/ok by design; ok() remains meaningful for extract pipelines
         return 0 if _is_generate_only(decision) or decision.ok() else 2
 
-    if args.cmd == "run":
-        decision = _build_decision(args)
+    # ------------------------
+    # model-onboarding
+    # ------------------------
+    if args.cmd == "model-onboarding":
+        if args.subcmd == "evaluate":
+            res = evaluate_model_onboarding(
+                eval_run_dir=args.eval_run_dir,
+                threshold_profile=args.threshold_profile,
+                thresholds_root=args.thresholds_root,
+                policy_name="model_onboarding",
+                pipeline="extract_only",
+                verbose=not bool(args.quiet),
+            )
+            # Align exit code with Decision.ok() semantics
+            return 0 if res.decision.ok() else 2
 
-        if not args.no_write_artifact:
-            out_path = _artifact_path_or_default(args.artifact_out)
-            _validate_outfile_path(out_path)
-            _write_artifact(decision, out_path)
+        if args.subcmd == "apply":
+            apply_res = apply_model_onboarding(
+                models_yaml=args.models_yaml,
+                model_id=args.model_id,
+                eval_run_dir=args.eval_run_dir,
+                threshold_profile=args.threshold_profile,
+                thresholds_root=args.thresholds_root,
+                verbose=not bool(args.quiet),
+            )
+            return 0 if bool(apply_res.ok) else 2
 
-        try:
-            _maybe_patch_models(args, decision)
-        except Exception as e:
-            print(f"❌ models.yaml patch failed: {e}", flush=True)
-            return 2
+        print("Unknown model-onboarding subcommand", flush=True)
+        return 2
 
-        rendered = _render_human(decision, args.report)
-        _emit(rendered, args.report_out)
-
-        return 0 if _is_generate_only(decision) or decision.ok() else 2
-
-    if args.cmd == "patch-models":
-        from llm_policy.tools.patch_models import patch_models_yaml  # type: ignore
-
-        return patch_models_yaml(
-            models_yaml=args.models_yaml,
-            model_id=args.model_id,
-            enable_extract=bool(args.enable_extract),
-            disable_extract=bool(args.disable_extract),
-            dry_run=bool(args.dry_run),
-        )
-
-    print("Unknown command")
+    print("Unknown command", flush=True)
     return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

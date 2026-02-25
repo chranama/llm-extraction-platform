@@ -33,6 +33,12 @@ from simulations.artifacts.eval_fixtures import (
     write_eval_pointer_for_run,
 )
 
+# Demo models.yaml generator
+from simulations.artifacts.models_yaml_demo import (
+    DemoModelsYamlError,
+    build_demo_models_yaml,
+)
+
 
 class SimError(Exception):
     def __init__(self, message: str, *, code: int = 2):
@@ -239,7 +245,6 @@ def _artifacts_demo_eval(rt: Any, args: argparse.Namespace) -> int:
     if fixture not in ("pass", "fail"):
         raise SimError("fixture must be one of: pass, fail", code=2)
 
-    # If user passed --eval-out globally, treat it as pointer path override for task=extract.
     pointer_out = getattr(rt, "eval_out_path", None)
 
     if rt.dry_run:
@@ -309,6 +314,77 @@ def _artifacts_demo_eval(rt: Any, args: argparse.Namespace) -> int:
     return 0
 
 
+def _artifacts_build_demo_models_yaml(rt: Any, args: argparse.Namespace) -> int:
+    """
+    Generate a demo models.yaml containing ONLY one profile + one model entry.
+
+    Writes to repo-level artifact_out/ by default.
+    """
+    src = resolve_under_repo(rt.repo_root, getattr(args, "src", None)) or resolve_under_repo(rt.repo_root, "config/models.yaml")
+
+    # NEW default: repo-level artifact_out/
+    out_path = resolve_under_repo(rt.repo_root, getattr(args, "out", None)) or resolve_under_repo(
+        rt.repo_root, "artifact_out/demo_models.yaml"
+    )
+
+    profile = str(getattr(args, "profile") or "").strip()
+    model_id = str(getattr(args, "model_id") or "").strip()
+    extract_enabled = bool(getattr(args, "extract_enabled") or False)
+
+    # NEW: assessed flag
+    assessed = bool(getattr(args, "assessed") or False)
+
+    if not profile:
+        raise SimError("--profile is required", code=2)
+    if not model_id:
+        raise SimError("--model-id is required", code=2)
+
+    if rt.dry_run:
+        print("[dry-run] would build demo models.yaml")
+        print(
+            json.dumps(
+                {
+                    "src": str(src),
+                    "out": str(out_path),
+                    "profile": profile,
+                    "model_id": model_id,
+                    "assessed": assessed,
+                    "extract_enabled": extract_enabled,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    try:
+        res = build_demo_models_yaml(
+            src_models_yaml=Path(src),
+            out_models_yaml=Path(out_path),
+            profile=profile,
+            model_id=model_id,
+            assessed=assessed,
+            extract_enabled=extract_enabled,
+        )
+    except DemoModelsYamlError as e:
+        raise SimError(f"build-demo-models-yaml failed: {e}", code=2)
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "src": str(res.source_path),
+                "out": str(res.out_path),
+                "profile": res.profile,
+                "model_id": res.model_id,
+                "assessed": assessed,
+                "extract_enabled": extract_enabled,
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
 # ---------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------
@@ -317,7 +393,7 @@ def _artifacts_demo_eval(rt: Any, args: argparse.Namespace) -> int:
 def register_artifacts_subcommands(root_subparsers: argparse._SubParsersAction) -> None:
     """
     Adds:
-      sim artifacts write-slo / verify-slo / write-policy / verify-policy / demo-eval
+      sim artifacts write-slo / verify-slo / write-policy / verify-policy / demo-eval / build-demo-models-yaml
     """
     art = root_subparsers.add_parser("artifacts", help="Write / verify deterministic artifact fixtures.")
     art_sub = art.add_subparsers(dest="art_cmd", required=True)
@@ -362,3 +438,36 @@ def register_artifacts_subcommands(root_subparsers: argparse._SubParsersAction) 
     de.add_argument("--schema-id", default="ticket_v1")
     de.add_argument("--thresholds-profile", default="default")
     de.set_defaults(_handler=_artifacts_demo_eval)
+
+    # --- Demo models.yaml generator (single model/profile)
+    dm = art_sub.add_parser(
+        "build-demo-models-yaml",
+        help="Generate a demo models.yaml containing ONLY one profile+model (repo-level artifact_out/ by default).",
+    )
+    dm.add_argument(
+        "--profile",
+        required=True,
+        help="One of: host-transformers, docker-transformers, host-llama, docker-llama, test",
+    )
+    dm.add_argument("--model-id", required=True, help="Exact model id present in that profile")
+    dm.add_argument(
+        "--src",
+        default="config/models.yaml",
+        help="Source models.yaml (relative ok). Default: config/models.yaml",
+    )
+    dm.add_argument(
+        "--out",
+        default="artifact_out/demo_models.yaml",
+        help="Output path (relative ok). Default: artifact_out/demo_models.yaml",
+    )
+    dm.add_argument(
+        "--extract-enabled",
+        action="store_true",
+        help="Set capabilities.extract=true (bool clamp).",
+    )
+    dm.add_argument(
+        "--assessed",
+        action="store_true",
+        help="Set assessment.assessed=true (default is false).",
+    )
+    dm.set_defaults(_handler=_artifacts_build_demo_models_yaml)

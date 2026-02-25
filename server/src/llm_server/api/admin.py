@@ -1,16 +1,14 @@
 # server/src/llm_server/api/admin.py
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from llm_server.api.deps import clear_models_config_cache, effective_capabilities, get_api_key
 from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.db.models import ApiKey
@@ -18,16 +16,24 @@ from llm_server.db.session import get_session
 from llm_server.io.policy_decisions import get_policy_snapshot, reload_policy_snapshot
 from llm_server.io.runtime_generate_slo import write_generate_slo_artifact
 from llm_server.reports import writer as report_w
-from llm_server.services.inference import set_request_meta
-from llm_server.services.llm import build_llm_from_settings
-from llm_server.services.llm_registry import MultiModelManager
+from llm_server.services.api_deps.admin.authz import ensure_admin
+from llm_server.services.api_deps.admin.models_ops import (
+    allowed_model_ids_from_settings,
+    get_loader,
+    runtime_default_model_id_from_app,
+    summarize_registry,
+)
+from llm_server.services.api_deps.admin.reload_ops import reload_runtime_state
+from llm_server.services.api_deps.core.auth import get_api_key
+from llm_server.services.api_deps.core.models_config import clear_models_config_cache
+from llm_server.services.api_deps.core.policy_snapshot import snapshot_generate_cap
+from llm_server.services.api_deps.core.settings import settings_from_request
+from llm_server.services.api_deps.enforcement.capabilities import effective_capabilities
+from llm_server.services.llm_runtime.inference import set_request_meta
 from llm_server.telemetry import queries as telem_q
 
 logger = logging.getLogger("llm_server.api.admin")
-
 router = APIRouter(tags=["admin"])
-
-_MODEL_LOAD_LOCK = asyncio.Lock()
 
 
 # -------------------------------------------------------------------
@@ -133,14 +139,21 @@ class AdminStatsResponse(BaseModel):
 
 
 class AdminLoadModelRequest(BaseModel):
+    """
+    Explicit weight-load request.
+
+    For transformers, this will usually allocate weights.
+    For external backends (e.g., llama-server), ensure_loaded() is typically a cheap probe/no-op.
+    """
     model_id: Optional[str] = None
 
 
 class AdminLoadModelResponse(BaseModel):
     ok: bool
-    already_loaded: bool
-    default_model: str
-    models: list[str]
+    loaded: bool
+    model_id: str
+    load_mode: str
+    detail: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminPolicySnapshotResponse(BaseModel):
@@ -148,27 +161,26 @@ class AdminPolicySnapshotResponse(BaseModel):
     model_id: Optional[str] = None
     enable_extract: Optional[bool] = None
 
-    # NEW: policy-controlled generate clamp
+    # policy-controlled generate clamp
     generate_max_new_tokens_cap: Optional[int] = None
 
     source_path: Optional[str] = None
     error: Optional[str] = None
-    raw: Dict[str, Any] = {}
+    raw: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AdminReloadModels(BaseModel):
     default_model: str
     models: list[str]
+    runtime_default_model: Optional[str] = None
+    registry_kind: Optional[str] = None
 
 
 class AdminReloadPolicy(BaseModel):
     snapshot_ok: bool
     model_id: Optional[str] = None
     enable_extract: Optional[bool] = None
-
-    # NEW: policy-controlled generate clamp
     generate_max_new_tokens_cap: Optional[int] = None
-
     source_path: Optional[str] = None
     error: Optional[str] = None
 
@@ -190,107 +202,35 @@ class AdminWriteGenerateSloResponse(BaseModel):
     payload: Dict[str, Any]
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
+# ---- Runtime model ops ----
 
 
-def _allowed_model_ids_from_settings(s) -> list[str]:
-    allowed = getattr(s, "allowed_models", None)
-    if isinstance(allowed, list) and allowed:
-        return [str(x) for x in allowed if str(x).strip()]
-    legacy = getattr(s, "all_model_ids", None) or []
-    return [str(x) for x in legacy if str(x).strip()]
+class AdminModelsStatusResponse(BaseModel):
+    ok: bool
+    model_error: Optional[str] = None
+    model_load_mode: str
+    model_loaded: bool
+    loaded_model_id: Optional[str] = None
+    runtime_default_model_id: Optional[str] = None
+    models_config_loaded: bool
+    registry_kind: Optional[str] = None
+    registry: Optional[list[dict[str, Any]]] = None
 
 
-def _summarize_registry(llm_obj: Any, *, fallback_default: str) -> Tuple[str, list[str]]:
-    if isinstance(llm_obj, MultiModelManager):
-        return llm_obj.default_id, list(llm_obj.models.keys())
-
-    if hasattr(llm_obj, "models") and hasattr(llm_obj, "default_id"):
-        default_model = str(getattr(llm_obj, "default_id", "") or "") or fallback_default
-        try:
-            models_map = getattr(llm_obj, "models", {}) or {}
-            model_ids = list(models_map.keys()) if isinstance(models_map, dict) else []
-        except Exception:
-            model_ids = []
-        if not model_ids and default_model:
-            model_ids = [default_model]
-        return default_model, model_ids
-
-    default_model = str(getattr(llm_obj, "model_id", "") or "") or fallback_default
-    return default_model, [default_model] if default_model else []
+class AdminProbeModelResponse(BaseModel):
+    ok: bool
+    model_id: str
+    detail: Dict[str, Any] = Field(default_factory=dict)
 
 
-def _snapshot_generate_cap(snap: Any) -> Optional[int]:
-    """
-    Back/forward compatible accessor:
-      - prefer attribute on snapshot (future-proof)
-      - fall back to raw dict keys
-    """
-    cap = getattr(snap, "generate_max_new_tokens_cap", None)
-    if isinstance(cap, int):
-        return cap
-    raw = getattr(snap, "raw", None)
-    if isinstance(raw, dict):
-        v = raw.get("generate_max_new_tokens_cap")
-        if isinstance(v, int):
-            return v
-    return None
+class AdminSetDefaultModelRequest(BaseModel):
+    model_id: str
 
 
-async def _ensure_admin(api_key: ApiKey, session: AsyncSession) -> None:
-    """
-    Reload ApiKey with its Role in the current async session and enforce admin role.
-    """
-    db_key = await telem_q.reload_key_with_role(session, api_key_id=api_key.id)
-    role_name = db_key.role.name if db_key and db_key.role else None
-    if role_name != "admin":
-        raise AppError(code="forbidden", message="Admin privileges required", status_code=status.HTTP_403_FORBIDDEN)
-    
-def _pick_model_to_load(*, requested: Optional[str], fallback_default: str) -> str:
-    mid = (requested or "").strip()
-    return mid or (fallback_default or "").strip()
-
-
-def _force_load_llm(llm: Any, *, model_id: str) -> bool:
-    """
-    Best-effort load trigger across different registry implementations.
-
-    Returns:
-      True if we believe weights are loaded and the model is ready.
-      False if we could not force-load (e.g., registry lacks load methods).
-    Raises:
-      Exception if the load method raises.
-    """
-    # 1) MultiModelManager-style APIs (try common method names)
-    for meth in (
-        "ensure_model_loaded",
-        "load_model",
-        "load",
-        "ensure_loaded",  # may accept model_id or be no-arg
-    ):
-        fn = getattr(llm, meth, None)
-        if callable(fn):
-            try:
-                # Prefer model-specific signature if it accepts one
-                return bool(fn(model_id))  # type: ignore[misc]
-            except TypeError:
-                # Fallback to no-arg signature
-                fn()  # type: ignore[misc]
-                return True
-
-    # 2) Some registries keep per-model objects with ensure_loaded
-    models = getattr(llm, "models", None)
-    if isinstance(models, dict) and model_id in models:
-        mobj = models[model_id]
-        fn = getattr(mobj, "ensure_loaded", None)
-        if callable(fn):
-            fn()
-            return True
-
-    # 3) Nothing matched
-    return False
+class AdminSetDefaultModelResponse(BaseModel):
+    ok: bool
+    default_model: Optional[str] = None
+    persisted: bool = False
 
 
 # -------------------------------------------------------------------
@@ -332,7 +272,7 @@ async def get_admin_usage(
     session: AsyncSession = Depends(get_session),
 ):
     set_request_meta(request, route="/v1/admin/usage", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     rows = await telem_q.get_admin_usage(session)
     return AdminUsageResponse(
@@ -366,7 +306,7 @@ async def list_api_keys(
     offset: int = Query(0, ge=0),
 ):
     set_request_meta(request, route="/v1/admin/keys", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     page = await telem_q.list_api_keys(session, limit=limit, offset=offset)
     return AdminApiKeyListResponse(
@@ -405,7 +345,7 @@ async def list_inference_logs(
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ):
     set_request_meta(request, route="/v1/admin/logs", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     page = await telem_q.list_inference_logs(
         session,
@@ -435,7 +375,7 @@ async def get_admin_stats(
     window_days: int = Query(30, ge=1, le=365),
 ):
     set_request_meta(request, route="/v1/admin/stats", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     stats = await telem_q.get_admin_stats(session, window_days=window_days)
 
@@ -473,7 +413,7 @@ async def admin_report_summary(
     format: str = Query("text", pattern="^(text|json|md)$"),
 ):
     set_request_meta(request, route="/v1/admin/reports/summary", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     stats = await telem_q.get_admin_stats(session, window_days=window_days)
 
@@ -500,7 +440,108 @@ async def admin_report_summary(
 
 
 # -------------------------------------------------------------------
-# /v1/admin/models/load
+# /v1/admin/models/status
+# -------------------------------------------------------------------
+
+
+@router.get("/v1/admin/models/status", response_model=AdminModelsStatusResponse)
+async def admin_models_status(
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    set_request_meta(request, route="/v1/admin/models/status", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    loader = get_loader(request)
+    snap = await loader.status()
+
+    return AdminModelsStatusResponse(
+        ok=True,
+        model_error=cast(Optional[str], snap.get("model_error")),
+        model_load_mode=str(snap.get("model_load_mode") or "unknown"),
+        model_loaded=bool(snap.get("model_loaded", False)),
+        loaded_model_id=cast(Optional[str], snap.get("loaded_model_id")),
+        runtime_default_model_id=cast(Optional[str], snap.get("runtime_default_model_id")),
+        models_config_loaded=bool(snap.get("models_config_loaded", False)),
+        registry_kind=cast(Optional[str], snap.get("registry_kind")),
+        registry=cast(Optional[list[dict[str, Any]]], snap.get("registry")),
+    )
+
+
+# -------------------------------------------------------------------
+# /v1/admin/models/probe
+# -------------------------------------------------------------------
+
+
+@router.get("/v1/admin/models/probe", response_model=AdminProbeModelResponse)
+async def admin_models_probe(
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+    model_id: str = Query(..., description="Model id to probe"),
+):
+    """
+    Cheap probe (does NOT load weights). Useful for external backends.
+    """
+    set_request_meta(request, route="/v1/admin/models/probe", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    loader = get_loader(request)
+    res = await loader.probe_model(model_id)
+
+    return AdminProbeModelResponse(ok=bool(res.ok), model_id=res.model_id, detail=res.detail or {})
+
+
+# -------------------------------------------------------------------
+# /v1/admin/models/default (set/clear runtime default)
+# -------------------------------------------------------------------
+
+
+@router.post("/v1/admin/models/default", response_model=AdminSetDefaultModelResponse)
+async def admin_models_set_default(
+    request: Request,
+    body: AdminSetDefaultModelRequest,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Runtime-only default model override. Does not modify models.yaml.
+    """
+    set_request_meta(request, route="/v1/admin/models/default", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    loader = get_loader(request)
+    info = await loader.set_default_model(body.model_id)
+
+    return AdminSetDefaultModelResponse(
+        ok=True,
+        default_model=cast(Optional[str], info.get("default_model")),
+        persisted=bool(info.get("persisted", False)),
+    )
+
+
+@router.post("/v1/admin/models/default/clear", response_model=AdminSetDefaultModelResponse)
+async def admin_models_clear_default(
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    set_request_meta(request, route="/v1/admin/models/default/clear", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    loader = get_loader(request)
+    info = await loader.clear_runtime_default()
+
+    return AdminSetDefaultModelResponse(
+        ok=True,
+        default_model=cast(Optional[str], info.get("default_model")),
+        persisted=bool(info.get("persisted", False)),
+    )
+
+
+# -------------------------------------------------------------------
+# /v1/admin/models/load  (refactored to RuntimeModelLoader)
 # -------------------------------------------------------------------
 
 
@@ -510,84 +551,49 @@ async def admin_load_model(
     body: AdminLoadModelRequest,
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
+    force: bool = Query(False, description="Force reload (transformers only); external backends remain no-op"),
 ):
+    """
+    Explicit weight-load boundary.
+
+    IMPORTANT:
+      - This is the ONLY admin endpoint that should trigger weight loading.
+      - For llama-server style external backends, ensure_loaded() should be cheap/no-op.
+      - For transformers, this will typically allocate weights and can be slow.
+
+    Semantics:
+      - app.state.model_loaded means "transformers weights loaded in-process"
+      - llama/remote must not flip model_loaded=True
+    """
     set_request_meta(request, route="/v1/admin/models/load", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
-    s = get_settings()
-    app = request.app
+    loader = get_loader(request)
 
-    async with _MODEL_LOAD_LOCK:
-        # If we already have a healthy loaded model, short-circuit
-        existing = getattr(app.state, "llm", None)
-        model_loaded = bool(getattr(app.state, "model_loaded", False))
-        model_error = getattr(app.state, "model_error", None)
-
-        if existing is not None and model_loaded and not model_error:
-            default_model, model_ids = _summarize_registry(
-                existing,
-                fallback_default=cast(str, getattr(s, "model_id", "")),
+    # Validate against allowed model IDs (settings-based), if provided.
+    if body.model_id:
+        s = settings_from_request(request)
+        allowed = allowed_model_ids_from_settings(s)
+        if allowed and body.model_id not in allowed:
+            raise AppError(
+                code="model_not_allowed",
+                message=f"Model '{body.model_id}' not allowed.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                extra={"allowed": allowed},
             )
-            return AdminLoadModelResponse(ok=True, already_loaded=True, default_model=default_model, models=model_ids)
 
-        # If a model_id was requested, validate against allowed models
-        if body.model_id:
-            allowed = _allowed_model_ids_from_settings(s)
-            if body.model_id not in allowed:
-                raise AppError(
-                    code="model_not_allowed",
-                    message=f"Model '{body.model_id}' not allowed.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    extra={"allowed": allowed},
-                )
+        res = await loader.load_model(body.model_id, force=bool(force))
+    else:
+        res = await loader.load_default(force=bool(force))
 
-            # Make requested model the default for this process
-            s.model_id = body.model_id  # type: ignore[attr-defined]
-            try:
-                clear_models_config_cache()
-            except Exception:
-                pass
+    return AdminLoadModelResponse(
+        ok=True,
+        loaded=bool(res.loaded),
+        model_id=str(res.model_id),
+        load_mode=str(res.load_mode),
+        detail=res.detail or {},
+    )
 
-        # Reset runtime state
-        app.state.model_error = None
-        app.state.model_loaded = False
-        app.state.llm = None
-
-        # Build registry / llm object (should be cheap in lazy mode)
-        try:
-            llm = build_llm_from_settings()
-            app.state.llm = llm
-        except Exception as e:
-            app.state.model_error = repr(e)
-            app.state.model_loaded = False
-            app.state.llm = None
-            raise
-
-        # Determine the model we will force-load
-        fallback_default = cast(str, getattr(get_settings(), "model_id", "") or "")
-        model_to_load = _pick_model_to_load(requested=body.model_id, fallback_default=fallback_default)
-
-        # Force-load weights now (admin override to lazy)
-        try:
-            loaded = _force_load_llm(app.state.llm, model_id=model_to_load)
-            app.state.model_loaded = bool(loaded)
-        except Exception as e:
-            app.state.model_error = repr(e)
-            app.state.model_loaded = False
-            app.state.llm = None
-            raise
-
-        default_model, model_ids = _summarize_registry(
-            app.state.llm,
-            fallback_default=fallback_default,
-        )
-
-        return AdminLoadModelResponse(
-            ok=True,
-            already_loaded=False,
-            default_model=default_model,
-            models=model_ids,
-        )
 
 # -------------------------------------------------------------------
 # /v1/admin/policy (inspect/reload)
@@ -601,14 +607,14 @@ async def admin_get_policy_snapshot(
     session: AsyncSession = Depends(get_session),
 ):
     set_request_meta(request, route="/v1/admin/policy", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     snap = get_policy_snapshot(request)
     return AdminPolicySnapshotResponse(
         ok=bool(getattr(snap, "ok", False)),
         model_id=getattr(snap, "model_id", None),
         enable_extract=getattr(snap, "enable_extract", None),
-        generate_max_new_tokens_cap=_snapshot_generate_cap(snap),
+        generate_max_new_tokens_cap=snapshot_generate_cap(snap),
         source_path=getattr(snap, "source_path", None),
         error=getattr(snap, "error", None),
         raw=getattr(snap, "raw", None) or {},
@@ -622,14 +628,14 @@ async def admin_reload_policy_snapshot(
     session: AsyncSession = Depends(get_session),
 ):
     set_request_meta(request, route="/v1/admin/policy/reload", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     snap = reload_policy_snapshot(request)
     return AdminPolicySnapshotResponse(
         ok=bool(getattr(snap, "ok", False)),
         model_id=getattr(snap, "model_id", None),
         enable_extract=getattr(snap, "enable_extract", None),
-        generate_max_new_tokens_cap=_snapshot_generate_cap(snap),
+        generate_max_new_tokens_cap=snapshot_generate_cap(snap),
         source_path=getattr(snap, "source_path", None),
         error=getattr(snap, "error", None),
         raw=getattr(snap, "raw", None) or {},
@@ -657,7 +663,7 @@ async def admin_write_generate_slo(
       - write runtime_generate_slo_v1 artifact to disk
     """
     set_request_meta(request, route="/v1/admin/slo/generate/write", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
     routes = [route] if isinstance(route, str) and route.strip() else ["/v1/generate", "/v1/generate/batch"]
 
@@ -673,7 +679,7 @@ async def admin_write_generate_slo(
 
 
 # -------------------------------------------------------------------
-# /v1/admin/reload
+# /v1/admin/reload  (refactored to RuntimeModelLoader)
 # -------------------------------------------------------------------
 
 
@@ -684,71 +690,18 @@ async def admin_reload_runtime(
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Deterministic reload boundary:
-      - clear models config cache
-      - rebuild llm registry object (respects lazy/off modes)
-      - clear + reload policy snapshot from disk
-      - return merged state summary that matches runtime gating
-
-    Now includes policy-driven generate clamp visibility.
+    Deterministic reload boundary for server-side state.
     """
     set_request_meta(request, route="/v1/admin/reload", model_id="admin", cached=False)
-    await _ensure_admin(api_key, session)
+    await ensure_admin(api_key, session)
 
-    s = get_settings()
-    app = request.app
+    loader = get_loader(request)
 
-    # 1) Clear config cache(s)
-    try:
-        clear_models_config_cache()
-    except Exception as e:
-        logger.warning("clear_models_config_cache failed: %r", e)
-
-    # 2) Clear cached runtime objects so config changes take effect deterministically
-    app.state.llm = None
-    app.state.model_loaded = False
-    app.state.model_error = None
-
-    # 2b) Clear policy snapshot cache explicitly (so reload is a true boundary)
-    try:
-        app.state.policy_snapshot = None
-    except Exception:
-        pass
-
-    # 3) Rebuild llm registry (should not warm weights in lazy/off modes)
-    try:
-        llm = build_llm_from_settings()
-        app.state.llm = llm
-    except Exception as e:
-        app.state.model_error = repr(e)
-        raise
-
-    default_model, model_ids = _summarize_registry(
-        app.state.llm,
-        fallback_default=cast(str, getattr(s, "model_id", "")),
-    )
-
-    # 4) Reload policy snapshot from disk (overwrites app.state cache)
-    snap = reload_policy_snapshot(request)
-
-    # 5) Compute EFFECTIVE extract enabled using the same gating as /v1/extract
-    extract_enabled = False
-    try:
-        caps = effective_capabilities(default_model, request=request)
-        extract_enabled = bool(caps.get("extract", False))
-    except Exception:
-        extract_enabled = False
+    payload, _snap = await reload_runtime_state(request=request, loader=loader)
 
     return AdminReloadResponse(
         ok=True,
-        models=AdminReloadModels(default_model=default_model, models=model_ids),
-        policy=AdminReloadPolicy(
-            snapshot_ok=bool(getattr(snap, "ok", False)),
-            model_id=getattr(snap, "model_id", None),
-            enable_extract=getattr(snap, "enable_extract", None),
-            generate_max_new_tokens_cap=_snapshot_generate_cap(snap),
-            source_path=getattr(snap, "source_path", None),
-            error=getattr(snap, "error", None),
-        ),
-        effective=AdminReloadEffective(extract_enabled=extract_enabled),
+        models=AdminReloadModels(**payload["models"]),
+        policy=AdminReloadPolicy(**payload["policy"]),
+        effective=AdminReloadEffective(**payload["effective"]),
     )

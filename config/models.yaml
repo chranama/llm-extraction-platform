@@ -1,20 +1,62 @@
 # config/models.yaml
 # ------------------------------------------------------------
-# Notes based on our conversation:
-# - Gate timeout (server.yaml limits.generate_gate.timeout_seconds) is the source-of-truth budget.
-# - llm.py clamps backend HTTP timeouts to (gate_timeout - buffer), so do NOT set 120s here.
-# - Keep llamacpp/remote timeout_seconds at <= gate timeout for legibility.
+# Normalized semantics:
+#   Profiles represent deployment topology + backend family.
+#
+#   - host-transformers   : in-process HF Transformers on host
+#   - docker-transformers : in-process HF Transformers in container
+#   - host-llama          : llama.cpp via external llama-server on host
+#   - docker-llama        : llama.cpp via external llama-server reachable from container
+#   - test                : fake model for tests
+#
+# Completeness rule (per your request):
+#   - All Transformers models exist in BOTH transformers deployments.
+#   - All llama.cpp models exist in BOTH llama deployments.
+#
+# Notes:
+# - Readiness:
+#     readiness_mode: off | probe | generate
+# - deployment_key:
+#     stable correlation key for eval/policy; should change when topology changes.
+# - llama.cpp reality:
+#     This config assumes "fixed" selection: one llama-server per model (distinct ports/URLs).
 # ------------------------------------------------------------
 
 base:
+  # Base is a shared scaffold only. Inventory is defined per-profile (below).
   default_model: meta-llama/Llama-3.2-1B-Instruct
 
   defaults:
+    # Safe global defaults; profiles override as needed.
     backend: transformers
     load_mode: lazy
     capabilities:
       generate: true
       extract: false
+
+    readiness_mode: generate
+
+    # If not overridden, deployments correlate on profile-ish envs.
+    deployment_key: ${DEPLOYMENT_KEY:-${MODELS_PROFILE:-${APP_PROFILE:-host}}}
+
+    deployment:
+      profile_id: ${MODELS_PROFILE:-${APP_PROFILE:-host}}
+      models_profile: ${MODELS_PROFILE:-${APP_PROFILE:-host}}
+      expected:
+        accelerator: "auto"   # auto | cpu | cuda | mps
+        precision: "auto"     # auto | float16 | bfloat16 | float32 | int8 | int4
+        in_docker: "auto"     # auto | true | false
+
+    # NOTE: Compliance for Option A
+    # - require_for_extract=true means every effective model.assessment MUST include assessed: bool
+    assessment:
+      lane: ${ASSESSMENT_LANE:-offline}
+      policy_schema: "policy_decision_v2"
+      require_for_extract: true
+      assessed: false
+
+    backend_constraints:
+      llamacpp_model_selector: "fixed"  # fixed | param
 
     transformers:
       device: auto
@@ -23,172 +65,366 @@ base:
       default_temperature: 0.7
       default_top_p: 0.95
 
-    # Used only when backend=llamacpp
     llamacpp:
       server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8080}
       timeout_seconds: 30
+      connect_timeout_seconds: 5
       default_temperature: 0.7
       default_top_p: 0.95
-      # model_name: ""  # optional
 
-    # Used only when backend=remote
     remote:
       base_url: ${REMOTE_BACKEND_BASE_URL:-}
       timeout_seconds: 30
-      # model_id: ""    # optional
+      connect_timeout_seconds: 5
 
-  models:
-    - id: meta-llama/Llama-3.2-1B-Instruct
-      backend: transformers
-      load_mode: lazy
-      transformers:
-        device: auto
-        dtype: float16
-        trust_remote_code: false
-      capabilities: { generate: true, extract: false }
-      notes: "Base default (small, CPU-friendly; generate-only)"
+  models: []
 
-    - id: mistralai/Mistral-7B-Instruct-v0.3
-      backend: transformers
-      load_mode: lazy
-      transformers:
-        device: auto
-        dtype: float16
-      capabilities: { generate: true, extract: false }
-      notes: "Optional model (generate-only)"
-
-    - id: Qwen/Qwen2.5-7B-Instruct
-      backend: transformers
-      load_mode: lazy
-      transformers:
-        device: auto
-        dtype: float16
-      capabilities: { generate: true, extract: false }
-      notes: "Optional model (generate-only)"
-
-    # ==========================
-    # llama.cpp (GGUF) via llama-server (external service)
-    # ==========================
-
-    - id: llama.cpp/Meta-Llama-3.1-8B-Instruct-Q4_K_M-GGUF
-      backend: llamacpp
-      load_mode: lazy
-      llamacpp:
-        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
-        timeout_seconds: 30
-        model_name: "Meta-Llama-3.1-8B-Instruct"
-        # documentation-only:
-        model_path: "/Users/chranama/models/gguf/llama-3.1-8b-instruct/Q4_K_M.gguf"
-      capabilities: { generate: true, extract: false }
-      notes: "Host llama-server (llama.cpp) GGUF: Meta-Llama-3.1-8B-Instruct Q4_K_M"
-
-    - id: llama.cpp/Qwen2.5-14B-Instruct-Q4_K_M-GGUF
-      backend: llamacpp
-      load_mode: lazy
-      llamacpp:
-        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
-        timeout_seconds: 30
-        model_name: "Qwen2.5-14B-Instruct"
-        # documentation-only:
-        model_path: "/Users/chranama/models/gguf/qwen2.5-14b-instruct/Q4_K_M.gguf"
-      capabilities: { generate: true, extract: false }
-      notes: "Host llama-server (llama.cpp) GGUF: Qwen2.5-14B-Instruct Q4_K_M"
-
-    - id: llama.cpp/TinyLlama-1.1B-Chat-Q4_K_M-GGUF
-      backend: llamacpp
-      load_mode: lazy
-      llamacpp:
-        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
-        timeout_seconds: 30
-        model_name: "TinyLlama-1.1B-Chat"
-        # documentation-only:
-        model_path: "/Users/chranama/models/gguf/tinyllama-1.1b-chat/Q4_K_M.gguf"
-      capabilities: { generate: true, extract: false }
-      notes: "Host llama-server (llama.cpp) GGUF: TinyLlama 1.1B Chat Q4_K_M (tiny + fast)"
-
-    - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
-      backend: llamacpp
-      load_mode: lazy
-      llamacpp:
-        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
-        timeout_seconds: 30
-        model_name: "SmolLM2-360M-Instruct"
-        # documentation-only:
-        model_path: "/Users/chranama/models/gguf/smollm2-360m-instruct/Q8_0.gguf"
-      capabilities: { generate: true, extract: false }
-      notes: "Host llama-server (llama.cpp) GGUF: SmolLM2 360M Instruct Q8_0 (smallest local baseline)"
 
 profiles:
-  host: {}
-
-  docker-portable:
+  # ==========================================================
+  # HOST + Transformers (in-process)
+  # ==========================================================
+  host-transformers:
     default_model: meta-llama/Llama-3.2-1B-Instruct
+    defaults:
+      backend: transformers
+      readiness_mode: generate
+      deployment_key: ${DEPLOYMENT_KEY:-host-transformers}
+      deployment:
+        profile_id: host-transformers
+        models_profile: host-transformers
+        expected:
+          in_docker: false
+          accelerator: "auto"
+          precision: "float16"
+      assessment:
+        # keep inherited semantics, but make it explicit at the profile layer too
+        lane: ${ASSESSMENT_LANE:-offline}
+        policy_schema: "policy_decision_v2"
+        require_for_extract: true
+        assessed: false
 
-  # Route generation to external llama-server (works for Demo A in docker or Demo B on host)
-  llama-server:
+    models:
+      - id: meta-llama/Llama-3.2-1B-Instruct
+        backend: transformers
+        load_mode: lazy
+        deployment_key: host-transformers--llama32-1b
+        transformers:
+          device: auto
+          dtype: float16
+          trust_remote_code: false
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Host Transformers: default small baseline"
+
+      - id: mistralai/Mistral-7B-Instruct-v0.3
+        backend: transformers
+        load_mode: lazy
+        deployment_key: host-transformers--mistral7b-v03
+        transformers:
+          device: auto
+          dtype: float16
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Host Transformers: optional"
+
+      - id: Qwen/Qwen2.5-7B-Instruct
+        backend: transformers
+        load_mode: lazy
+        deployment_key: host-transformers--qwen25-7b
+        transformers:
+          device: auto
+          dtype: float16
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Host Transformers: optional"
+
+
+  # ==========================================================
+  # DOCKER + Transformers (in-process)
+  # ==========================================================
+  docker-transformers:
+    default_model: meta-llama/Llama-3.2-1B-Instruct
+    defaults:
+      backend: transformers
+      readiness_mode: generate
+      deployment_key: ${DEPLOYMENT_KEY:-docker-transformers}
+      deployment:
+        profile_id: docker-transformers
+        models_profile: docker-transformers
+        expected:
+          in_docker: true
+          accelerator: "auto"
+          precision: "float16"
+      assessment:
+        lane: ${ASSESSMENT_LANE:-offline}
+        policy_schema: "policy_decision_v2"
+        require_for_extract: true
+        assessed: false
+
+    models:
+      - id: meta-llama/Llama-3.2-1B-Instruct
+        backend: transformers
+        load_mode: lazy
+        deployment_key: docker-transformers--llama32-1b
+        transformers:
+          device: auto
+          dtype: float16
+          trust_remote_code: false
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Docker Transformers: default small baseline"
+
+      - id: mistralai/Mistral-7B-Instruct-v0.3
+        backend: transformers
+        load_mode: lazy
+        deployment_key: docker-transformers--mistral7b-v03
+        transformers:
+          device: auto
+          dtype: float16
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Docker Transformers: optional"
+
+      - id: Qwen/Qwen2.5-7B-Instruct
+        backend: transformers
+        load_mode: lazy
+        deployment_key: docker-transformers--qwen25-7b
+        transformers:
+          device: auto
+          dtype: float16
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        notes: "Docker Transformers: optional"
+
+
+  # ==========================================================
+  # HOST + llama.cpp (external llama-server)
+  # ==========================================================
+  host-llama:
     default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
-
     defaults:
       backend: llamacpp
-      load_mode: lazy
-      capabilities: { generate: true, extract: false }
+      readiness_mode: probe
+      deployment_key: ${DEPLOYMENT_KEY:-host-llama}
+      deployment:
+        profile_id: host-llama
+        models_profile: host-llama
+        expected:
+          in_docker: false
+          accelerator: "cpu"
+          precision: "auto"
 
+      assessment:
+        lane: ${ASSESSMENT_LANE:-offline}
+        policy_schema: "policy_decision_v2"
+        require_for_extract: true
+        assessed: false
+
+      backend_constraints:
+        llamacpp_model_selector: "fixed"
+
+      # Default base URL only used if a per-model URL isn't provided
       llamacpp:
-        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
+        server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8080}
         timeout_seconds: 30
+        connect_timeout_seconds: 5
         default_temperature: 0.7
         default_top_p: 0.95
 
     models:
-      - id: llama.cpp/Qwen2.5-14B-Instruct-Q4_K_M-GGUF
-        backend: llamacpp
-        load_mode: lazy
-        llamacpp:
-          server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
-          timeout_seconds: 30
-          model_name: "Qwen2.5-14B-Instruct"
-        capabilities: { generate: true, extract: false }
-        notes: "External llama-server backend (Qwen2.5 14B Q4_K_M)"
-
       - id: llama.cpp/Meta-Llama-3.1-8B-Instruct-Q4_K_M-GGUF
         backend: llamacpp
         load_mode: lazy
+        readiness_mode: probe
+        deployment_key: host-llama--llama31-8b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
         llamacpp:
-          server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
+          server_url: ${LLAMA_SERVER_URL_LLAMA31_8B:-http://127.0.0.1:8081}
           timeout_seconds: 30
           model_name: "Meta-Llama-3.1-8B-Instruct"
         capabilities: { generate: true, extract: false }
-        notes: "External llama-server backend (Llama 3.1 8B Q4_K_M)"
+        assessment: { assessed: false }
+        deployment:
+          expected: { accelerator: "cpu", precision: "int4" }
+        notes: "Host llama-server: Llama 3.1 8B Q4_K_M"
+
+      - id: llama.cpp/Qwen2.5-14B-Instruct-Q4_K_M-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: host-llama--qwen25-14b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL_QWEN25_14B:-http://127.0.0.1:8082}
+          timeout_seconds: 30
+          model_name: "Qwen2.5-14B-Instruct"
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        deployment:
+          expected: { accelerator: "cpu", precision: "int4" }
+        notes: "Host llama-server: Qwen2.5 14B Q4_K_M"
 
       - id: llama.cpp/TinyLlama-1.1B-Chat-Q4_K_M-GGUF
         backend: llamacpp
         load_mode: lazy
+        readiness_mode: probe
+        deployment_key: host-llama--tinyllama-11b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
         llamacpp:
-          server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
+          server_url: ${LLAMA_SERVER_URL_TINYLLAMA_11B:-http://127.0.0.1:8083}
           timeout_seconds: 30
           model_name: "TinyLlama-1.1B-Chat"
         capabilities: { generate: true, extract: false }
-        notes: "External llama-server backend (TinyLlama 1.1B Chat Q4_K_M)"
+        assessment: { assessed: false }
+        deployment:
+          expected: { accelerator: "cpu", precision: "int4" }
+        notes: "Host llama-server: TinyLlama 1.1B Chat Q4_K_M"
 
       - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
         backend: llamacpp
         load_mode: lazy
+        readiness_mode: probe
+        deployment_key: host-llama--smollm2-360m-q8
+        backend_constraints: { llamacpp_model_selector: "fixed" }
         llamacpp:
-          server_url: ${LLAMA_SERVER_URL:-http://127.0.0.1:8081}
+          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://127.0.0.1:8084}
           timeout_seconds: 30
           model_name: "SmolLM2-360M-Instruct"
         capabilities: { generate: true, extract: false }
-        notes: "External llama-server backend (SmolLM2 360M Instruct Q8_0)"
+        assessment: { assessed: false }
+        deployment:
+          expected: { accelerator: "cpu", precision: "int8" }
+        notes: "Host llama-server: SmolLM2 360M Instruct Q8_0"
 
+
+  # ==========================================================
+  # DOCKER + llama.cpp (external llama-server reachable from container)
+  # ==========================================================
+  docker-llama:
+    default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+    defaults:
+      backend: llamacpp
+      readiness_mode: probe
+      deployment_key: ${DEPLOYMENT_KEY:-docker-llama}
+      deployment:
+        profile_id: docker-llama
+        models_profile: docker-llama
+        expected:
+          in_docker: true
+          accelerator: "cpu"
+          precision: "auto"
+
+      assessment:
+        lane: ${ASSESSMENT_LANE:-offline}
+        policy_schema: "policy_decision_v2"
+        require_for_extract: true
+        assessed: false
+
+      backend_constraints:
+        llamacpp_model_selector: "fixed"
+
+      llamacpp:
+        server_url: ${LLAMA_SERVER_URL:-http://host.docker.internal:8080}
+        timeout_seconds: 30
+        connect_timeout_seconds: 5
+        default_temperature: 0.7
+        default_top_p: 0.95
+
+    models:
+      - id: llama.cpp/Meta-Llama-3.1-8B-Instruct-Q4_K_M-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: docker-llama--llama31-8b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL_LLAMA31_8B:-http://host.docker.internal:8081}
+          timeout_seconds: 30
+          model_name: "Meta-Llama-3.1-8B-Instruct"
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        deployment:
+          expected: { in_docker: true, accelerator: "cpu", precision: "int4" }
+        notes: "Docker -> external llama-server: Llama 3.1 8B Q4_K_M"
+
+      - id: llama.cpp/Qwen2.5-14B-Instruct-Q4_K_M-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: docker-llama--qwen25-14b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL_QWEN25_14B:-http://host.docker.internal:8082}
+          timeout_seconds: 30
+          model_name: "Qwen2.5-14B-Instruct"
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        deployment:
+          expected: { in_docker: true, accelerator: "cpu", precision: "int4" }
+        notes: "Docker -> external llama-server: Qwen2.5 14B Q4_K_M"
+
+      - id: llama.cpp/TinyLlama-1.1B-Chat-Q4_K_M-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: docker-llama--tinyllama-11b-q4km
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL_TINYLLAMA_11B:-http://host.docker.internal:8083}
+          timeout_seconds: 30
+          model_name: "TinyLlama-1.1B-Chat"
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        deployment:
+          expected: { in_docker: true, accelerator: "cpu", precision: "int4" }
+        notes: "Docker -> external llama-server: TinyLlama 1.1B Chat Q4_K_M"
+
+      - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: docker-llama--smollm2-360m-q8
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://host.docker.internal:8084}
+          timeout_seconds: 30
+          model_name: "SmolLM2-360M-Instruct"
+        capabilities: { generate: true, extract: false }
+        assessment: { assessed: false }
+        deployment:
+          expected: { in_docker: true, accelerator: "cpu", precision: "int8" }
+        notes: "Docker -> external llama-server: SmolLM2 360M Instruct Q8_0"
+
+
+  # ==========================================================
+  # TEST
+  # ==========================================================
   test:
     default_model: fake
     defaults:
       backend: transformers
       load_mode: lazy
       capabilities: { generate: true, extract: true }
+      readiness_mode: off
+      deployment_key: test
+      deployment:
+        profile_id: test
+        models_profile: test
+        expected:
+          in_docker: "auto"
+      assessment:
+        lane: test
+        policy_schema: "policy_decision_v2"
+        require_for_extract: false
+        assessed: false
+
     models:
       - id: fake
         backend: transformers
         load_mode: lazy
         capabilities: { generate: true, extract: true }
+        readiness_mode: off
+        deployment_key: test-fake
+        assessment: { assessed: false }
         notes: "Fake model for integration tests"

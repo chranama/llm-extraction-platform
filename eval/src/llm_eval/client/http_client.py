@@ -12,7 +12,6 @@ import httpx
 # Typed results
 # =========================
 
-
 @dataclass(frozen=True)
 class GenerateOk:
     model: str
@@ -49,21 +48,59 @@ class ExtractErr:
     latency_ms: float
 
 
+# =========================
+# /modelz typed results
+# =========================
+
+@dataclass(frozen=True)
+class ModelzOk:
+    """
+    Snapshot from GET /modelz.
+
+    We keep the whole payload for forward-compat, but also extract the key fields
+    eval needs to correlate runs to the actual loaded model / deployment key.
+    """
+    status: str  # "ready" | "not ready"
+    ok: bool
+    default_model_id: Optional[str]
+    loaded_model_id: Optional[str]
+    runtime_default_model_id: Optional[str]
+    default_backend: Optional[str]
+    deployment_key: Optional[str]
+    deployment: Optional[Dict[str, Any]]
+    raw: Dict[str, Any]
+    latency_ms: float
+
+
+@dataclass(frozen=True)
+class ModelzErr:
+    status_code: int
+    error_code: str
+    message: str
+    extra: Optional[Dict[str, Any]]
+    latency_ms: float
+
+
 class HttpEvalClient:
     """
     Talks to the llm-server API endpoints.
 
     - POST /v1/generate (text generation)
     - POST /v1/extract  (schema-validated extraction)
+    - GET  /modelz      (model readiness + deployment metadata snapshot)
 
     Notes:
-    - Never raises for HTTP errors: callers get GenerateErr / ExtractErr.
+    - Never raises for HTTP errors: callers get Ok/Err union types.
     - Captures classification-friendly metadata in `.extra` on errors:
         - stage
         - content_type
         - request_id (from header or body)
         - response_text preview (safe, truncated)
     """
+
+    # Common convention: "Client Closed Request" / network error style.
+    # Useful so scoring can treat timeouts as non-200 without mixing into 5xx.
+    _TIMEOUT_STATUS_CODE = 599
 
     def __init__(
         self,
@@ -81,7 +118,10 @@ class HttpEvalClient:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            # Explicit Timeout object keeps behavior stable across httpx versions.
+            # Single float -> applied to connect/read/write/pool.
+            t = httpx.Timeout(self.timeout)
+            self._client = httpx.AsyncClient(timeout=t)
         return self._client
 
     async def aclose(self) -> None:
@@ -192,10 +232,165 @@ class HttpEvalClient:
         merged["content_type"] = content_type
         if rid:
             merged["request_id"] = rid
-        # keep preview; policy/eval can redact later if needed
         merged.setdefault("response_text", text_preview)
 
         return code, msg, merged
+
+    # -------------------------
+    # Transport normalization
+    # -------------------------
+
+    @staticmethod
+    def _timeout_stage(exc: BaseException) -> str:
+        # httpx defines specific subclasses; keep stable stages for eval aggregation.
+        if isinstance(exc, httpx.ConnectTimeout):
+            return "connect_timeout"
+        if isinstance(exc, httpx.ReadTimeout):
+            return "read_timeout"
+        if isinstance(exc, httpx.WriteTimeout):
+            return "write_timeout"
+        if isinstance(exc, httpx.PoolTimeout):
+            return "pool_timeout"
+        return "timeout"
+
+    def _err_timeout(self, e: BaseException, t0: float) -> tuple[int, str, str, Dict[str, Any], float]:
+        latency_ms = (time.time() - t0) * 1000.0
+        stage = self._timeout_stage(e)
+        extra: Dict[str, Any] = {
+            "stage": stage,
+            "exc_type": type(e).__name__,
+        }
+        # Normalize for scoring: error_code must be exactly "timeout".
+        return self._TIMEOUT_STATUS_CODE, "timeout", f"{type(e).__name__}: {e}", extra, latency_ms
+
+    def _err_transport(self, e: BaseException, t0: float) -> tuple[int, str, str, Dict[str, Any], float]:
+        latency_ms = (time.time() - t0) * 1000.0
+        extra: Dict[str, Any] = {
+            "stage": "transport_error",
+            "exc_type": type(e).__name__,
+        }
+        return 0, "transport_error", f"{type(e).__name__}: {e}", extra, latency_ms
+
+    # =========================
+    # /modelz
+    # =========================
+
+    @staticmethod
+    def _as_opt_str(v: Any) -> Optional[str]:
+        if isinstance(v, str):
+            s = v.strip()
+            return s or None
+        return None
+
+    async def modelz(self) -> ModelzOk | ModelzErr:
+        """
+        GET /modelz
+
+        Purpose (eval-side):
+          - determine which model the server *actually* considers the default backend target
+          - see loaded_model_id vs default_model_id mismatch (single-backend reload/override cases)
+          - capture deployment.deployment_key for eval/policy correlation
+        """
+        t0 = time.time()
+        try:
+            r = await self._get_client().get(
+                f"{self.base_url}/modelz",
+                headers=self._headers(),
+            )
+        except httpx.TimeoutException as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_timeout(e, t0)
+            return ModelzErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except httpx.RequestError as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return ModelzErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return ModelzErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+
+        latency_ms = (time.time() - t0) * 1000.0
+
+        if r.status_code in (200, 503):
+            data, _ = self._safe_json(r)
+            if not isinstance(data, dict):
+                data = {}
+
+            status = str(data.get("status") or ("ready" if r.status_code == 200 else "not ready"))
+            ok = bool(status == "ready" and r.status_code == 200)
+
+            default_model_id = self._as_opt_str(data.get("default_model_id"))
+            loaded_model_id = self._as_opt_str(data.get("loaded_model_id"))
+            runtime_default_model_id = self._as_opt_str(data.get("runtime_default_model_id"))
+            default_backend = self._as_opt_str(data.get("default_backend"))
+
+            deployment_block = data.get("deployment")
+            deployment = deployment_block if isinstance(deployment_block, dict) else None
+
+            deployment_key = None
+            if isinstance(deployment, dict):
+                deployment_key = self._as_opt_str(deployment.get("deployment_key"))
+
+            return ModelzOk(
+                status=status,
+                ok=ok,
+                default_model_id=default_model_id,
+                loaded_model_id=loaded_model_id,
+                runtime_default_model_id=runtime_default_model_id,
+                default_backend=default_backend,
+                deployment_key=deployment_key,
+                deployment=deployment,
+                raw=data,
+                latency_ms=latency_ms,
+            )
+
+        code, msg, extra = self._extract_error_fields(r)
+        return ModelzErr(
+            status_code=int(r.status_code),
+            error_code=code,
+            message=msg,
+            extra=extra,
+            latency_ms=latency_ms,
+        )
+
+    async def effective_server_model_id(self) -> Optional[str]:
+        """
+        Convenience: returns the most "truthful" model id for correlation.
+
+        Preference:
+          1) loaded_model_id (actual loaded model in single-backend mode; also exposed by model state store)
+          2) runtime_default_model_id (multi-model routing override)
+          3) default_model_id
+        """
+        snap = await self.modelz()
+        if isinstance(snap, ModelzOk):
+            return snap.loaded_model_id or snap.runtime_default_model_id or snap.default_model_id
+        return None
+
+    async def effective_deployment_key(self) -> Optional[str]:
+        """
+        Convenience: get deployment_key (if server exposes it).
+        """
+        snap = await self.modelz()
+        if isinstance(snap, ModelzOk):
+            return snap.deployment_key
+        return None
 
     # =========================
     # /v1/generate
@@ -226,13 +421,32 @@ class HttpEvalClient:
                 json=payload,
                 headers=self._headers(),
             )
-        except Exception as e:
-            latency_ms = (time.time() - t0) * 1000.0
+        except httpx.TimeoutException as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_timeout(e, t0)
             return GenerateErr(
-                status_code=0,
-                error_code="transport_error",
-                message=f"{type(e).__name__}: {e}",
-                extra={"stage": "transport_error", "exc_type": type(e).__name__},
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except httpx.RequestError as e:
+            # DNS failure, refused connection, TLS handshake, etc.
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return GenerateErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return GenerateErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
                 latency_ms=latency_ms,
             )
 
@@ -293,13 +507,31 @@ class HttpEvalClient:
                 json=payload,
                 headers=self._headers(),
             )
-        except Exception as e:
-            latency_ms = (time.time() - t0) * 1000.0
+        except httpx.TimeoutException as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_timeout(e, t0)
             return ExtractErr(
-                status_code=0,
-                error_code="transport_error",
-                message=f"{type(e).__name__}: {e}",
-                extra={"stage": "transport_error", "exc_type": type(e).__name__},
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except httpx.RequestError as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return ExtractErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
+                latency_ms=latency_ms,
+            )
+        except Exception as e:
+            status_code, error_code, msg, extra, latency_ms = self._err_transport(e, t0)
+            return ExtractErr(
+                status_code=status_code,
+                error_code=error_code,
+                message=msg,
+                extra=extra,
                 latency_ms=latency_ms,
             )
 
@@ -326,9 +558,7 @@ class HttpEvalClient:
             )
 
         code, msg, extra = self._extract_error_fields(r)
-        # Normalize stage for eval aggregation: if server JSON decode failed, use server_json_error
-        if isinstance(extra, dict) and extra.get("stage") in ("server_non_json", "server_error"):
-            # keep whatever server gave; just ensure at least one stable stage exists
+        if isinstance(extra, dict):
             extra.setdefault("stage", "server_error")
 
         return ExtractErr(

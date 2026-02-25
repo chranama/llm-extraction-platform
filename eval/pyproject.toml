@@ -66,7 +66,14 @@ exclude = ["tests*"]
 [tool.setuptools.package-data]
 llm_eval = ["**/*.yaml", "**/*.json"]
 
+[tool.uv.sources]
+llm-contracts = { path = "../contracts", editable = true }
+
 [tool.pytest.ini_options]
-addopts = "-q --cov=llm_eval --cov-report=term-missing"
+addopts = "-q -ra --strict-markers"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "unit: unit tests",
+  "integration: tests that call a live llm-server",
+]

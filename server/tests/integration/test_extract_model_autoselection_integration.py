@@ -10,7 +10,7 @@ from llm_server.api import generate as gen_api
 from llm_server.api import extract as ext_api
 from llm_server.api import deps
 from llm_server.core import errors
-from llm_server.services.llm_registry import MultiModelManager  # ✅ add
+from llm_server.services.llm_runtime.llm_registry import MultiModelManager  # ✅ add
 
 
 class FakeApiKey:

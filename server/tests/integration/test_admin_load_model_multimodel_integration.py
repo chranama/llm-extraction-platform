@@ -83,7 +83,7 @@ async def test_admin_models_load_multimodel_from_off(monkeypatch):
 
     monkeypatch.setattr(admin_api, "_ensure_admin", _ensure_admin)
 
-    # IMPORTANT: patch the symbol used inside admin.py (NOT llm_server.services.llm)
+    # IMPORTANT: patch the symbol used inside admin.py (NOT llm_server.services.llm_runtime.llm_build)
     monkeypatch.setattr(admin_api, "build_llm_from_settings", lambda: FakeMultiModelManager(), raising=True)
 
     transport = httpx.ASGITransport(app=app)

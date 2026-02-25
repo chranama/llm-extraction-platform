@@ -1,8 +1,9 @@
-# src/llm_policy/types/eval_artifact.py
+# policy/src/llm_policy/types/eval_artifact.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Iterator, List, Literal, Optional, Tuple
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,8 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 # Contract / issues
 # -------------------------
 
-
-from enum import Enum
 
 class IssueSeverity(str, Enum):
     error = "error"
@@ -24,7 +23,8 @@ class ContractIssue(BaseModel):
     """
     Structured issues found when validating an eval artifact contract.
 
-    Policy should prefer returning a DENY decision with these issues rather than crashing.
+    IMPORTANT: io/eval_runs.py uses `context=...` and reads `it.context`.
+    Older code may use `extra=...`. We support BOTH.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -32,7 +32,18 @@ class ContractIssue(BaseModel):
     severity: IssueSeverity
     code: str
     message: str
+
+    # Newer IO uses `context`
+    context: Optional[Dict[str, Any]] = None
+    # Back-compat: allow `extra`
     extra: Optional[Dict[str, Any]] = None
+
+    def merged_context(self) -> Dict[str, Any]:
+        if isinstance(self.context, dict):
+            return self.context
+        if isinstance(self.extra, dict):
+            return self.extra
+        return {}
 
 
 # -------------------------
@@ -44,15 +55,12 @@ class EvalSummary(BaseModel):
     """
     Typed view over llm_eval summary.json.
 
-    Notes:
-    - Tolerant: ignores unknown fields (extra="ignore")
-    - Preserves None for "not computed" metrics
-    - Provides contract_issues() to support fail-closed policy decisions.
+    IMPORTANT:
+    - Rates are percent units: 0..100 (matches llm_eval extraction_scoring.py)
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    # Versioning (optional, but recommended)
     artifact_version: Optional[str] = None
 
     # Identity / provenance
@@ -66,12 +74,34 @@ class EvalSummary(BaseModel):
     max_examples: Optional[int] = None
     run_dir: Optional[str] = None
 
-    # Core counts
-    n_total: int = Field(ge=0)
-    n_ok: int = Field(ge=0)
+    # -------------------------
+    # NEW: deployment provenance (v2 contracts)
+    # -------------------------
+    deployment_key: Optional[str] = None
+    deployment: Optional[Dict[str, Any]] = None
 
-    # Core extraction metric
+    # Core counts
+    n_total: int = Field(default=0, ge=0)
+    n_ok: int = Field(default=0, ge=0)
+
+    # -------------------------
+    # Quality metrics (percent units)
+    # -------------------------
     schema_validity_rate: Optional[float] = None
+    required_present_rate: Optional[float] = None
+    doc_required_exact_match_rate: Optional[float] = None
+    field_exact_match_rate: Optional[Dict[str, float]] = None
+
+    # -------------------------
+    # System health metrics (percent units)
+    # -------------------------
+    non_200_rate: Optional[float] = None
+    http_5xx_rate: Optional[float] = None
+    timeout_rate: Optional[float] = None
+
+    non_200_counts: Optional[Dict[str, int]] = None
+    http_5xx_counts: Optional[Dict[str, int]] = None
+    timeout_counts: Optional[Dict[str, int]] = None
 
     # Repair / cache aggregates (optional)
     n_invalid_initial: Optional[int] = Field(default=None, ge=0)
@@ -82,157 +112,153 @@ class EvalSummary(BaseModel):
     n_cached: Optional[int] = Field(default=None, ge=0)
     cache_hit_rate: Optional[float] = None
 
-    # Error aggregates (optional but very useful)
+    # Error aggregates
     error_code_counts: Optional[Dict[str, int]] = None
     status_code_counts: Optional[Dict[str, int]] = None
     error_stage_counts: Optional[Dict[str, int]] = None
-
-    # Field-level / doc-level metrics (optional; task dependent)
-    field_exact_match_rate: Optional[Dict[str, float]] = None
-    doc_required_exact_match_rate: Optional[float] = None
-    required_present_rate: Optional[float] = None
 
     # Latency
     latency_p50_ms: Optional[float] = None
     latency_p95_ms: Optional[float] = None
     latency_p99_ms: Optional[float] = None
 
-    def contract_issues(self) -> List[ContractIssue]:
-        """
-        Validate that the summary has enough information for policy decisions.
+    # -------------------------
+    # Phase 1.3: CI lows + gate values (percent units)
+    # -------------------------
+    schema_validity_ci95_low: Optional[float] = None
+    required_present_ci95_low: Optional[float] = None
+    doc_required_exact_match_ci95_low: Optional[float] = None
 
-        This intentionally does NOT raise. Policy should deny with reasons if issues exist.
-        """
+    schema_validity_gate: Optional[float] = None
+    required_present_gate: Optional[float] = None
+    doc_required_exact_match_gate: Optional[float] = None
+
+    def contract_issues(self) -> List[ContractIssue]:
         issues: List[ContractIssue] = []
 
-        # Required identity
-        if not self.task.strip():
+        if not isinstance(self.task, str) or not self.task.strip():
             issues.append(
-                ContractIssue(
-                    severity="error",
-                    code="missing_task",
-                    message="summary.task is missing/empty",
-                )
+                ContractIssue(severity=IssueSeverity.error, code="missing_task", message="summary.task is missing/empty")
             )
-        if not self.run_id.strip():
+        if not isinstance(self.run_id, str) or not self.run_id.strip():
             issues.append(
-                ContractIssue(
-                    severity="error",
-                    code="missing_run_id",
-                    message="summary.run_id is missing/empty",
-                )
-            )
-
-        # Required counts
-        if self.n_total < 0 or self.n_ok < 0:
-            issues.append(
-                ContractIssue(
-                    severity="error",
-                    code="negative_counts",
-                    message="summary has negative counts (n_total/n_ok)",
-                    extra={"n_total": self.n_total, "n_ok": self.n_ok},
-                )
+                ContractIssue(severity=IssueSeverity.error, code="missing_run_id", message="summary.run_id is missing/empty")
             )
 
         if self.n_ok > self.n_total:
             issues.append(
                 ContractIssue(
-                    severity="error",
+                    severity=IssueSeverity.error,
                     code="inconsistent_counts",
                     message="n_ok cannot exceed n_total",
-                    extra={"n_total": self.n_total, "n_ok": self.n_ok},
+                    context={"n_total": self.n_total, "n_ok": self.n_ok},
                 )
             )
 
         if self.n_total == 0:
             issues.append(
                 ContractIssue(
-                    severity="warn",
+                    severity=IssueSeverity.warn,
                     code="zero_examples",
                     message="n_total == 0; metrics are not meaningful",
                 )
             )
 
-        # Core metric presence (for extraction-like tasks)
-        if self.schema_validity_rate is None:
+        # -------------------------
+        # FAIL-CLOSED: deployment provenance MUST be present
+        # -------------------------
+        dk = self.deployment_key
+        if not isinstance(dk, str) or not dk.strip():
             issues.append(
                 ContractIssue(
-                    severity="warn",
-                    code="missing_schema_validity_rate",
-                    message="schema_validity_rate is missing; policy may have to rely on n_ok/n_total only",
+                    severity=IssueSeverity.error,
+                    code="missing_deployment_key",
+                    message="summary.deployment_key missing/empty (policy must fail-closed)",
                 )
             )
-        else:
-            if not (0.0 <= self.schema_validity_rate <= 1.0):
-                issues.append(
-                    ContractIssue(
-                        severity="error",
-                        code="invalid_schema_validity_rate",
-                        message="schema_validity_rate must be between 0 and 1",
-                        extra={"schema_validity_rate": self.schema_validity_rate},
-                    )
-                )
 
-        # Sanity check: if we have aggregates, they should sum to n_total (soft)
-        if self.status_code_counts:
-            s = _safe_sum_counts(self.status_code_counts)
-            if s is not None and self.n_total and s != self.n_total:
-                issues.append(
-                    ContractIssue(
-                        severity="info",
-                        code="status_code_counts_mismatch",
-                        message="Sum(status_code_counts) != n_total (can happen if summary is partial)",
-                        extra={"sum_status_code_counts": s, "n_total": self.n_total},
-                    )
-                )
-
-        if self.error_code_counts:
-            s = _safe_sum_counts(self.error_code_counts)
-            if s is not None and self.n_total and s != self.n_total:
-                issues.append(
-                    ContractIssue(
-                        severity="info",
-                        code="error_code_counts_mismatch",
-                        message="Sum(error_code_counts) != n_total (can happen if summary is partial)",
-                        extra={"sum_error_code_counts": s, "n_total": self.n_total},
-                    )
-                )
-
-        # Helpful warning for pure-500 runs (like your current case)
-        if self.status_code_counts and _count_for_status(self.status_code_counts, "500") == self.n_total and self.n_total:
+        dep = self.deployment
+        if not isinstance(dep, dict) or not dep:
             issues.append(
                 ContractIssue(
-                    severity="warn",
-                    code="all_500s",
-                    message="All requests returned HTTP 500; this is an operational failure, not a model quality signal",
-                    extra={"status_code_counts": self.status_code_counts},
+                    severity=IssueSeverity.error,
+                    code="missing_deployment",
+                    message="summary.deployment missing/empty/not an object (policy must fail-closed)",
                 )
             )
+
+        # Validate percent-valued metrics if present
+        for name in (
+            "schema_validity_rate",
+            "required_present_rate",
+            "doc_required_exact_match_rate",
+            "non_200_rate",
+            "http_5xx_rate",
+            "timeout_rate",
+            "schema_validity_ci95_low",
+            "required_present_ci95_low",
+            "doc_required_exact_match_ci95_low",
+            "schema_validity_gate",
+            "required_present_gate",
+            "doc_required_exact_match_gate",
+        ):
+            v = getattr(self, name, None)
+            if v is None:
+                continue
+            try:
+                fv = float(v)
+            except Exception:
+                issues.append(
+                    ContractIssue(
+                        severity=IssueSeverity.error,
+                        code="invalid_metric_type",
+                        message=f"{name} must be numeric (percent units)",
+                        context={"metric": name, "value": v},
+                    )
+                )
+                continue
+            if not (0.0 <= fv <= 100.0):
+                issues.append(
+                    ContractIssue(
+                        severity=IssueSeverity.error,
+                        code="invalid_metric_range",
+                        message=f"{name} must be in [0,100] (percent units)",
+                        context={"metric": name, "value": fv},
+                    )
+                )
+
+        # Helpful warning: all 500s
+        if self.status_code_counts and self.n_total:
+            if _count_for_status(self.status_code_counts, "500") == self.n_total:
+                issues.append(
+                    ContractIssue(
+                        severity=IssueSeverity.warn,
+                        code="all_500s",
+                        message="All requests returned HTTP 500; operational failure, not model quality",
+                        context={"status_code_counts": self.status_code_counts},
+                    )
+                )
 
         return issues
 
-    def ok_rate(self) -> float:
-        if self.n_total <= 0:
-            return 0.0
-        return float(self.n_ok) / float(self.n_total)
-
-    def operational_failure_rate(self) -> Optional[float]:
-        """
-        Derived signal: fraction of requests that failed at the server/transport layer.
-        Uses status_code_counts if present; otherwise returns None.
-        """
-        if not self.status_code_counts or self.n_total <= 0:
+    def metric_value(self, metric: str) -> Optional[float]:
+        v = getattr(self, metric, None)
+        if v is None:
             return None
-        # Treat 0 (transport), 500-599 as operational failures for gating
-        failures = 0
-        for k, v in self.status_code_counts.items():
-            try:
-                code = int(k)
-            except Exception:
-                continue
-            if code == 0 or (500 <= code <= 599):
-                failures += int(v or 0)
-        return float(failures) / float(self.n_total)
+        try:
+            return float(v)
+        except Exception:
+            return None
+
+    def metric_ci95_low(self, metric: str) -> Optional[float]:
+        key = f"{metric}_ci95_low"
+        v = getattr(self, key, None)
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except Exception:
+            return None
 
 
 # -------------------------
@@ -241,12 +267,6 @@ class EvalSummary(BaseModel):
 
 
 class EvalRow(BaseModel):
-    """
-    Typed view over a single results.jsonl row.
-
-    This must remain tolerant because row shape may vary by task.
-    """
-
     model_config = ConfigDict(extra="ignore")
 
     doc_id: str
@@ -258,7 +278,6 @@ class EvalRow(BaseModel):
     error_stage: Optional[str] = None
 
     latency_ms: Optional[float] = None
-
     cached: Optional[bool] = None
     repair_attempted: Optional[bool] = None
     model: Optional[str] = None
@@ -266,91 +285,49 @@ class EvalRow(BaseModel):
     expected: Optional[Dict[str, Any]] = None
     predicted: Optional[Dict[str, Any]] = None
 
-    # Task-specific / scoring aides
     field_correct: Optional[Dict[str, Optional[bool]]] = None
     required_present_non_null: Optional[bool] = None
     required_all_correct: Optional[bool] = None
 
-    # Debug payload from client/server
     extra: Optional[Dict[str, Any]] = None
 
-    def is_operational_failure(self) -> bool:
-        """
-        A conservative classifier used by policy.
-        """
-        sc = self.status_code
-        if sc is None:
-            return False
-        return sc == 0 or (500 <= sc <= 599)
-
-    def request_id(self) -> Optional[str]:
-        """
-        Convenience for observability; depends on llm_eval HttpEvalClient capturing request_id in extra.
-        """
-        if not isinstance(self.extra, dict):
-            return None
-        rid = self.extra.get("request_id")
-        return str(rid) if isinstance(rid, str) and rid.strip() else None
+    # -------------------------
+    # NEW: deployment provenance (v2 contracts)
+    # -------------------------
+    deployment_key: Optional[str] = None
+    deployment: Optional[Dict[str, Any]] = None
 
 
 # -------------------------
-# Optional wrapper (in-memory)
+# Wrapper
 # -------------------------
 
 
 @dataclass(frozen=True)
 class EvalArtifact:
     """
-    Lightweight in-memory bundle.
-
-    Keep this minimal: policy/IO layers can create it after reading from disk.
+    io/eval_runs.py uses `results=...` so keep this field name as `results`.
     """
-
     summary: EvalSummary
-    rows: Optional[List[EvalRow]] = None  # None => summary-only mode
+    results: Optional[List[EvalRow]] = None
 
     def contract_issues(self) -> List[ContractIssue]:
         issues = self.summary.contract_issues()
-
-        # Optional consistency check if rows were loaded
-        if self.rows is not None:
-            if self.summary.n_total and len(self.rows) != self.summary.n_total:
-                issues.append(
-                    ContractIssue(
-                        severity="info",
-                        code="results_length_mismatch",
-                        message="len(results.jsonl) != summary.n_total",
-                        extra={"len_results": len(self.rows), "n_total": self.summary.n_total},
-                    )
+        if self.results is not None and self.summary.n_total and len(self.results) != self.summary.n_total:
+            issues.append(
+                ContractIssue(
+                    severity=IssueSeverity.info,
+                    code="results_length_mismatch",
+                    message="len(results.jsonl) != summary.n_total",
+                    context={"len_results": len(self.results), "n_total": self.summary.n_total},
                 )
-            # If we can compute n_ok from rows, compare (soft)
-            try:
-                n_ok_rows = sum(1 for r in self.rows if r.ok)
-                if self.summary.n_ok != n_ok_rows:
-                    issues.append(
-                        ContractIssue(
-                            severity="info",
-                            code="n_ok_mismatch",
-                            message="summary.n_ok != count(rows where ok=true)",
-                            extra={"summary_n_ok": self.summary.n_ok, "rows_n_ok": n_ok_rows},
-                        )
-                    )
-            except Exception:
-                pass
-
+            )
         return issues
 
 
 # -------------------------
 # Small helpers
 # -------------------------
-
-
-def _safe_sum_counts(counts: Dict[str, int]) -> Optional[int]:
-    try:
-        return int(sum(int(v or 0) for v in counts.values()))
-    except Exception:
-        return None
 
 
 def _count_for_status(counts: Dict[str, int], code_str: str) -> int:

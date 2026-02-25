@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.llm_registry import MultiModelManager
+from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 
 class SpyBackend:

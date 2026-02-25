@@ -235,7 +235,7 @@ def _force_llm_loaded(fake: Any) -> None:
 
     # 2) service-level registry pattern
     try:
-        import llm_server.services.llm as llm_svc
+        import llm_server.services.llm_runtime.llm_build as llm_svc
 
         for attr in ("LLM", "_LLM", "llm", "_llm", "MODEL", "_MODEL", "model", "_model"):
             if hasattr(llm_svc, attr):
@@ -276,7 +276,7 @@ def app(monkeypatch, llm_outputs, llm_sleep_s, patch_app_db_engine, request: pyt
     from fakes import FakeLLM
     import llm_server.api.deps as deps
     import llm_server.main as main
-    import llm_server.services.llm as llm_svc
+    import llm_server.services.llm_runtime.llm_build as llm_svc
 
     fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
 
@@ -321,7 +321,7 @@ def app_client(monkeypatch, llm_outputs, llm_sleep_s, test_engine, test_sessionm
 
         import llm_server.api.deps as deps
         import llm_server.main as main
-        import llm_server.services.llm as llm_svc
+        import llm_server.services.llm_runtime.llm_build as llm_svc
 
         fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
 

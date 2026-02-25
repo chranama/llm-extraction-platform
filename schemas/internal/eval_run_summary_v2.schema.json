@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "eval_run_summary_v2",
+  "title": "EvalRunSummaryV2",
+  "type": "object",
+  "additionalProperties": false,
+
+  "required": [
+    "schema_version",
+    "generated_at",
+    "task",
+    "run_id",
+    "run_dir",
+    "passed",
+    "metrics"
+  ],
+
+  "properties": {
+    "schema_version": { "const": "eval_run_summary_v2" },
+
+    "generated_at": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "description": "When the summary artifact was written."
+    },
+
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Eval task name, e.g. 'extract'."
+    },
+
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique id for this eval run."
+    },
+
+    "run_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Filesystem directory containing run artifacts (summary.json, results.jsonl, reports, config)."
+    },
+
+    "model_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Model evaluated (if known)."
+    },
+
+    "schema_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Extraction schema id (if applicable), e.g. 'ticket_v1'."
+    },
+
+    "deployment_key": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Stable identifier for the evaluated deployment topology (used for eval/policy correlation)."
+    },
+
+    "deployment": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Best-effort deployment snapshot captured at eval time (typically derived from /modelz)."
+    },
+
+    "passed": {
+      "type": "boolean",
+      "description": "Overall gate decision for this run (policy may still fail-closed)."
+    },
+
+    "thresholds_profile": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Thresholds profile used to compute 'passed' (if applicable)."
+    },
+
+    "thresholds_version": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Thresholds version/hash (if applicable)."
+    },
+
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["examples_total"],
+      "properties": {
+        "examples_total": { "type": "integer", "minimum": 0 },
+        "examples_ok": { "type": "integer", "minimum": 0 },
+        "examples_failed": { "type": "integer", "minimum": 0 }
+      },
+      "description": "Optional counts for quick reporting."
+    },
+
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Permissive metric bag. Keep stable keys you gate on."
+    },
+
+    "warnings": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "context"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "context": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+
+    "notes": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Non-authoritative human/debug notes."
+    }
+  }
+}
