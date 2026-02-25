@@ -75,5 +75,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
   "unit: unit tests",
-  "integration: tests that call a live llm-server",
+  "integration: integration-level tests",
+  "integration_live: integration tests that require a reachable llm-server",
+  "integration_contract: integration tests that validate job/contract behavior without requiring a healthy live server",
 ]

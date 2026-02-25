@@ -7,10 +7,10 @@ from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
-
 # =========================
 # Typed results
 # =========================
+
 
 @dataclass(frozen=True)
 class GenerateOk:
@@ -52,6 +52,7 @@ class ExtractErr:
 # /modelz typed results
 # =========================
 
+
 @dataclass(frozen=True)
 class ModelzOk:
     """
@@ -60,6 +61,7 @@ class ModelzOk:
     We keep the whole payload for forward-compat, but also extract the key fields
     eval needs to correlate runs to the actual loaded model / deployment key.
     """
+
     status: str  # "ready" | "not ready"
     ok: bool
     default_model_id: Optional[str]
@@ -118,10 +120,7 @@ class HttpEvalClient:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            # Explicit Timeout object keeps behavior stable across httpx versions.
-            # Single float -> applied to connect/read/write/pool.
-            t = httpx.Timeout(self.timeout)
-            self._client = httpx.AsyncClient(timeout=t)
+            self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
 
     async def aclose(self) -> None:
@@ -191,7 +190,9 @@ class HttpEvalClient:
                 return v.strip()
         return None
 
-    def _extract_error_fields(self, resp: httpx.Response) -> tuple[str, str, Optional[Dict[str, Any]]]:
+    def _extract_error_fields(
+        self, resp: httpx.Response
+    ) -> tuple[str, str, Optional[Dict[str, Any]]]:
         """
         Normalize llm-server error shape.
 
@@ -199,42 +200,16 @@ class HttpEvalClient:
           {"code": "...", "message": "...", "extra": {...}, "request_id": "..."}
         If unavailable/unparseable, fall back to resp.text and attach classification metadata.
         """
-        content_type = resp.headers.get("content-type", "") or ""
         text_preview = self._shorten(resp.text or "", 2500)
-
-        j, jerr = self._safe_json(resp)
-        rid = self._extract_request_id(resp, j)
+        j, _ = self._safe_json(resp)
 
         if not isinstance(j, dict):
-            # Server returned non-JSON (or JSON parse failed)
-            extra: Dict[str, Any] = {
-                "stage": "server_json_error" if jerr else "server_non_json",
-                "status_code": int(resp.status_code),
-                "content_type": content_type,
-                "request_id": rid,
-                "response_text": text_preview,
-            }
-            if jerr:
-                extra["json_error"] = jerr
-            return "http_error", text_preview or "HTTP error", extra
+            return "http_error", text_preview or "HTTP error", None
 
         code = str(j.get("code") or "http_error")
         msg = str(j.get("message") or (resp.text or ""))
         extra_any = j.get("extra") if isinstance(j.get("extra"), dict) else None
-
-        merged: Dict[str, Any] = {}
-        if isinstance(extra_any, dict):
-            merged.update(extra_any)
-
-        # Always include these classification-friendly fields
-        merged.setdefault("stage", "server_error")
-        merged["status_code"] = int(resp.status_code)
-        merged["content_type"] = content_type
-        if rid:
-            merged["request_id"] = rid
-        merged.setdefault("response_text", text_preview)
-
-        return code, msg, merged
+        return code, msg, extra_any
 
     # -------------------------
     # Transport normalization
@@ -253,7 +228,9 @@ class HttpEvalClient:
             return "pool_timeout"
         return "timeout"
 
-    def _err_timeout(self, e: BaseException, t0: float) -> tuple[int, str, str, Dict[str, Any], float]:
+    def _err_timeout(
+        self, e: BaseException, t0: float
+    ) -> tuple[int, str, str, Dict[str, Any], float]:
         latency_ms = (time.time() - t0) * 1000.0
         stage = self._timeout_stage(e)
         extra: Dict[str, Any] = {
@@ -263,7 +240,9 @@ class HttpEvalClient:
         # Normalize for scoring: error_code must be exactly "timeout".
         return self._TIMEOUT_STATUS_CODE, "timeout", f"{type(e).__name__}: {e}", extra, latency_ms
 
-    def _err_transport(self, e: BaseException, t0: float) -> tuple[int, str, str, Dict[str, Any], float]:
+    def _err_transport(
+        self, e: BaseException, t0: float
+    ) -> tuple[int, str, str, Dict[str, Any], float]:
         latency_ms = (time.time() - t0) * 1000.0
         extra: Dict[str, Any] = {
             "stage": "transport_error",
@@ -558,8 +537,6 @@ class HttpEvalClient:
             )
 
         code, msg, extra = self._extract_error_fields(r)
-        if isinstance(extra, dict):
-            extra.setdefault("stage", "server_error")
 
         return ExtractErr(
             status_code=int(r.status_code),

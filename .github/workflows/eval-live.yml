@@ -1,0 +1,132 @@
+name: Eval Live Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+concurrency:
+  group: eval-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval_integration_live:
+    name: eval (integration-live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (server)
+        working-directory: server
+        run: |
+          set -euxo pipefail
+          uv sync --extra test
+
+      - name: Sync deps (eval)
+        working-directory: eval
+        run: |
+          set -euxo pipefail
+          uv sync --extra test
+
+      - name: Prepare server sqlite + API key
+        working-directory: server
+        env:
+          PYTHONPATH: "src"
+          ENV: "test"
+          DATABASE_URL: "sqlite+aiosqlite:///./ci_eval_live.db"
+          REDIS_ENABLED: "0"
+          MODEL_LOAD_MODE: "off"
+          REQUIRE_MODEL_READY: "0"
+          EVAL_LIVE_API_KEY: "test_api_key_123"
+        run: |
+          set -euxo pipefail
+          uv run python - <<'PY'
+          import asyncio
+          from sqlalchemy import select
+          from llm_server.db.session import get_engine, get_sessionmaker, Base
+          import llm_server.db.models as models  # noqa: F401 - register metadata
+          from llm_server.db.models import ApiKey
+
+          async def main():
+              engine = get_engine()
+              async with engine.begin() as conn:
+                  await conn.run_sync(Base.metadata.create_all)
+
+              Session = get_sessionmaker()
+              async with Session() as s:
+                  row = await s.execute(select(ApiKey).where(ApiKey.key == "test_api_key_123"))
+                  existing = row.scalar_one_or_none()
+                  if existing is None:
+                      s.add(ApiKey(key="test_api_key_123", active=True, quota_monthly=None, quota_used=0))
+                      await s.commit()
+
+          asyncio.run(main())
+          PY
+
+      - name: Start llm-server in background
+        working-directory: server
+        env:
+          PYTHONPATH: "src"
+          ENV: "test"
+          DATABASE_URL: "sqlite+aiosqlite:///./ci_eval_live.db"
+          REDIS_ENABLED: "0"
+          MODEL_LOAD_MODE: "off"
+          REQUIRE_MODEL_READY: "0"
+        run: |
+          set -euxo pipefail
+          uv run llm serve --host 127.0.0.1 --port 8000 > /tmp/llm-server.log 2>&1 &
+          echo $! > /tmp/llm-server.pid
+
+      - name: Wait for server readiness
+        run: |
+          set -euxo pipefail
+          for i in $(seq 1 40); do
+            if curl -sS -f -H "X-API-Key: test_api_key_123" http://127.0.0.1:8000/modelz >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to become ready"
+          cat /tmp/llm-server.log || true
+          exit 1
+
+      - name: Run eval integration live tests
+        working-directory: eval
+        env:
+          PYTHONPATH: "src"
+          INTEGRATION_BASE_URL: "http://127.0.0.1:8000"
+          API_KEY: "test_api_key_123"
+        run: |
+          set -euxo pipefail
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings \
+            -m integration_live tests/integration
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== eval live integration debug ==="
+          cat /tmp/llm-server.log || true
+          ps aux | grep llm | grep -v grep || true
+
+      - name: Stop llm-server
+        if: always()
+        run: |
+          set -euxo pipefail
+          if [ -f /tmp/llm-server.pid ]; then
+            kill $(cat /tmp/llm-server.pid) || true
+          fi

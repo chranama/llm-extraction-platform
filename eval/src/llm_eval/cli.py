@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from llm_eval.config import dig, get_api_key, load_eval_yaml
-from llm_eval.io.run_artifacts import default_outdir, write_eval_run_artifacts
-from llm_eval.io.run_pointers import (
+from llm_eval.io.run_artifacts import (
     default_eval_out_pointer_path,
+    default_outdir,
     write_eval_latest_pointer,
+    write_eval_run_artifacts,
 )
 from llm_eval.reports.writer import render_reports_bundle
 from llm_eval.runners.base import BaseEvalRunner, EvalConfig
@@ -63,7 +64,9 @@ def _coerce_nested_payload(
     results: list[dict[str, Any]] = [r for r in results_any if isinstance(r, dict)]
 
     report_text_any = payload_any.get("report_text")
-    report_text = report_text_any if isinstance(report_text_any, str) and report_text_any.strip() else None
+    report_text = (
+        report_text_any if isinstance(report_text_any, str) and report_text_any.strip() else None
+    )
 
     cfg_any = payload_any.get("config")
     returned_config = cfg_any if isinstance(cfg_any, dict) else None
@@ -81,7 +84,7 @@ def _coerce_nested_payload(
 TaskFactory = Callable[[str, str, Optional[EvalConfig]], BaseEvalRunner]
 
 
-def _task_factories() -> dict[str, TaskFactory]:
+def _default_task_factories() -> dict[str, TaskFactory]:
     def extraction_sroie(base_url: str, api_key: str, cfg: Optional[EvalConfig]) -> BaseEvalRunner:
         from llm_eval.runners.extraction_runner import make_extraction_runner
 
@@ -90,6 +93,15 @@ def _task_factories() -> dict[str, TaskFactory]:
     return {
         "extraction_sroie": extraction_sroie,
     }
+
+
+# Intentionally mutable for tests; unit tests monkeypatch this symbol directly.
+TASK_FACTORIES: dict[str, TaskFactory] = _default_task_factories()
+
+
+def _task_factories() -> dict[str, TaskFactory]:
+    # Back-compat for older tests/helpers that monkeypatch this symbol.
+    return TASK_FACTORIES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -243,7 +255,9 @@ async def amain(argv: list[str] | None = None) -> None:
 
     enabled = dig(cfg_yaml, "datasets", args.task, "enabled", default=True)
     if enabled is False:
-        parser.error(f"Task '{args.task}' is disabled in eval.yaml (datasets.{args.task}.enabled=false).")
+        parser.error(
+            f"Task '{args.task}' is disabled in eval.yaml (datasets.{args.task}.enabled=false)."
+        )
 
     base_url = args.base_url or dig(cfg_yaml, "service", "base_url", default=None)
     if not base_url:
@@ -251,7 +265,9 @@ async def amain(argv: list[str] | None = None) -> None:
 
     api_key = args.api_key or get_api_key(cfg_yaml)
     if not api_key:
-        parser.error("--api-key is required (or set service.api_key_env in eval.yaml and export it).")
+        parser.error(
+            "--api-key is required (or set service.api_key_env in eval.yaml and export it)."
+        )
 
     # defaults: print + save ON unless explicitly disabled
     do_print = True

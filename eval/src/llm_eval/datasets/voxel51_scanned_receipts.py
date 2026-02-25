@@ -1,6 +1,9 @@
 # src/llm_eval/datasets/voxel51_scanned_receipts.py
 from __future__ import annotations
 
+import multiprocessing as mp
+import os
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -9,6 +12,7 @@ DEFAULT_SCHEMA_ID = "sroie_receipt_v1"
 # -----------------------------
 # FiftyOne deterministic preload
 # -----------------------------
+
 
 def _fiftyone_import_probe() -> None:
     """
@@ -38,7 +42,6 @@ def ensure_fiftyone_ready(timeout_s: int = 90) -> None:
 
     ctx = mp.get_context("spawn")  # safest cross-platform (mac/linux)
     p = ctx.Process(target=_fiftyone_import_probe, daemon=True)
-    start = time.time()
     p.start()
     p.join(timeout_s)
 
@@ -53,8 +56,9 @@ def ensure_fiftyone_ready(timeout_s: int = 90) -> None:
     if p.exitcode != 0:
         raise RuntimeError(
             f"FiftyOne import probe failed (exitcode={p.exitcode}). "
-            f"Run `python -c \"import fiftyone\"` to reproduce."
+            f'Run `python -c "import fiftyone"` to reproduce.'
         )
+
 
 @dataclass(frozen=True)
 class ExtractionExample:

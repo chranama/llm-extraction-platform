@@ -352,10 +352,10 @@ jobs:
 
 
   # -------------------------
-  # Eval: integration (marked)
+  # Eval: integration (contract)
   # -------------------------
-  eval_integration:
-    name: eval (integration)
+  eval_integration_contract:
+    name: eval (integration-contract)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -382,20 +382,19 @@ jobs:
           set -euxo pipefail
           uv sync --extra test
 
-      - name: Run eval integration tests (marked)
+      - name: Run eval integration contract tests
         env:
           PYTHONPATH: "src"
-          # Keep explicit; eval integration tests require a live server + API key.
-          INTEGRATION_BASE_URL: "http://localhost:8000"
         run: |
           set -euxo pipefail
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings \
+            -m integration_contract tests/integration
 
       - name: Debug on failure
         if: failure()
         run: |
           set -euxo pipefail
-          echo "=== eval integration debug ==="
+          echo "=== eval integration contract debug ==="
           uv --version
           python -V
           uv pip list

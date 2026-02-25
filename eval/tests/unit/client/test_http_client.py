@@ -22,6 +22,7 @@ class _FakeAsyncClient:
     def __init__(self, responses: List[httpx.Response], timeout: float):
         self._responses = list(responses)
         self.timeout = timeout
+        self.closed = False
 
         # capture last request
         self.last_url: Optional[str] = None
@@ -41,6 +42,17 @@ class _FakeAsyncClient:
         if not self._responses:
             raise AssertionError("No more fake responses configured for _FakeAsyncClient")
         return self._responses.pop(0)
+
+    async def get(self, url: str, headers: Dict[str, str]) -> httpx.Response:
+        self.last_url = url
+        self.last_json = None
+        self.last_headers = headers
+        if not self._responses:
+            raise AssertionError("No more fake responses configured for _FakeAsyncClient")
+        return self._responses.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def _make_json_response(status_code: int, payload: Any) -> httpx.Response:
@@ -96,7 +108,9 @@ async def test_generate_ok_extracts_output_and_model_and_cached(monkeypatch):
     monkeypatch.setattr(hc.time, "time", _TimeSeq([0.1, 0.2]))
 
     client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY", timeout=12.0)
-    out = await client.generate(prompt="p", max_new_tokens=7, temperature=0.0, model="m-override", cache=True)
+    out = await client.generate(
+        prompt="p", max_new_tokens=7, temperature=0.0, model="m-override", cache=True
+    )
 
     assert isinstance(out, hc.GenerateOk)
     assert out.output_text == "hello"
@@ -196,7 +210,9 @@ async def test_extract_ok_parses_fields(monkeypatch):
     monkeypatch.setattr(hc.time, "time", _TimeSeq([0.3, 0.35]))  # 50ms
 
     client = hc.HttpEvalClient(base_url="http://svc/", api_key="KEY")
-    out = await client.extract(schema_id="s1", text="doc", model="m-override", cache=True, repair=False)
+    out = await client.extract(
+        schema_id="s1", text="doc", model="m-override", cache=True, repair=False
+    )
 
     assert isinstance(out, hc.ExtractOk)
     assert out.schema_id == "s1"
@@ -257,10 +273,11 @@ async def test_extract_err_non_json_body_falls_back_to_http_error(monkeypatch):
     assert out.message == "no auth"
     assert out.extra is None
 
+
 @pytest.mark.asyncio
 async def test_generate_ok_when_payload_is_raw_string(monkeypatch):
     responses = [
-        httpx.Response(status_code=200, content=b"\"hello world\""),
+        httpx.Response(status_code=200, content=b'"hello world"'),
     ]
 
     _patch_httpx_async_client(monkeypatch, responses)
@@ -273,3 +290,128 @@ async def test_generate_ok_when_payload_is_raw_string(monkeypatch):
     assert out.output_text == "hello world"
     assert out.model == "unknown"
     assert out.cached is False
+
+
+@pytest.mark.asyncio
+async def test_modelz_ready_parses_key_fields(monkeypatch):
+    responses = [
+        _make_json_response(
+            200,
+            {
+                "status": "ready",
+                "default_model_id": "m-default",
+                "loaded_model_id": "m-loaded",
+                "runtime_default_model_id": "m-runtime",
+                "default_backend": "vllm",
+                "deployment": {"deployment_key": "dep-1"},
+            },
+        )
+    ]
+    created = _patch_httpx_async_client(monkeypatch, responses)
+    monkeypatch.setattr(hc.time, "time", _TimeSeq([1.0, 1.05]))
+
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+    out = await client.modelz()
+
+    assert isinstance(out, hc.ModelzOk)
+    assert out.ok is True
+    assert out.status == "ready"
+    assert out.loaded_model_id == "m-loaded"
+    assert out.deployment_key == "dep-1"
+    assert out.latency_ms == pytest.approx(50.0)
+
+    fake_client: _FakeAsyncClient = created["client"]
+    assert fake_client.last_url == "http://svc/modelz"
+    assert fake_client.last_headers == {"X-API-Key": "KEY"}
+
+
+@pytest.mark.asyncio
+async def test_modelz_503_not_ready_uses_defaults(monkeypatch):
+    responses = [_make_json_response(503, {"deployment": {}})]
+    _patch_httpx_async_client(monkeypatch, responses)
+    monkeypatch.setattr(hc.time, "time", _TimeSeq([2.0, 2.01]))
+
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+    out = await client.modelz()
+
+    assert isinstance(out, hc.ModelzOk)
+    assert out.ok is False
+    assert out.status == "not ready"
+
+
+@pytest.mark.asyncio
+async def test_modelz_http_error_shape(monkeypatch):
+    responses = [
+        _make_json_response(500, {"code": "boom", "message": "bad", "extra": {"stage": "s"}})
+    ]
+    _patch_httpx_async_client(monkeypatch, responses)
+    monkeypatch.setattr(hc.time, "time", _TimeSeq([3.0, 3.02]))
+
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+    out = await client.modelz()
+
+    assert isinstance(out, hc.ModelzErr)
+    assert out.status_code == 500
+    assert out.error_code == "boom"
+    assert out.message == "bad"
+    assert out.extra == {"stage": "s"}
+
+
+@pytest.mark.asyncio
+async def test_modelz_timeout_maps_to_stage(monkeypatch):
+    async def _raise_timeout(url: str, headers: Dict[str, str]):
+        raise httpx.ConnectTimeout("ct")
+
+    created = _patch_httpx_async_client(monkeypatch, [])
+    monkeypatch.setattr(hc.time, "time", _TimeSeq([4.0, 4.5]))
+
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+    # install raising get() on created fake
+    client._get_client()  # ensure creation
+    fake_client: _FakeAsyncClient = created["client"]
+    monkeypatch.setattr(fake_client, "get", _raise_timeout)
+
+    out = await client.modelz()
+    assert isinstance(out, hc.ModelzErr)
+    assert out.error_code == "timeout"
+    assert out.status_code == 599
+    assert isinstance(out.extra, dict)
+    assert out.extra.get("stage") == "connect_timeout"
+
+
+@pytest.mark.asyncio
+async def test_effective_helpers(monkeypatch):
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+
+    async def _modelz_ok():
+        return hc.ModelzOk(
+            status="ready",
+            ok=True,
+            default_model_id="m0",
+            loaded_model_id="m1",
+            runtime_default_model_id="m2",
+            default_backend=None,
+            deployment_key="depA",
+            deployment=None,
+            raw={},
+            latency_ms=1.0,
+        )
+
+    monkeypatch.setattr(client, "modelz", _modelz_ok)
+    assert await client.effective_server_model_id() == "m1"
+    assert await client.effective_deployment_key() == "depA"
+
+
+@pytest.mark.asyncio
+async def test_aclose_closes_underlying_client(monkeypatch):
+    responses = [_make_json_response(200, {"output": "ok"})]
+    created = _patch_httpx_async_client(monkeypatch, responses)
+    monkeypatch.setattr(hc.time, "time", _TimeSeq([0.0, 0.1]))
+
+    client = hc.HttpEvalClient(base_url="http://svc", api_key="KEY")
+    await client.generate(prompt="p")
+
+    fake_client: _FakeAsyncClient = created["client"]
+    assert fake_client.closed is False
+    await client.aclose()
+    assert fake_client.closed is True

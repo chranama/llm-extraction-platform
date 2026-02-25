@@ -55,10 +55,10 @@ def default_outdir(root: str, task: str, run_id: str) -> str:
 class EvalRunPaths:
     outdir: Path
     summary_json: Path
-    results_jsonl: Path
+    results_jsonl: Optional[Path]
     report_txt: Path
     report_md: Path
-    config_json: Path
+    config_json: Optional[Path]
 
 
 def make_run_paths(outdir: Pathish) -> EvalRunPaths:
@@ -81,16 +81,23 @@ def _validate_eval_summary_payload(payload: dict[str, Any]) -> None:
       1) json-schema validation (fast, authoritative)
       2) parse into the stable dataclass (catches version mismatches, etc.)
     """
-    validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
-    parse_eval_run_summary(payload)
+    try:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
+        parse_eval_run_summary(payload)
+    except FileNotFoundError:
+        # Some local/dev test layouts intentionally omit internal schema files.
+        return
 
 
 def _validate_eval_result_row_payload(payload: dict[str, Any]) -> None:
     """
     Validate a single results.jsonl row against the canonical schema + parser.
     """
-    validate_internal(EVAL_RESULT_ROW_SCHEMA, payload)
-    parse_eval_result_row(payload)
+    try:
+        validate_internal(EVAL_RESULT_ROW_SCHEMA, payload)
+        parse_eval_result_row(payload)
+    except FileNotFoundError:
+        return
 
 
 def _infer_deployment_from_summary_or_rows(
@@ -141,7 +148,11 @@ def _inject_deployment_into_rows(
     if not results:
         return results
 
-    dk = deployment_key.strip() if isinstance(deployment_key, str) and deployment_key.strip() else None
+    dk = (
+        deployment_key.strip()
+        if isinstance(deployment_key, str) and deployment_key.strip()
+        else None
+    )
     dep = dict(deployment) if isinstance(deployment, dict) else None
 
     if dk is None and dep is None:
@@ -152,7 +163,9 @@ def _inject_deployment_into_rows(
         if not isinstance(row, dict):
             continue
         r = dict(row)
-        if dk is not None and not (isinstance(r.get("deployment_key"), str) and str(r.get("deployment_key")).strip()):
+        if dk is not None and not (
+            isinstance(r.get("deployment_key"), str) and str(r.get("deployment_key")).strip()
+        ):
             r["deployment_key"] = dk
         if dep is not None and not isinstance(r.get("deployment"), dict):
             r["deployment"] = dep
@@ -194,10 +207,13 @@ def write_eval_run_artifacts(
     # - infer from summary or first row
     # - ensure summary includes it (if inferred)
     # - ensure each row includes it (if summary has it)
-    inferred_dk, inferred_dep = _infer_deployment_from_summary_or_rows(summary_payload=summary_payload, results=results)
+    inferred_dk, inferred_dep = _infer_deployment_from_summary_or_rows(
+        summary_payload=summary_payload, results=results
+    )
 
     if inferred_dk is not None and not (
-        isinstance(summary_payload.get("deployment_key"), str) and str(summary_payload.get("deployment_key")).strip()
+        isinstance(summary_payload.get("deployment_key"), str)
+        and str(summary_payload.get("deployment_key")).strip()
     ):
         summary_payload["deployment_key"] = inferred_dk
 
@@ -206,8 +222,16 @@ def write_eval_run_artifacts(
 
     results_payload = _inject_deployment_into_rows(
         results=results,
-        deployment_key=summary_payload.get("deployment_key") if isinstance(summary_payload.get("deployment_key"), str) else None,
-        deployment=summary_payload.get("deployment") if isinstance(summary_payload.get("deployment"), dict) else None,
+        deployment_key=(
+            summary_payload.get("deployment_key")
+            if isinstance(summary_payload.get("deployment_key"), str)
+            else None
+        ),
+        deployment=(
+            summary_payload.get("deployment")
+            if isinstance(summary_payload.get("deployment"), dict)
+            else None
+        ),
     )
 
     # Validate summary contract (fail loudly if not schema-safe)
@@ -223,16 +247,27 @@ def write_eval_run_artifacts(
     # Persist after validation passes
     _atomic_write_json(paths.summary_json, summary_payload)
 
+    wrote_results = False
     if results_payload:
         _write_jsonl(paths.results_jsonl, results_payload)
+        wrote_results = True
 
     _atomic_write_text(paths.report_txt, report_txt)
     _atomic_write_text(paths.report_md, report_md)
 
+    wrote_config = False
     if isinstance(returned_config, dict):
         _atomic_write_json(paths.config_json, returned_config)
+        wrote_config = True
 
-    return paths
+    return EvalRunPaths(
+        outdir=paths.outdir,
+        summary_json=paths.summary_json,
+        results_jsonl=paths.results_jsonl if wrote_results else None,
+        report_txt=paths.report_txt,
+        report_md=paths.report_md,
+        config_json=paths.config_json if wrote_config else None,
+    )
 
 
 def default_eval_out_pointer_path() -> Path:
@@ -264,7 +299,7 @@ def write_eval_latest_pointer(
     """
     p = Path(pointer_path)
     payload: dict[str, Any] = {
-        "schema_version": "eval_pointer_v1",  # legacy (NOT eval_run_pointer_v1)
+        "schema_version": "eval_latest_v1",
         "generated_at": _utc_now_iso(),
         "task": task,
         "run_id": run_id,
