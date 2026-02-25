@@ -2,20 +2,28 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, UTC
+import json
 import uuid
 
 import pytest
+from sqlalchemy import select
 
 
-async def _mk_role_and_key(test_sessionmaker, *, role_name: str, active: bool = True) -> str:
+async def _mk_role_and_key(
+    test_sessionmaker, *, role_name: str, active: bool = True
+) -> str:
     from llm_server.db.models import ApiKey, RoleTable
 
     key = f"test_{uuid.uuid4().hex}"
 
     async with test_sessionmaker() as session:
-        role = RoleTable(name=role_name)
-        session.add(role)
-        await session.flush()
+        role = (
+            await session.execute(select(RoleTable).where(RoleTable.name == role_name))
+        ).scalar_one_or_none()
+        if role is None:
+            role = RoleTable(name=role_name)
+            session.add(role)
+            await session.flush()
 
         session.add(
             ApiKey(
@@ -335,7 +343,10 @@ async def test_admin_logs_filters_and_paging(
     )
 
     # Filter by model_id=m1 and route=/v1/generate should yield exactly 1
-    r = await client.get("/v1/admin/logs?model_id=m1&route=/v1/generate&limit=50&offset=0", headers=admin_headers)
+    r = await client.get(
+        "/v1/admin/logs?model_id=m1&route=/v1/generate&limit=50&offset=0",
+        headers=admin_headers,
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["total"] == 1
@@ -368,11 +379,17 @@ async def test_admin_keys_lists_keys(client, admin_headers):
 @pytest.mark.anyio
 async def test_admin_reports_summary_formats(client, admin_headers):
     for fmt in ("text", "json", "md"):
-        r = await client.get(f"/v1/admin/reports/summary?window_days=30&format={fmt}", headers=admin_headers)
+        r = await client.get(
+            f"/v1/admin/reports/summary?window_days=30&format={fmt}",
+            headers=admin_headers,
+        )
         assert r.status_code == 200
         # Format-specific shape: json should parse
         if fmt == "json":
-            assert isinstance(r.json(), dict)
+            body = r.json()
+            if isinstance(body, str):
+                body = json.loads(body)
+            assert isinstance(body, dict)
         else:
             assert isinstance(r.text, str)
             assert len(r.text) > 0

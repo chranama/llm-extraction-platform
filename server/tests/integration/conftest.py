@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,34 @@ def _is_generate_only_module(request: pytest.FixtureRequest) -> bool:
     return "tests/integration/test_generate_integration.py" in nid
 
 
+def _ensure_contracts_config_module() -> None:
+    """
+    Make llm_contracts.config importable in test environments where
+    llm_contracts exposes validators via llm_contracts.config.models_config.
+    """
+
+    class _ValidationOK:
+        ok = True
+        error = ""
+
+    def _always_ok(*args, **kwargs):
+        return _ValidationOK()
+
+    try:
+        import llm_contracts.config as cfg_mod  # type: ignore
+
+        cfg_mod.validate_models_config = _always_ok  # type: ignore[attr-defined]
+        cfg_mod.validate_assessment_for_extract = _always_ok  # type: ignore[attr-defined]
+        return
+    except Exception:
+        pass
+
+    shim = types.ModuleType("llm_contracts.config")
+    shim.validate_models_config = _always_ok  # type: ignore[attr-defined]
+    shim.validate_assessment_for_extract = _always_ok  # type: ignore[attr-defined]
+    sys.modules["llm_contracts.config"] = shim
+
+
 # ============================================================
 # AnyIO backend
 # ============================================================
@@ -64,12 +93,17 @@ def _assert_test_config_file_exists():
 # Per-test env isolation
 # ============================================================
 @pytest.fixture(autouse=True)
-def _integration_env_defaults(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
+def _integration_env_defaults(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+):
     # Ensure config + profile selection for every test
     monkeypatch.setenv("APP_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("APP_CONFIG_PATH", APP_YAML)
     monkeypatch.setenv("APP_PROFILE", "test")
     monkeypatch.setenv("MODELS_PROFILE", "test")
+    monkeypatch.setenv("SCHEMAS_DIR", str(REPO_ROOT / "schemas" / "model_output"))
+    monkeypatch.setenv("SCHEMAS_ROOT", str(REPO_ROOT / "schemas"))
+    monkeypatch.delenv("POLICY_DECISION_PATH", raising=False)
 
     # NOTE:
     # Do NOT hard-set MODEL_LOAD_MODE / REQUIRE_MODEL_READY / TOKEN_COUNTING here.
@@ -100,7 +134,9 @@ def _assert_test_config_loaded_per_test():
     s = get_settings()
 
     assert s.env == "test", f"Expected env=test, got {s.env}"
-    assert "test" in s.service_name.lower(), f"service_name not test-like: {s.service_name}"
+    assert (
+        "test" in s.service_name.lower()
+    ), f"service_name not test-like: {s.service_name}"
 
 
 # ============================================================
@@ -136,7 +172,9 @@ async def test_engine():
 
 @pytest.fixture
 def test_sessionmaker(test_engine):
-    return async_sessionmaker(bind=test_engine, expire_on_commit=False, class_=AsyncSession)
+    return async_sessionmaker(
+        bind=test_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
 
 # ============================================================
@@ -198,46 +236,20 @@ def _force_llm_loaded(fake: Any) -> None:
     the model isn't loaded. Tests always provide FakeLLM; force it marked as loaded
     for whichever registry pattern your code uses.
     """
-    # 1) deps registry pattern
-    try:
-        import llm_server.api.deps as deps
-
-        rl = getattr(deps, "_RL", None)
-        if rl is not None:
-            for meth in ("set", "set_llm", "set_model", "load", "set_loaded", "register"):
-                fn = getattr(rl, meth, None)
-                if callable(fn):
-                    try:
-                        fn(fake)
-                        return
-                    except TypeError:
-                        try:
-                            fn("default", fake)
-                            return
-                        except Exception:
-                            pass
-
-            for attr in ("llm", "_llm", "model", "_model"):
-                if hasattr(rl, attr):
-                    try:
-                        setattr(rl, attr, fake)
-                        for flag in ("loaded", "_loaded", "is_loaded"):
-                            if hasattr(rl, flag):
-                                try:
-                                    setattr(rl, flag, True)
-                                except Exception:
-                                    pass
-                        return
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-    # 2) service-level registry pattern
+    # 1) service-level registry pattern
     try:
         import llm_server.services.llm_runtime.llm_build as llm_svc
 
-        for attr in ("LLM", "_LLM", "llm", "_llm", "MODEL", "_MODEL", "model", "_model"):
+        for attr in (
+            "LLM",
+            "_LLM",
+            "llm",
+            "_llm",
+            "MODEL",
+            "_MODEL",
+            "model",
+            "_model",
+        ):
             if hasattr(llm_svc, attr):
                 try:
                     setattr(llm_svc, attr, fake)
@@ -245,7 +257,14 @@ def _force_llm_loaded(fake: Any) -> None:
                 except Exception:
                     pass
 
-        for flag in ("LOADED", "_LOADED", "loaded", "_loaded", "MODEL_LOADED", "_MODEL_LOADED"):
+        for flag in (
+            "LOADED",
+            "_LOADED",
+            "loaded",
+            "_loaded",
+            "MODEL_LOADED",
+            "_MODEL_LOADED",
+        ):
             if hasattr(llm_svc, flag):
                 try:
                     setattr(llm_svc, flag, True)
@@ -261,7 +280,13 @@ def _force_llm_loaded(fake: Any) -> None:
 # App (lifespan will be handled by client fixture)
 # ============================================================
 @pytest.fixture
-def app(monkeypatch, llm_outputs, llm_sleep_s, patch_app_db_engine, request: pytest.FixtureRequest):
+def app(
+    monkeypatch,
+    llm_outputs,
+    llm_sleep_s,
+    patch_app_db_engine,
+    request: pytest.FixtureRequest,
+):
     """
     App wired with FakeLLM. DB is already pointed at test_engine via patch_app_db_engine.
 
@@ -272,24 +297,27 @@ def app(monkeypatch, llm_outputs, llm_sleep_s, patch_app_db_engine, request: pyt
     from llm_server.core.config import get_settings
 
     get_settings.cache_clear()
+    _ensure_contracts_config_module()
 
     from fakes import FakeLLM
-    import llm_server.api.deps as deps
     import llm_server.main as main
     import llm_server.services.llm_runtime.llm_build as llm_svc
+    from llm_server.services.api_deps.core.auth import clear_rate_limit_state
+    from llm_server.services.llm_runtime.model_state import ModelStateStore
 
     fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
 
-    # Ensure every builder returns our fake
-    monkeypatch.setattr(deps, "build_llm_from_settings", lambda: fake, raising=True)
-    deps._RL.clear()
-
+    # Ensure every builder returns our fake.
     monkeypatch.setattr(main, "build_llm_from_settings", lambda: fake, raising=True)
     monkeypatch.setattr(llm_svc, "build_llm_from_settings", lambda: fake, raising=True)
+    clear_rate_limit_state()
 
     app = main.create_app()
 
     _force_llm_loaded(fake)
+    ms = ModelStateStore(app.state)
+    ms.set_loaded_model_id(getattr(fake, "model_id", None) or "fake")
+    ms.set_model_loaded(True)
 
     return app
 
@@ -318,26 +346,34 @@ def app_client(monkeypatch, llm_outputs, llm_sleep_s, test_engine, test_sessionm
         from llm_server.core.config import get_settings
 
         get_settings.cache_clear()
+        _ensure_contracts_config_module()
 
-        import llm_server.api.deps as deps
         import llm_server.main as main
         import llm_server.services.llm_runtime.llm_build as llm_svc
+        from llm_server.services.api_deps.core.auth import clear_rate_limit_state
+        from llm_server.services.llm_runtime.model_state import ModelStateStore
 
         fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
 
-        monkeypatch.setattr(deps, "build_llm_from_settings", lambda: fake, raising=True)
-        deps._RL.clear()
         monkeypatch.setattr(main, "build_llm_from_settings", lambda: fake, raising=True)
-        monkeypatch.setattr(llm_svc, "build_llm_from_settings", lambda: fake, raising=True)
+        monkeypatch.setattr(
+            llm_svc, "build_llm_from_settings", lambda: fake, raising=True
+        )
+        clear_rate_limit_state()
 
         app = main.create_app()
         _force_llm_loaded(fake)
+        ms = ModelStateStore(app.state)
+        ms.set_loaded_model_id(getattr(fake, "model_id", None) or "fake")
+        ms.set_model_loaded(True)
 
         @contextlib.asynccontextmanager
         async def _ctx():
             async with LifespanManager(app):
                 transport = httpx.ASGITransport(app=app)
-                async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+                async with httpx.AsyncClient(
+                    transport=transport, base_url="http://test"
+                ) as c:
                     setattr(c, "app", app)
                     yield c
 

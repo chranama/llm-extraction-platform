@@ -6,6 +6,13 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    yield
+
+
 def _write_schema(tmp_path, schema_id: str, schema: dict) -> None:
     (tmp_path / f"{schema_id}.json").write_text(json.dumps(schema), encoding="utf-8")
 
@@ -39,12 +46,18 @@ async def test_extract_repair_success(monkeypatch, tmp_path, client, auth_header
 
     # Ensure SCHEMAS_DIR change takes effect
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
     r = await client.post(
         "/v1/extract",
         headers=auth_headers,
-        json={"schema_id": schema_id, "text": "ticket id repaired", "cache": False, "repair": True},
+        json={
+            "schema_id": schema_id,
+            "text": "ticket id repaired",
+            "cache": False,
+            "repair": True,
+        },
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -54,7 +67,9 @@ async def test_extract_repair_success(monkeypatch, tmp_path, client, auth_header
 
 
 @pytest.mark.anyio
-async def test_extract_repair_disabled_returns_422(monkeypatch, tmp_path, client, auth_headers):
+async def test_extract_repair_disabled_returns_422(
+    monkeypatch, tmp_path, client, auth_headers
+):
     """
     Invalid model output + repair=False => 422 AppError envelope.
     """
@@ -69,6 +84,7 @@ async def test_extract_repair_disabled_returns_422(monkeypatch, tmp_path, client
     monkeypatch.setenv("SCHEMAS_DIR", str(tmp_path))
 
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
     r = await client.post(

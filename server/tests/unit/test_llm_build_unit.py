@@ -41,49 +41,41 @@ class FakeModelSpec:
         # New builder expects spec.backend (string like "local" / "remote")
         # Preserve your tests' "kind" param but map it.
         self.kind = kind
-        self.backend = backend if backend is not None else ("remote" if kind == "remote" else "local")
+        self.backend = (
+            backend
+            if backend is not None
+            else ("remote" if kind == "remote" else "local")
+        )
 
         self.llm_service_url = llm_service_url
         self.trust_remote_code = trust_remote_code
         self.capabilities = capabilities
         self.load_mode = load_mode
+        self.transformers = {"trust_remote_code": trust_remote_code}
+        self.remote = {"base_url": llm_service_url} if llm_service_url else {}
 
 
-class FakeLocalManager:
-    def __init__(self, model_id: str, trust_remote_code: bool | None = None):
+class FakeTransformersBackend:
+    backend_name = "transformers"
+
+    def __init__(self, model_id: str, cfg):
         self.model_id = model_id
-        self.trust_remote_code = trust_remote_code
-
-    @classmethod
-    def from_settings(cls, *args, **kwargs):
-        """
-        Accept both builder calling conventions:
-
-          - from_settings(spec, settings)   (older style)
-          - from_settings(settings)         (newer style)
-
-        We'll derive model_id + trust_remote_code where possible.
-        """
-        spec = None
-        settings = None
-
-        if len(args) == 1:
-            # from_settings(settings)
-            settings = args[0]
-        elif len(args) >= 2:
-            # from_settings(spec, settings)
-            spec = args[0]
-            settings = args[1]
-
-        # Prefer spec.id if present; else fall back to settings.model_id
-        model_id = getattr(spec, "id", None) or getattr(settings, "model_id", None) or "unknown"
-        trust_remote_code = getattr(spec, "trust_remote_code", None)
-
-        return cls(model_id=model_id, trust_remote_code=trust_remote_code)
+        self.trust_remote_code = getattr(cfg, "trust_remote_code", None)
 
 
-class FakeHttpClient:
-    def __init__(self, model_id: str, base_url: str):
+class FakeRemoteBackend:
+    backend_name = "remote"
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        base_url: str,
+        api_key: str | None = None,
+        timeout_seconds: float = 60.0,
+        connect_timeout_seconds: float = 5.0,
+        remote_model_id: str | None = None,
+    ):
         self.model_id = model_id
         self.base_url = base_url
 
@@ -117,8 +109,10 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch):
 
 def _patch_builder_deps(monkeypatch, cfg: FakeModelsConfig, settings_obj):
     monkeypatch.setattr(llm_mod, "load_models_config", lambda: cfg, raising=True)
-    monkeypatch.setattr(llm_mod, "ModelManager", FakeLocalManager, raising=True)
-    monkeypatch.setattr(llm_mod, "HttpLLMClient", FakeHttpClient, raising=True)
+    monkeypatch.setattr(
+        llm_mod, "TransformersBackend", FakeTransformersBackend, raising=True
+    )
+    monkeypatch.setattr(llm_mod, "RemoteBackend", FakeRemoteBackend, raising=True)
     monkeypatch.setattr(llm_mod, "get_settings", lambda: settings_obj, raising=True)
 
 
@@ -128,14 +122,16 @@ def test_enable_multi_models_0_returns_single_backend(monkeypatch):
         defaults={},
         models=[FakeModelSpec(id="primary", kind="local")],
     )
-    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=False, model_id="primary"))
+    _patch_builder_deps(
+        monkeypatch, cfg, _settings(enable_multi_models=False, model_id="primary")
+    )
 
     # build_llm_from_settings currently gates multi-model via env
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "0")
 
     llm = llm_mod.build_llm_from_settings()
 
-    assert isinstance(llm, FakeLocalManager)
+    assert isinstance(llm, FakeTransformersBackend)
     assert llm.model_id == "primary"
 
 
@@ -148,7 +144,9 @@ def test_enable_multi_models_1_returns_multimodelmanager(monkeypatch):
             FakeModelSpec(id="other", kind="local"),
         ],
     )
-    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, model_id="primary"))
+    _patch_builder_deps(
+        monkeypatch, cfg, _settings(enable_multi_models=True, model_id="primary")
+    )
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
 
@@ -173,7 +171,9 @@ def test_load_mode_off_excludes_models(monkeypatch):
             FakeModelSpec(id="other", kind="local", load_mode="lazy"),
         ],
     )
-    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, model_load_mode="off"))
+    _patch_builder_deps(
+        monkeypatch, cfg, _settings(enable_multi_models=True, model_load_mode="off")
+    )
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
     monkeypatch.setenv("MODEL_LOAD_MODE", "off")
@@ -183,7 +183,9 @@ def test_load_mode_off_excludes_models(monkeypatch):
     from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
     assert isinstance(llm, MultiModelManager)
-    assert _mm_models_set(llm) == set()
+    # Settings MODEL_LOAD_MODE does not disable registry entries; only per-model
+    # spec.load_mode="off" filters models from the registry.
+    assert _mm_models_set(llm) == {"primary", "other"}
 
 
 def test_remote_models_require_llm_service_url(monkeypatch):
@@ -192,7 +194,9 @@ def test_remote_models_require_llm_service_url(monkeypatch):
         defaults={},
         models=[FakeModelSpec(id="primary", kind="remote", llm_service_url=None)],
     )
-    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, llm_service_url=None))
+    _patch_builder_deps(
+        monkeypatch, cfg, _settings(enable_multi_models=True, llm_service_url=None)
+    )
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
 
@@ -221,7 +225,11 @@ def test_meta_propagation_local_and_remote_backend_types_and_caps_order(monkeypa
             ),
         ],
     )
-    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, llm_service_url="http://base"))
+    _patch_builder_deps(
+        monkeypatch,
+        cfg,
+        _settings(enable_multi_models=True, llm_service_url="http://base"),
+    )
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
     monkeypatch.setenv("LLM_SERVICE_URL", "http://base")
@@ -229,8 +237,8 @@ def test_meta_propagation_local_and_remote_backend_types_and_caps_order(monkeypa
     llm = llm_mod.build_llm_from_settings()
 
     meta = getattr(llm, "_meta", {})
-    assert meta["primary"]["backend"] == "local_hf"
-    assert meta["r1"]["backend"] == "http_remote"
+    assert meta["primary"]["backend"] == "transformers"
+    assert meta["r1"]["backend"] == "remote"
 
     assert meta["primary"]["capabilities"] == ["extract", "generate"]
     assert meta["r1"]["capabilities"] == ["generate"]

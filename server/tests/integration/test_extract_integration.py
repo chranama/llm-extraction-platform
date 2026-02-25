@@ -6,6 +6,13 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    yield
+
+
 @pytest.fixture
 def llm_outputs():
     # One-shot valid output (no repair needed)
@@ -25,6 +32,7 @@ async def test_extract_success(monkeypatch, tmp_path, client, auth_headers):
 
     # IMPORTANT: schema_registry caches across process
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
     r = await client.post(

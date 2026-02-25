@@ -61,12 +61,7 @@ jobs:
           REQUIRE_MODEL_READY: "0"
         run: |
           set -euxo pipefail
-          # Temporary excludes while server tests are rewritten in batches.
           uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
-            --ignore=tests/unit/test_api_resolve_model_unit.py \
-            --ignore=tests/unit/test_deps_capabilities_unit.py \
-            --ignore=tests/unit/test_deps_limits_unit.py \
-            --ignore=tests/unit/test_policy_decisions_unit.py \
             --cov=llm_server --cov-report=xml
 
       - name: Upload coverage (server unit)
@@ -156,14 +151,7 @@ jobs:
           set -euxo pipefail
           # If your integration suite requires migrations in CI, uncomment:
           # uv run python -m alembic upgrade head
-          # Temporary excludes while server tests are rewritten in batches.
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration \
-            --ignore=tests/integration/test_admin_load_model_multimodel_integration.py \
-            --ignore=tests/integration/test_auth_integration.py \
-            --ignore=tests/integration/test_capability_enforcement_endpoints_integration.py \
-            --ignore=tests/integration/test_extract_model_autoselection_integration.py \
-            --ignore=tests/integration/test_generate_integration.py \
-            --ignore=tests/integration/test_models_endpoint_capabilities_integration.py
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration
 
       - name: Debug on failure
         if: failure()

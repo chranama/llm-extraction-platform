@@ -7,6 +7,13 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    yield
+
+
 @pytest.mark.anyio
 async def test_quota_exhaustion_blocks_subsequent_requests(test_sessionmaker, client):
     from llm_server.db.models import ApiKey
@@ -18,10 +25,14 @@ async def test_quota_exhaustion_blocks_subsequent_requests(test_sessionmaker, cl
 
     headers = {"X-API-Key": key}
 
-    r1 = await client.post("/v1/generate", headers=headers, json={"prompt": "hi", "cache": False})
+    r1 = await client.post(
+        "/v1/generate", headers=headers, json={"prompt": "hi", "cache": False}
+    )
     assert r1.status_code == 200, r1.text
 
-    r2 = await client.post("/v1/generate", headers=headers, json={"prompt": "hi again", "cache": False})
+    r2 = await client.post(
+        "/v1/generate", headers=headers, json={"prompt": "hi again", "cache": False}
+    )
     assert r2.status_code == 402, r2.text
     body = r2.json()
     assert body["code"] == "quota_exhausted"

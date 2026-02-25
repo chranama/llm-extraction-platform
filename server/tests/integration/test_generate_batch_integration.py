@@ -5,6 +5,13 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    yield
+
+
 @pytest.fixture
 def llm_outputs():
     # First batch call consumes two outputs for p1, p2

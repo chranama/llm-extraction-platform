@@ -6,6 +6,13 @@ from sqlalchemy import select, func
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    yield
+
+
 @pytest.fixture
 def llm_outputs():
     # First request should call the model -> "FIRST"
@@ -41,6 +48,9 @@ async def test_generate_db_cache_hit(client, auth_headers, test_sessionmaker):
 
     # 3) Ensure cache rows exist
     from llm_server.db.models import CompletionCache
+
     async with test_sessionmaker() as session:
-        n = (await session.execute(select(func.count()).select_from(CompletionCache))).scalar_one()
+        n = (
+            await session.execute(select(func.count()).select_from(CompletionCache))
+        ).scalar_one()
         assert n >= 1
