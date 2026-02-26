@@ -16,7 +16,9 @@ def _warning(code: str, message: str, context: Optional[dict[str, Any]] = None) 
     return DecisionWarning(code=code, message=message, context=context or {})
 
 
-def _get_metric_threshold(thresholds: ExtractThresholds, metric: str) -> tuple[Optional[float], Optional[float]]:
+def _get_metric_threshold(
+    thresholds: ExtractThresholds, metric: str
+) -> tuple[Optional[float], Optional[float]]:
     mt = thresholds.metrics.get(metric)
     if mt is None:
         return None, None
@@ -110,6 +112,24 @@ def _choose_metric_for_gating(
     return None, "missing"
 
 
+def _metric_ci95_low(s: Any, metric: str) -> Optional[float]:
+    # Preferred convention: <metric>_ci95_low
+    v = _as_float(getattr(s, f"{metric}_ci95_low", None))
+    if v is not None:
+        return v
+
+    # Back-compat / current EvalSummary field names
+    legacy = {
+        "schema_validity_rate": "schema_validity_ci95_low",
+        "required_present_rate": "required_present_ci95_low",
+        "doc_required_exact_match_rate": "doc_required_exact_match_ci95_low",
+    }
+    alt = legacy.get(metric)
+    if not alt:
+        return None
+    return _as_float(getattr(s, alt, None))
+
+
 def decide_extract_enablement(
     artifact: EvalArtifact,
     *,
@@ -166,10 +186,20 @@ def decide_extract_enablement(
             msg = "Eval artifact contract issue"
 
         # Specialize deployment provenance failures (cleaner dashboards/logs)
-        is_deploy_issue = iss_code.startswith("missing_deployment") or iss_code.startswith("missing_row_deployment") or iss_code == "deployment_key_mismatch"
+        is_deploy_issue = (
+            iss_code.startswith("missing_deployment")
+            or iss_code.startswith("missing_row_deployment")
+            or iss_code == "deployment_key_mismatch"
+        )
 
         if sev == "error":
-            reasons.append(_reason("deployment_contract_error" if is_deploy_issue else "artifact_contract_error", msg, ctx))
+            reasons.append(
+                _reason(
+                    "deployment_contract_error" if is_deploy_issue else "artifact_contract_error",
+                    msg,
+                    ctx,
+                )
+            )
         elif sev == "warn":
             warnings.append(_warning("artifact_contract_warn", msg, ctx))
         else:
@@ -219,7 +249,11 @@ def decide_extract_enablement(
         reasons.append(_reason("missing_metric", "non_200_rate is missing from summary"))
 
     # Enforce budgets (all in percent units)
-    if max_http_5xx_rate is not None and http_5xx_rate is not None and http_5xx_rate > max_http_5xx_rate:
+    if (
+        max_http_5xx_rate is not None
+        and http_5xx_rate is not None
+        and http_5xx_rate > max_http_5xx_rate
+    ):
         reasons.append(
             _reason(
                 "system_unhealthy",
@@ -233,7 +267,11 @@ def decide_extract_enablement(
             )
         )
 
-    if max_timeout_rate is not None and timeout_rate is not None and timeout_rate > max_timeout_rate:
+    if (
+        max_timeout_rate is not None
+        and timeout_rate is not None
+        and timeout_rate > max_timeout_rate
+    ):
         reasons.append(
             _reason(
                 "system_unhealthy",
@@ -247,7 +285,11 @@ def decide_extract_enablement(
             )
         )
 
-    if max_non_200_rate is not None and non_200_rate is not None and non_200_rate > max_non_200_rate:
+    if (
+        max_non_200_rate is not None
+        and non_200_rate is not None
+        and non_200_rate > max_non_200_rate
+    ):
         reasons.append(
             _reason(
                 "system_unhealthy",
@@ -278,7 +320,7 @@ def decide_extract_enablement(
             return
 
         v = _as_float(getattr(s, metric, None))
-        ci_low = _as_float(getattr(s, f"{metric}_ci95_low", None))
+        ci_low = _metric_ci95_low(s, metric)
 
         chosen, source = _choose_metric_for_gating(
             value_pct=v,
@@ -295,7 +337,11 @@ def decide_extract_enablement(
         metrics[f"{metric}__gate_value"] = chosen
 
         if chosen is None:
-            reasons.append(_reason("missing_metric", f"{metric} is missing from summary (and no ci95_low present)"))
+            reasons.append(
+                _reason(
+                    "missing_metric", f"{metric} is missing from summary (and no ci95_low present)"
+                )
+            )
             return
 
         if float(chosen) < float(min_v):
@@ -327,7 +373,13 @@ def decide_extract_enablement(
         for field, minv in min_field_exact_match_rate.items():
             cur = fem.get(field)
             if cur is None:
-                reasons.append(_reason("missing_metric", f"field_exact_match_rate.{field} missing", {"field": field}))
+                reasons.append(
+                    _reason(
+                        "missing_metric",
+                        f"field_exact_match_rate.{field} missing",
+                        {"field": field},
+                    )
+                )
                 continue
 
             cur_f = _as_float(cur)
@@ -379,6 +431,7 @@ def decide_extract_enablement(
 
     return Decision(
         policy="extract_enablement",
+        pipeline="extract_only",
         status=status,
         enable_extract=enable,
         thresholds_profile=thresholds_profile,

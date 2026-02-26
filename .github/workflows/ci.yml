@@ -167,7 +167,7 @@ jobs:
   # Policy: unit + lint/format
   # -------------------------
   policy_unit:
-    name: policy (tests)
+    name: policy (unit)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -204,25 +204,63 @@ jobs:
           set -euxo pipefail
           uv run black --check .
 
-      - name: Run policy tests
+      - name: Run policy unit tests
         env:
           PYTHONPATH: "src"
         run: |
           set -euxo pipefail
-          # Temporary excludes while policy tests are rewritten in batches.
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
-            --ignore=tests/unit/test_cli_decide_extract.py \
-            --ignore=tests/unit/test_cli_patch_models.py \
-            --ignore=tests/unit/test_io_decision_artifacts.py \
-            --ignore=tests/unit/test_models_yaml_patch.py \
-            --ignore=tests/unit/test_reports_writer.py \
-            --ignore=tests/integration/test_cli_smoke_policy.py
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit
 
       - name: Debug on failure
         if: failure()
         run: |
           set -euxo pipefail
           echo "=== policy debug ==="
+          uv --version
+          python -V
+          uv pip list
+          git status --porcelain || true
+
+  policy_integration:
+    name: policy (integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+        working-directory: policy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (policy)
+        run: |
+          set -euxo pipefail
+          uv sync --extra test
+
+      - name: Run policy integration tests
+        env:
+          PYTHONPATH: "src"
+        run: |
+          set -euxo pipefail
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== policy integration debug ==="
           uv --version
           python -V
           uv pip list

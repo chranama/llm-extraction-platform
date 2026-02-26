@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -9,79 +8,109 @@ from llm_policy.cli import main
 
 
 @pytest.fixture(autouse=True)
-def _patch_cli_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """
-    Patch:
-      - load_eval_artifact
-      - load_extract_thresholds
-      - decide_extract_enablement
-      - renderers
-    So CLI tests are stable and don't depend on filesystem thresholds.
-    """
-
+def _patch_cli_dependencies(monkeypatch: pytest.MonkeyPatch):
     class FakeDecision:
-        def __init__(self, enable: bool):
-            self.enable_extract = enable
-            self._ok = enable
+        def __init__(self, ok: bool = True, pipeline: str = "extract_only"):
+            self.pipeline = pipeline
+            self.policy = "llm_policy"
+            self.enable_extract = ok
+            self.status = "allow" if ok else "deny"
+            self.reasons = []
+            self.warnings = []
+            self.metrics = {}
 
         def ok(self) -> bool:
-            return self._ok
+            return self.enable_extract
 
-    class FakeArtifact:
-        pass
+        def model_copy(self, update=None):
+            d = FakeDecision(self.enable_extract, self.pipeline)
+            if update:
+                for k, v in update.items():
+                    setattr(d, k, v)
+            return d
 
-    monkeypatch.setattr("llm_policy.cli.load_eval_artifact", lambda run_dir: FakeArtifact(), raising=True)
     monkeypatch.setattr(
-        "llm_policy.cli.load_extract_thresholds",
-        lambda cfg, profile=None: (profile or "extract/default", {"fake": True}),
-        raising=True,
+        "llm_policy.cli._build_runtime_decision", lambda args: FakeDecision(True), raising=True
     )
-
-    # default decision: allow
-    monkeypatch.setattr(
-        "llm_policy.cli.decide_extract_enablement",
-        lambda artifact, thresholds, thresholds_profile=None: FakeDecision(True),
-        raising=True,
-    )
-
     monkeypatch.setattr("llm_policy.cli.render_decision_text", lambda d: "TEXT\n", raising=True)
     monkeypatch.setattr("llm_policy.cli.render_decision_md", lambda d: "MD\n", raising=True)
-    monkeypatch.setattr("llm_policy.cli.render_decision_json", lambda d: json.dumps({"ok": d.ok()}) + "\n", raising=True)
+    monkeypatch.setattr(
+        "llm_policy.cli.write_policy_decision_artifact", lambda d, p: Path(p), raising=True
+    )
 
 
-def test_decide_extract_text_to_stdout(capsys: pytest.CaptureFixture[str], tmp_path: Path):
-    rc = main(["decide-extract", "--run-dir", str(tmp_path), "--format", "text"])
+def test_runtime_decision_text_to_stdout(capsys: pytest.CaptureFixture[str], tmp_path: Path):
+    rc = main(
+        [
+            "runtime-decision",
+            "--pipeline",
+            "extract_only",
+            "--run-dir",
+            str(tmp_path),
+            "--report",
+            "text",
+        ]
+    )
     assert rc == 0
     out = capsys.readouterr().out
-    assert out == "TEXT\n"
+    assert "== Provenance ==" in out
+    assert "eval_run_dir:" in out
+    assert "deployment_key:" in out
+    assert out.endswith("TEXT\n")
 
 
-def test_decide_extract_md_to_file(tmp_path: Path):
+def test_runtime_decision_md_to_file(tmp_path: Path):
     out_file = tmp_path / "out.md"
-    rc = main(["decide-extract", "--run-dir", str(tmp_path), "--format", "md", "--out", str(out_file)])
+    rc = main(
+        [
+            "runtime-decision",
+            "--pipeline",
+            "extract_only",
+            "--run-dir",
+            str(tmp_path),
+            "--report",
+            "md",
+            "--report-out",
+            str(out_file),
+        ]
+    )
     assert rc == 0
-    assert out_file.read_text(encoding="utf-8") == "MD\n"
+    out = out_file.read_text(encoding="utf-8")
+    assert "== Provenance ==" in out
+    assert "eval_run_dir:" in out
+    assert "deployment_key:" in out
+    assert out.endswith("MD\n")
 
 
-def test_decide_extract_json(capsys: pytest.CaptureFixture[str], tmp_path: Path):
-    rc = main(["decide-extract", "--run-dir", str(tmp_path), "--format", "json"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    payload = json.loads(out)
-    assert payload["ok"] is True
-
-
-def test_decide_extract_exit_code_is_2_when_not_ok(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_runtime_decision_exit_code_2_when_not_ok(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     class FakeDecision:
+        pipeline = "extract_only"
+        policy = "llm_policy"
         enable_extract = False
+        status = "deny"
+        reasons = []
+        warnings = []
+        metrics = {}
+
         def ok(self) -> bool:
             return False
 
+        def model_copy(self, update=None):
+            return self
+
     monkeypatch.setattr(
-        "llm_policy.cli.decide_extract_enablement",
-        lambda artifact, thresholds, thresholds_profile=None: FakeDecision(),
-        raising=True,
+        "llm_policy.cli._build_runtime_decision", lambda args: FakeDecision(), raising=True
     )
 
-    rc = main(["decide-extract", "--run-dir", str(tmp_path), "--format", "text"])
+    rc = main(
+        [
+            "runtime-decision",
+            "--pipeline",
+            "extract_only",
+            "--run-dir",
+            str(tmp_path),
+            "--report",
+            "text",
+        ]
+    )
     assert rc == 2

@@ -72,6 +72,7 @@ class LoadResult:
     - artifact: parsed object (summary always, results optional)
     - issues: contract issues found while loading/parsing
     """
+
     artifact: EvalArtifact
     issues: list[ContractIssue]
 
@@ -140,8 +141,14 @@ def load_eval_run_dir(
     # -----------------------------
     # FAIL-CLOSED: deployment provenance checks
     # -----------------------------
-    summary_dk = summary.deployment_key.strip() if isinstance(summary.deployment_key, str) and summary.deployment_key.strip() else None
-    summary_dep = summary.deployment if isinstance(summary.deployment, dict) and summary.deployment else None
+    summary_dk = (
+        summary.deployment_key.strip()
+        if isinstance(summary.deployment_key, str) and summary.deployment_key.strip()
+        else None
+    )
+    summary_dep = (
+        summary.deployment if isinstance(summary.deployment, dict) and summary.deployment else None
+    )
 
     if summary_dk is None:
         issues.append(
@@ -170,7 +177,11 @@ def load_eval_run_dir(
         mismatched_dk = 0
 
         for r in rows:
-            row_dk = r.deployment_key.strip() if isinstance(r.deployment_key, str) and r.deployment_key.strip() else None
+            row_dk = (
+                r.deployment_key.strip()
+                if isinstance(r.deployment_key, str) and r.deployment_key.strip()
+                else None
+            )
             row_dep = r.deployment if isinstance(r.deployment, dict) and r.deployment else None
 
             if row_dk is None:
@@ -207,7 +218,11 @@ def load_eval_run_dir(
                     severity=IssueSeverity.error,
                     code="deployment_key_mismatch",
                     message="One or more rows have deployment_key that does not match summary.deployment_key (policy must fail-closed)",
-                    context={"mismatched_rows": mismatched_dk, "n_rows": len(rows), "summary_deployment_key": summary_dk},
+                    context={
+                        "mismatched_rows": mismatched_dk,
+                        "n_rows": len(rows),
+                        "summary_deployment_key": summary_dk,
+                    },
                 )
             )
 
@@ -378,7 +393,7 @@ def _load_summary(path: Path, *, issues: list[ContractIssue]) -> EvalSummary:
         minimal = {
             "task": str(raw.get("task") or "unknown"),
             "run_id": str(raw.get("run_id") or "unknown"),
-            "n_total": int(raw.get("n_total") or 0),
+            "n_total": max(0, int(raw.get("n_total") or 0)),
         }
         return EvalSummary.model_validate(minimal)
 
