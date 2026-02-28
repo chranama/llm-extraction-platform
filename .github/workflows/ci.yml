@@ -437,3 +437,62 @@ jobs:
           python -V
           uv pip list
           git status --porcelain || true
+
+  # -------------------------
+  # Integrations: repo-level job lanes (non-live, split)
+  # -------------------------
+  integrations_job_lane:
+    name: integrations (${{ matrix.lane.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        lane:
+          - name: eval-job
+            path: test_eval_job
+          - name: policy-job
+            path: test_policy_job
+          - name: e2e-loop
+            path: test_e2e_loop
+    defaults:
+      run:
+        shell: bash
+        working-directory: integrations
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (integrations)
+        run: |
+          set -euxo pipefail
+          uv sync
+
+      - name: Run integrations lane
+        env:
+          PYTHONPATH: "${{ github.workspace }}"
+          INTEGRATIONS_TIMEOUT: "30"
+        run: |
+          set -euxo pipefail
+          uv run pytest -q -ra --maxfail=1 --disable-warnings "${{ matrix.lane.path }}"
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== integrations lane debug (${{ matrix.lane.path }}) ==="
+          uv --version
+          python -V
+          uv pip list
+          git status --porcelain || true

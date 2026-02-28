@@ -27,15 +27,27 @@ class GoldenFixture:
 # Loading helpers
 # -------------------------
 
+
+def _data_dir(base_dir: Optional[Path] = None) -> Path:
+    if base_dir is not None:
+        return base_dir
+    return Path(__file__).resolve().parents[1] / "data"
+
+
+def load_prompt(name: str, *, base_dir: Optional[Path] = None) -> str:
+    p = _data_dir(base_dir) / "prompt" / name
+    return p.read_text(encoding="utf-8")
+
+
 def load_golden_fixture(
-    base_dir: Path,
     kind: str,
     name: str,
+    base_dir: Optional[Path] = None,
 ) -> GoldenFixture:
     """
     Load a single golden fixture by name.
     """
-    d = base_dir / kind
+    d = _data_dir(base_dir) / "golden" / kind
 
     text = (d / f"{name}.txt").read_text(encoding="utf-8")
     expected = json.loads((d / f"{name}.expected.json").read_text(encoding="utf-8"))
@@ -56,15 +68,16 @@ def load_golden_fixture(
 
 
 def iter_golden_fixtures(
-    base_dir: Path,
     kind: str,
+    base_dir: Optional[Path] = None,
 ) -> Iterable[GoldenFixture]:
     """
     Iterate all golden fixtures for a given kind.
     """
-    for contract_path in sorted((base_dir / kind).glob("*.contract.yaml")):
+    d = _data_dir(base_dir) / "golden" / kind
+    for contract_path in sorted(d.glob("*.contract.yaml")):
         name = contract_path.name.replace(".contract.yaml", "")
-        yield load_golden_fixture(base_dir, kind, name)
+        yield load_golden_fixture(kind=kind, name=name, base_dir=base_dir)
 
 
 # -------------------------

@@ -20,10 +20,14 @@ dependencies = [
 
 [tool.pytest.ini_options]
 # Match the proposed folder structure
-testpaths = ["test_generate_only", "test_full"]
+testpaths = ["test_server_live", "test_eval_job", "test_policy_job", "test_e2e_loop"]
 
 # Make markers explicit (pytest will warn/error if you use undeclared markers)
 markers = [
+  "server_live: live server contract tests",
+  "eval_job: eval job integration tests",
+  "policy_job: policy job integration tests",
+  "e2e_loop: end-to-end server/eval/policy workflow tests",
   "generate_only: generate-only deployment contract tests",
   "full: extract-enabled/full-capability contract tests",
   "requires_db: tests that assert DB persistence (InferenceLog, cache tables, etc.)",

@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
+import httpx
 
 _LABEL_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:\\.|[^"\\])*)"')
 _METRIC_LINE_RE = re.compile(
@@ -185,3 +186,9 @@ def find_any_increment(
     if best_delta >= min_delta:
         return True, f"metric '{name}' incremented by {best_delta} for labels={best_series}"
     return False, f"metric '{name}' did not increment by >= {min_delta}; best delta={best_delta} labels={best_series}"
+
+
+async def fetch_metrics_text(client: httpx.AsyncClient) -> str:
+    r = await client.get("/metrics")
+    r.raise_for_status()
+    return r.text

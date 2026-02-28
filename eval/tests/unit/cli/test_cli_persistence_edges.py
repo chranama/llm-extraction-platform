@@ -202,7 +202,9 @@ async def test_cli_overwrites_existing_artifacts_on_rerun(monkeypatch, tmp_path:
     assert summary["run_dir"] == str(outdir)
 
     rows = _read_jsonl(outdir / "results.jsonl")
-    assert rows == [{"id": "new"}]
+    assert len(rows) == 1
+    assert rows[0]["id"] == "new"
+    assert rows[0]["schema_version"] == "eval_result_row_v2"
 
     report = (outdir / "report.txt").read_text(encoding="utf-8")
     assert report == "new report\n"

@@ -15,6 +15,26 @@ from llm_contracts.schema import validate_internal
 Pathish = Union[str, Path]
 
 
+_SUMMARY_V2_KEYS = {
+    "schema_version",
+    "generated_at",
+    "task",
+    "run_id",
+    "run_dir",
+    "model_id",
+    "schema_id",
+    "deployment_key",
+    "deployment",
+    "passed",
+    "thresholds_profile",
+    "thresholds_version",
+    "counts",
+    "metrics",
+    "warnings",
+    "notes",
+}
+
+
 def _utc_now_iso() -> str:
     # RFC3339-ish, seconds precision, Z suffix
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -116,6 +136,21 @@ def _infer_deployment_from_summary_or_rows(
     dk = summary_payload.get("deployment_key")
     dep = summary_payload.get("deployment")
 
+    # Legacy extraction summary embeds deployment in summary["server"]["deployment"].
+    if (not isinstance(dk, str) or not dk.strip()) and not isinstance(dep, dict):
+        try:
+            server = summary_payload.get("server")
+            if isinstance(server, dict):
+                server_dep = server.get("deployment")
+                if isinstance(server_dep, dict):
+                    if not isinstance(dep, dict):
+                        dep = dict(server_dep)
+                    server_dk = server_dep.get("deployment_key")
+                    if isinstance(server_dk, str) and server_dk.strip():
+                        dk = server_dk.strip()
+        except Exception:
+            pass
+
     if isinstance(dk, str) and dk.strip() and isinstance(dep, dict):
         return dk.strip(), cast(dict[str, Any], dep)
 
@@ -170,6 +205,108 @@ def _inject_deployment_into_rows(
         if dep is not None and not isinstance(r.get("deployment"), dict):
             r["deployment"] = dep
         out.append(r)
+    return out
+
+
+def _to_summary_v2(
+    *,
+    summary_payload: dict[str, Any],
+    outdir: Path,
+) -> dict[str, Any]:
+    """
+    Convert legacy flat summary payload into eval_run_summary_v2 envelope.
+    """
+    src = dict(summary_payload)
+
+    task = str(src.get("task") or "").strip()
+    run_id = str(src.get("run_id") or "").strip()
+    if not task or not run_id:
+        raise ValueError("summary payload must include non-empty task and run_id")
+
+    # Build metrics bag from all non-v2 top-level keys.
+    metrics = src.get("metrics")
+    if isinstance(metrics, dict):
+        metrics_bag = dict(metrics)
+    else:
+        metrics_bag = {}
+    for k, v in src.items():
+        if k in _SUMMARY_V2_KEYS:
+            continue
+        metrics_bag[k] = v
+
+    out: dict[str, Any] = {
+        "schema_version": "eval_run_summary_v2",
+        "generated_at": _utc_now_iso(),
+        "task": task,
+        "run_id": run_id,
+        "run_dir": str(outdir),
+        "passed": bool(src.get("passed", False)),
+        "metrics": metrics_bag,
+    }
+
+    for key in (
+        "model_id",
+        "schema_id",
+        "deployment_key",
+        "deployment",
+        "thresholds_profile",
+        "thresholds_version",
+        "counts",
+        "warnings",
+        "notes",
+    ):
+        v = src.get(key)
+        if v is not None:
+            out[key] = v
+
+    # Keep compact.
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _to_result_row_v2(
+    *,
+    row: dict[str, Any],
+    task: str,
+    run_id: str,
+) -> dict[str, Any]:
+    """
+    Convert a legacy row into eval_result_row_v2 while preserving legacy keys
+    as additionalProperties for downstream debugging/compatibility.
+    """
+    out = dict(row)
+    out["schema_version"] = "eval_result_row_v2"
+    out["task"] = task
+    out["run_id"] = run_id
+    out["ok"] = bool(row.get("ok", False))
+
+    if "example_id" not in out:
+        ex_id = row.get("doc_id", row.get("id"))
+        if isinstance(ex_id, str) and ex_id.strip():
+            out["example_id"] = ex_id.strip()
+
+    if "schema_id" not in out:
+        sid = row.get("schema_id")
+        if isinstance(sid, str) and sid.strip():
+            out["schema_id"] = sid.strip()
+
+    if "model_id" not in out:
+        mid = row.get("model")
+        if isinstance(mid, str) and mid.strip():
+            out["model_id"] = mid.strip()
+
+    if "latency_ms" not in out and row.get("latency_ms") is not None:
+        out["latency_ms"] = row.get("latency_ms")
+
+    if "error" not in out:
+        code = row.get("error_code")
+        if isinstance(code, str) and code.strip():
+            out["error"] = {
+                "code": code.strip(),
+                "message": str(row.get("error_message") or code).strip(),
+                "stage": row.get("error_stage"),
+                "context": row.get("extra") if isinstance(row.get("extra"), dict) else {},
+            }
+
     return out
 
 
@@ -234,22 +371,30 @@ def write_eval_run_artifacts(
         ),
     )
 
-    # Validate summary contract (fail loudly if not schema-safe)
-    _validate_eval_summary_payload(cast(dict[str, Any], summary_payload))
+    # Build v2 summary envelope + validate.
+    summary_v2 = _to_summary_v2(
+        summary_payload=cast(dict[str, Any], summary_payload), outdir=paths.outdir
+    )
+    _validate_eval_summary_payload(cast(dict[str, Any], summary_v2))
 
-    # Validate result rows contract (fail loudly if any row is invalid)
+    # Build v2 rows + validate (fail loudly if any row is invalid).
+    results_v2: list[dict[str, Any]] = []
     if results_payload:
+        task = str(summary_v2["task"])
+        run_id = str(summary_v2["run_id"])
         for i, row in enumerate(results_payload, start=1):
             if not isinstance(row, dict):
                 raise TypeError(f"results[{i}] must be a dict, got {type(row).__name__}")
-            _validate_eval_result_row_payload(cast(dict[str, Any], row))
+            row_v2 = _to_result_row_v2(row=cast(dict[str, Any], row), task=task, run_id=run_id)
+            _validate_eval_result_row_payload(cast(dict[str, Any], row_v2))
+            results_v2.append(row_v2)
 
     # Persist after validation passes
-    _atomic_write_json(paths.summary_json, summary_payload)
+    _atomic_write_json(paths.summary_json, summary_v2)
 
     wrote_results = False
-    if results_payload:
-        _write_jsonl(paths.results_jsonl, results_payload)
+    if results_v2:
+        _write_jsonl(paths.results_jsonl, results_v2)
         wrote_results = True
 
     _atomic_write_text(paths.report_txt, report_txt)

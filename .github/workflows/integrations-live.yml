@@ -1,0 +1,61 @@
+name: Integrations Live
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+
+concurrency:
+  group: integrations-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integrations_live:
+    name: integrations (live)
+    if: ${{ secrets.INTEGRATIONS_LIVE_BASE_URL != '' && secrets.INTEGRATIONS_LIVE_API_KEY != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: integrations
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (integrations)
+        run: |
+          set -euxo pipefail
+          uv sync
+
+      - name: Run live integrations lanes
+        env:
+          PYTHONPATH: "${{ github.workspace }}"
+          INTEGRATIONS_BASE_URL: "${{ secrets.INTEGRATIONS_LIVE_BASE_URL }}"
+          API_KEY: "${{ secrets.INTEGRATIONS_LIVE_API_KEY }}"
+          INTEGRATIONS_MODE: "${{ secrets.INTEGRATIONS_LIVE_MODE }}"
+          INTEGRATIONS_TIMEOUT: "30"
+        run: |
+          set -euxo pipefail
+          bash scripts/run_live_lanes.sh
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== integrations live debug ==="
+          uv --version
+          python -V
+          uv pip list
+          git status --porcelain || true

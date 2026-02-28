@@ -101,7 +101,8 @@ async def test_cli_saves_all_artifacts_with_runner_report(monkeypatch, tmp_path:
     assert summary["run_id"] == "RID123"
     assert summary["run_dir"] == str(outdir)
 
-    assert rows == [{"id": "1"}, {"id": "2"}]
+    assert [r["id"] for r in rows] == ["1", "2"]
+    assert all(r["schema_version"] == "eval_result_row_v2" for r in rows)
     assert report == "hello report\n"
     assert cfg == {"max_examples": 2, "model_override": "m0"}
 

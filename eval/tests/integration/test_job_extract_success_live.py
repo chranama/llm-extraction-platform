@@ -51,13 +51,20 @@ async def test_cli_job_extract_success_live(
     summary = read_json(summary_p)
     assert summary["task"] == "extraction_sroie"
     assert isinstance(summary.get("run_id"), str) and summary["run_id"]
-    assert summary["base_url"] == integration_base_url
+    assert summary["schema_version"] == "eval_run_summary_v2"
+    assert summary.get("metrics", {}).get("base_url") == integration_base_url
     assert summary["run_dir"] == str(outdir)
 
     results_p = outdir / "results.jsonl"
     if results_p.exists():
         rows = read_jsonl(results_p)
         assert isinstance(rows, list)
+        if rows:
+            row = rows[0]
+            assert row["schema_version"] == "eval_result_row_v2"
+            assert row["task"] == summary["task"]
+            assert row["run_id"] == summary["run_id"]
+            assert isinstance(row["ok"], bool)
 
     p = read_json(pointer)
     assert p["task"] == "extraction_sroie"

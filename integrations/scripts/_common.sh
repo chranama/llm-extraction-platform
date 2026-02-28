@@ -48,11 +48,14 @@ run_pytest() {
   need_cmd uv
 
   local idir
+  local root
   idir="$(integrations_dir)"
+  root="$(repo_root)"
   [[ -f "${idir}/pyproject.toml" ]] || die "Expected ${idir}/pyproject.toml"
 
   (
     cd "${idir}"
+    export PYTHONPATH="${root}${PYTHONPATH:+:${PYTHONPATH}}"
     # shellcheck disable=SC2086
     uv run pytest ${PYTEST_ARGS:-}
   )

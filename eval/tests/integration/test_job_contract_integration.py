@@ -35,11 +35,17 @@ def test_cli_job_unreachable_base_url_writes_typed_error_artifacts(tmp_path: Pat
 
     summary = read_json(outdir / "summary.json")
     assert summary["task"] == "extraction_sroie"
+    assert isinstance(summary.get("run_id"), str) and summary["run_id"]
 
     rows = read_jsonl(outdir / "results.jsonl")
     assert len(rows) == 1
-    assert rows[0]["status_code"] != 200
-    assert isinstance(rows[0].get("error_code"), str) and rows[0]["error_code"]
+    row = rows[0]
+    assert row["schema_version"] == "eval_result_row_v2"
+    assert row["task"] == summary["task"]
+    assert row["run_id"] == summary["run_id"]
+    assert isinstance(row["ok"], bool)
+    assert row["status_code"] != 200
+    assert isinstance(row.get("error_code"), str) and row["error_code"]
 
     p = read_json(pointer)
     assert p["run_dir"] == str(outdir)

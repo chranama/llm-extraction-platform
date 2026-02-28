@@ -192,3 +192,10 @@ async def assert_me_usage_increments(
             f"/v1/me/usage.total_requests did not increment: before={before_total_requests} after={after}"
         )
     return after
+
+
+async def fetch_inference_log_count(client: httpx.AsyncClient) -> int:
+    """
+    Back-compat alias used by older integration tests.
+    """
+    return await get_admin_log_count(client=client)

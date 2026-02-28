@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable, Optional
+
+
+@dataclass(frozen=True)
+class PolicyCliRun:
+    argv: list[str]
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def run_policy_cli(
+    *, args: Iterable[str], env: Optional[dict[str, str]] = None, timeout_s: int = 180
+) -> PolicyCliRun:
+    root = repo_root()
+    policy_dir = root / "policy"
+
+    argv = [
+        "uv",
+        "run",
+        "--project",
+        str(policy_dir),
+        "python",
+        "-m",
+        "llm_policy.cli",
+        *list(args),
+    ]
+
+    merged_env = dict(os.environ)
+    merged_env.setdefault("SCHEMAS_ROOT", str(root / "schemas"))
+    if env:
+        merged_env.update(env)
+
+    p = subprocess.run(
+        argv,
+        cwd=str(root),
+        env=merged_env,
+        text=True,
+        capture_output=True,
+        timeout=timeout_s,
+        check=False,
+    )
+    return PolicyCliRun(argv=argv, returncode=p.returncode, stdout=p.stdout, stderr=p.stderr)
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
