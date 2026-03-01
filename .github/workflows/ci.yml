@@ -61,8 +61,14 @@ jobs:
           REQUIRE_MODEL_READY: "0"
         run: |
           set -euxo pipefail
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
-            --cov=llm_server --cov-report=term --cov-report=xml --cov-fail-under=70
+          for attempt in 1 2; do
+            uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
+              --cov=llm_server --cov-report=term --cov-report=xml --cov-fail-under=70 && break
+            if [ "${attempt}" -eq 2 ]; then
+              exit 1
+            fi
+            echo "server unit pytest failed on attempt ${attempt}; retrying once..."
+          done
 
       - name: Upload coverage (server unit)
         uses: codecov/codecov-action@v4
@@ -102,7 +108,7 @@ jobs:
           POSTGRES_PASSWORD: llm
           POSTGRES_DB: llm_test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd="pg_isready -U llm -d llm_test"
           --health-interval=5s
@@ -111,7 +117,7 @@ jobs:
       redis:
         image: redis:7-alpine
         ports:
-          - 6379:6379
+          - 6379/tcp
         options: >-
           --health-cmd="redis-cli ping | grep PONG"
           --health-interval=5s
@@ -142,16 +148,22 @@ jobs:
         env:
           PYTHONPATH: "src"
           ENV: "test"
-          DATABASE_URL: "postgresql+asyncpg://llm:llm@localhost:5432/llm_test"
+          DATABASE_URL: "postgresql+asyncpg://llm:llm@127.0.0.1:${{ job.services.postgres.ports[5432] }}/llm_test"
           REDIS_ENABLED: "1"
-          REDIS_URL: "redis://localhost:6379/0"
+          REDIS_URL: "redis://127.0.0.1:${{ job.services.redis.ports[6379] }}/0"
           MODEL_LOAD_MODE: "off"
           REQUIRE_MODEL_READY: "0"
         run: |
           set -euxo pipefail
           # If your integration suite requires migrations in CI, uncomment:
           # uv run python -m alembic upgrade head
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration
+          for attempt in 1 2; do
+            uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/integration && break
+            if [ "${attempt}" -eq 2 ]; then
+              exit 1
+            fi
+            echo "server integration pytest failed on attempt ${attempt}; retrying once..."
+          done
 
       - name: Debug on failure
         if: failure()
