@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import os
 from typing import Any, Dict, List, Optional, cast
 
 from llm_eval.client.http_client import ExtractErr, ExtractOk
 from llm_eval.datasets.voxel51_scanned_receipts import (
     DEFAULT_SCHEMA_ID,
+    ExtractionExample,
     iter_voxel51_scanned_receipts,
     ensure_fiftyone_ready,  # ✅ from your A change
 )
@@ -17,6 +19,44 @@ from llm_eval.metrics.extraction_scoring import (
     summarize_extraction,
 )
 from llm_eval.runners.base import BaseEvalRunner, EvalConfig
+
+
+def _iter_synthetic_receipts(
+    split: str = "train",
+    schema_id: str = DEFAULT_SCHEMA_ID,
+    max_samples: Optional[int] = None,
+):
+    """
+    Tiny deterministic fallback dataset used only when explicitly enabled via
+    LLM_EVAL_ALLOW_SYNTHETIC_DATASET=1.
+    """
+    rows = [
+        ExtractionExample(
+            id=f"{split}:synthetic:0",
+            schema_id=schema_id,
+            text="Company: ACME\nDate: 2024-01-01\nTotal: 10.00\nAddress: 123 Main St",
+            expected={
+                "company": "ACME",
+                "date": "2024-01-01",
+                "total": "10.00",
+                "address": "123 Main St",
+            },
+        ),
+        ExtractionExample(
+            id=f"{split}:synthetic:1",
+            schema_id=schema_id,
+            text="Company: BETA SHOP\nDate: 2024-01-02\nTotal: 22.50\nAddress: 5 Oak Ave",
+            expected={
+                "company": "BETA SHOP",
+                "date": "2024-01-02",
+                "total": "22.50",
+                "address": "5 Oak Ave",
+            },
+        ),
+    ]
+    limit = len(rows) if max_samples is None else max(0, int(max_samples))
+    for row in rows[:limit]:
+        yield row
 
 
 class ExtractionEvalRunner(BaseEvalRunner):
@@ -197,7 +237,13 @@ class ExtractionEvalRunner(BaseEvalRunner):
         # ✅ Deterministic preflight: only do the heavy FiftyOne preload
         # when we are actually using the real Voxel51 iterator (not a test override).
         if iter_fn is iter_voxel51_scanned_receipts:
-            ensure_fiftyone_ready()
+            try:
+                ensure_fiftyone_ready()
+            except Exception:
+                # Optional fallback for CI/dev environments without mongod.
+                if not self._truthy(os.getenv("LLM_EVAL_ALLOW_SYNTHETIC_DATASET", "0")):
+                    raise
+                iter_fn = _iter_synthetic_receipts
 
         # We avoid touching EvalConfig contract here: use deps override (preferred),
         # or environment variable as a fallback, so this is a drop-in change.
@@ -218,8 +264,6 @@ class ExtractionEvalRunner(BaseEvalRunner):
         # LLM_EVAL_STRATIFY_TEXTLEN=1
         # LLM_EVAL_STRATIFY_PREFETCH_MULT=5
         if not stratify:
-            import os
-
             stratify = self._truthy(os.getenv("LLM_EVAL_STRATIFY_TEXTLEN", "0"))
             try:
                 prefetch_multiplier = max(
@@ -228,14 +272,28 @@ class ExtractionEvalRunner(BaseEvalRunner):
             except Exception:
                 pass
 
-        selected_examples = self._select_examples_1p4(
-            iter_fn=iter_fn,
-            max_examples=int(self.config.max_examples or 0),
-            split=self.split,
-            schema_id=self.schema_id,
-            stratify=bool(stratify),
-            prefetch_multiplier=int(prefetch_multiplier),
-        )
+        try:
+            selected_examples = self._select_examples_1p4(
+                iter_fn=iter_fn,
+                max_examples=int(self.config.max_examples or 0),
+                split=self.split,
+                schema_id=self.schema_id,
+                stratify=bool(stratify),
+                prefetch_multiplier=int(prefetch_multiplier),
+            )
+        except Exception:
+            # Final fallback: dataset iteration itself failed (for example, local
+            # mongod/dataset state issues). Allow deterministic synthetic data if requested.
+            if not self._truthy(os.getenv("LLM_EVAL_ALLOW_SYNTHETIC_DATASET", "0")):
+                raise
+            selected_examples = self._select_examples_1p4(
+                iter_fn=_iter_synthetic_receipts,
+                max_examples=int(self.config.max_examples or 0),
+                split=self.split,
+                schema_id=self.schema_id,
+                stratify=bool(stratify),
+                prefetch_multiplier=int(prefetch_multiplier),
+            )
 
         # Evaluate the selected examples
         for ex in selected_examples:

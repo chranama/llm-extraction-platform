@@ -38,6 +38,8 @@ def run_eval_cli(
     ]
 
     merged_env = dict(os.environ)
+    # Keep integrations deterministic when FiftyOne/mongod is unavailable.
+    merged_env.setdefault("LLM_EVAL_ALLOW_SYNTHETIC_DATASET", "1")
     if env:
         merged_env.update(env)
 

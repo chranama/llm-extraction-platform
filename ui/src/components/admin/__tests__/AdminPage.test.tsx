@@ -1,7 +1,7 @@
 // ui/src/components/admin/__tests__/AdminPage.test.tsx
 import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import { AdminPage } from "../AdminPage";
 
@@ -26,11 +26,6 @@ vi.mock("../../../lib/api", async () => {
 describe("AdminPage", () => {
   beforeEach(() => {
     adminLoadModel.mockReset();
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("renders header + panels", () => {
@@ -56,7 +51,9 @@ describe("AdminPage", () => {
     expect(await screen.findByText("Model already loaded")).toBeInTheDocument();
 
     // should clear after ~2.5s
-    vi.advanceTimersByTime(2600);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2600));
+    });
     await waitFor(() => {
       expect(screen.queryByText("Model already loaded")).not.toBeInTheDocument();
     });

@@ -15,15 +15,30 @@ vi.mock("../../../lib/api", async () => {
     ...mod,
     callExtract: vi.fn(),
     callGenerate: vi.fn(),
+    listModels: vi.fn(),
     listSchemas: vi.fn(),
     getSchema: vi.fn(),
-    getCapabilities: vi.fn(),
   };
 });
 
 import { Playground } from "../Playground";
 import * as api from "../../../lib/api";
-import { ApiError, type SchemaIndexItem } from "../../../lib/api";
+import { ApiError } from "../../../lib/api";
+import { copyToClipboard } from "../utils";
+import {
+  makeExtractResponse,
+  makeGenerateResponse,
+  makeModelsResponse,
+  makeSchemaIndex,
+} from "../../../test/factories/api";
+
+vi.mock("../utils", async () => {
+  const mod = await vi.importActual<typeof import("../utils")>("../utils");
+  return {
+    ...mod,
+    copyToClipboard: vi.fn(),
+  };
+});
 
 // ---- stub child components to avoid testing their UI here ----
 vi.mock("../ExtractPanel", () => ({
@@ -36,9 +51,17 @@ vi.mock("../ExtractPanel", () => ({
       <div>autoBaseline:{String(props.autoBaseline)}</div>
       <div>canSetBaseline:{String(props.canSetBaseline)}</div>
       <div>canClearBaseline:{String(props.canClearBaseline)}</div>
+      {props.activeError ? <div>Error: {props.activeError}</div> : null}
 
       <button onClick={props.onRunExtract} disabled={props.extractDisabled}>
         Run Extract
+      </button>
+      <button onClick={props.onCopyCurl}>Copy Extract Curl</button>
+      <button onClick={props.onSetBaseline} disabled={!props.canSetBaseline}>
+        Set Baseline
+      </button>
+      <button onClick={props.onClearBaseline} disabled={!props.canClearBaseline}>
+        Clear Baseline
       </button>
     </div>
   ),
@@ -51,6 +74,7 @@ vi.mock("../GeneratePanel", () => ({
       <button onClick={props.onRun} disabled={props.loading}>
         Run Generate
       </button>
+      <button onClick={props.onCopyCurl}>Copy Generate Curl</button>
       {props.activeError ? <div>Error: {props.activeError}</div> : null}
       <pre data-testid="gen-output">{props.genOutput}</pre>
     </div>
@@ -68,6 +92,8 @@ vi.mock("../SchemaInspector", () => ({
       {props.schemaJsonError ? (
         <div>SchemaError: {props.schemaJsonError}</div>
       ) : null}
+      <button onClick={props.onReload}>Reload Schema</button>
+      <button onClick={props.onCopyJson}>Copy Schema JSON</button>
     </div>
   ),
 }));
@@ -75,37 +101,28 @@ vi.mock("../SchemaInspector", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
 
-  // Default: full capabilities so tests that rely on Extract work unless they override.
-  (api.getCapabilities as any).mockResolvedValue({
-    generate: true,
-    extract: true,
-    mode: "full",
-  });
+  // Default: extract-enabled deployment.
+  (api.listModels as any).mockResolvedValue(makeModelsResponse());
+  (copyToClipboard as any).mockResolvedValue(true);
 });
-
-function schemas(...ids: string[]): SchemaIndexItem[] {
-  return ids.map((schema_id) => ({ schema_id }));
-}
 
 describe("Playground (capability gating)", () => {
   it("generate-only: does NOT call listSchemas/getSchema, Extract tab is disabled, Generate works", async () => {
     const user = userEvent.setup();
 
-    (api.getCapabilities as any).mockResolvedValueOnce({
-      generate: true,
-      extract: false,
-      mode: "generate-only",
-    });
+    (api.listModels as any).mockResolvedValueOnce(
+      makeModelsResponse({
+        deployment_capabilities: { generate: true, extract: false },
+      })
+    );
 
-    (api.callGenerate as any).mockResolvedValueOnce({
-      model: "m",
-      output: "Hello!",
-      cached: false,
-    });
+    (api.callGenerate as any).mockResolvedValueOnce(
+      makeGenerateResponse({ model: "m", output: "Hello!" })
+    );
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
 
     expect(api.listSchemas).toHaveBeenCalledTimes(0);
     expect(api.getSchema).toHaveBeenCalledTimes(0);
@@ -136,13 +153,13 @@ describe("Playground (capability gating)", () => {
 
   it("extract-enabled: loads schemas on mount, sorts them, selects first schemaId, loads schema JSON (after switching to Extract)", async () => {
     (api.listSchemas as any).mockResolvedValueOnce(
-      schemas("z_schema", "a_schema", "m_schema")
+      makeSchemaIndex("z_schema", "a_schema", "m_schema")
     );
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
 
     // Switch to Extract tab so ExtractPanel + SchemaInspector render
@@ -169,12 +186,12 @@ describe("Playground (capability gating)", () => {
   });
 
   it("extract-enabled: Extract tab is clickable and shows ExtractPanel", async () => {
-    (api.listSchemas as any).mockResolvedValueOnce(schemas("a_schema"));
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
 
     const extractTab = screen.getByRole("button", { name: "Extract" });
@@ -190,18 +207,16 @@ describe("Playground (capability gating)", () => {
   it("Generate flow: switches tabs, calls callGenerate with payload, renders output", async () => {
     const user = userEvent.setup();
 
-    (api.listSchemas as any).mockResolvedValueOnce(schemas("sroie_receipt_v1"));
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("sroie_receipt_v1"));
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
-    (api.callGenerate as any).mockResolvedValueOnce({
-      model: "m",
-      output: "Hello!",
-      cached: false,
-    });
+    (api.callGenerate as any).mockResolvedValueOnce(
+      makeGenerateResponse({ model: "m", output: "Hello!" })
+    );
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
 
@@ -230,7 +245,7 @@ describe("Playground (capability gating)", () => {
   it("Generate error flow: ApiError with bodyJson is shown via prettyJson(bodyJson)", async () => {
     const user = userEvent.setup();
 
-    (api.listSchemas as any).mockResolvedValueOnce(schemas("sroie_receipt_v1"));
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("sroie_receipt_v1"));
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
     const errBody = { code: "bad_request", message: "nope", extra: { why: "x" } };
@@ -240,7 +255,7 @@ describe("Playground (capability gating)", () => {
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
 
@@ -267,7 +282,7 @@ describe("Playground (capability gating)", () => {
   });
 
   it("schema JSON load error: ApiError with bodyJson is rendered in SchemaInspector props (extract-enabled, after switching to Extract)", async () => {
-    (api.listSchemas as any).mockResolvedValueOnce(schemas("a_schema"));
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
     const errBody = { code: "not_found", message: "missing schema" };
     (api.getSchema as any).mockRejectedValueOnce(
       new ApiError(404, JSON.stringify(errBody), errBody)
@@ -275,7 +290,7 @@ describe("Playground (capability gating)", () => {
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
 
@@ -298,7 +313,9 @@ describe("Playground (capability gating)", () => {
   it("Extract happy path (extract-enabled): first successful run sets baseline when autoBaseline=true", async () => {
     const user = userEvent.setup();
 
-    (api.listSchemas as any).mockResolvedValueOnce(schemas("sroie_receipt_v1"));
+    (api.listSchemas as any).mockResolvedValueOnce(
+      makeSchemaIndex("sroie_receipt_v1")
+    );
     (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
 
     (api.callExtract as any).mockResolvedValueOnce({
@@ -311,7 +328,7 @@ describe("Playground (capability gating)", () => {
 
     render(<Playground />);
 
-    await waitFor(() => expect(api.getCapabilities).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
 
     // Now actually render ExtractPanel
@@ -341,5 +358,123 @@ describe("Playground (capability gating)", () => {
         within(screen.getByTestId("extract-panel")).getByText("canClearBaseline:true")
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows model capabilities error banner when listModels fails", async () => {
+    (api.listModels as any).mockRejectedValueOnce(new Error("models down"));
+    render(<Playground />);
+
+    expect(await screen.findByText(/Unable to load deployment capabilities/i)).toBeInTheDocument();
+    expect(screen.getByText(/models down/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Extract \(disabled\)/i })).toBeDisabled();
+  });
+
+  it("extract-disabled mode shows generate banner and details action remains safe", async () => {
+    (api.listModels as any).mockResolvedValueOnce(
+      makeModelsResponse({
+        deployment_capabilities: { generate: true, extract: false },
+        models: [{ id: "demo-model", default: true, capabilities: { generate: true, extract: false } }],
+      })
+    );
+
+    render(<Playground />);
+
+    expect(await screen.findByText(/Extract: disabled/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Details/i }));
+    expect(await screen.findByTestId("generate-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/Extraction disabled/i)).toBeNull();
+  });
+
+  it("shows extract error when listSchemas fails", async () => {
+    (api.listSchemas as any).mockRejectedValueOnce(new Error("schemas failed"));
+    render(<Playground />);
+
+    await waitFor(() => expect(api.listModels).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Error:\s*schemas failed/i)).toBeInTheDocument();
+  });
+
+  it("reload schema success shows toast and reload schema failure renders error", async () => {
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
+    (api.getSchema as any)
+      .mockResolvedValueOnce({ type: "object" })
+      .mockRejectedValueOnce(new ApiError(500, "boom", { code: "x", message: "reload failed" }));
+
+    render(<Playground />);
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Reload Schema" }));
+
+    await waitFor(() => expect(api.getSchema).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/SchemaError:/i)).toBeInTheDocument();
+  });
+
+  it("extract and generate generic errors are surfaced", async () => {
+    const user = userEvent.setup();
+
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
+    (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
+    (api.callExtract as any).mockRejectedValueOnce(new Error("extract exploded"));
+    (api.callGenerate as any).mockRejectedValueOnce(new Error("generate exploded"));
+
+    render(<Playground />);
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await user.click(screen.getByRole("button", { name: "Run Extract" }));
+    expect(await screen.findByText(/Error:\s*extract exploded/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await user.click(screen.getByRole("button", { name: "Run Generate" }));
+    expect(await screen.findByText(/Error:\s*generate exploded/i)).toBeInTheDocument();
+  });
+
+  it("set and clear baseline paths show toast messages", async () => {
+    const user = userEvent.setup();
+
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
+    (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
+    (api.callExtract as any).mockResolvedValueOnce(
+      makeExtractResponse({
+        schema_id: "a_schema",
+        model: "m",
+        data: { total: "10.00" },
+      })
+    );
+
+    render(<Playground />);
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    await user.click(screen.getByRole("button", { name: "Run Extract" }));
+    await waitFor(() => expect(api.callExtract).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "Set Baseline" }));
+    expect(await screen.findByText(/Baseline set/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear Baseline" }));
+    expect(await screen.findByText(/Baseline cleared/i)).toBeInTheDocument();
+  });
+
+  it("copy failures show toast in extract, generate, and schema copy actions", async () => {
+    (api.listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("a_schema"));
+    (api.getSchema as any).mockResolvedValueOnce({ type: "object" });
+    (copyToClipboard as any).mockResolvedValue(false);
+
+    render(<Playground />);
+    await waitFor(() => expect(api.listSchemas).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy Extract Curl" }));
+    expect(await screen.findByText(/Copy failed/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy Schema JSON" }));
+    expect(await screen.findByText(/Copy failed/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Generate Curl" }));
+    expect(await screen.findByText(/Copy failed/i)).toBeInTheDocument();
   });
 });

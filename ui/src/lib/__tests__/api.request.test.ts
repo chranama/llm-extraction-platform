@@ -19,7 +19,7 @@ describe("api.ts requestJson via exported API functions", () => {
 
   test("callGenerate posts to /v1/generate and returns parsed JSON", async () => {
     const mod = await import("../api");
-    mod.setApiBaseUrl("http://example.com"); // becomes http://example.com/api
+    mod.setApiBaseUrl("http://example.com");
 
     mockFetchOnce(
       200,
@@ -34,7 +34,7 @@ describe("api.ts requestJson via exported API functions", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const [url, init] = (globalThis.fetch as any).mock.calls[0];
 
-    expect(url).toBe("http://example.com/api/v1/generate");
+    expect(url).toBe("http://example.com/v1/generate");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
     expect(JSON.parse(init.body)).toMatchObject(req);

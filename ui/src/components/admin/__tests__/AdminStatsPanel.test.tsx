@@ -43,10 +43,10 @@ describe("AdminStatsPanel", () => {
 
     await waitFor(() => expect(adminGetStats).toHaveBeenCalledWith(30));
 
-    expect(screen.getByText(/total requests:/i)).toHaveTextContent("2");
-    expect(screen.getByText(/prompt tokens:/i)).toHaveTextContent("10");
-    expect(screen.getByText(/completion tokens:/i)).toHaveTextContent("20");
-    expect(screen.getByText(/avg latency:/i)).toHaveTextContent("12.3");
+    expect(screen.getByText(/total requests:/i).parentElement).toHaveTextContent("2");
+    expect(screen.getByText(/prompt tokens:/i).parentElement).toHaveTextContent("10");
+    expect(screen.getByText(/completion tokens:/i).parentElement).toHaveTextContent("20");
+    expect(screen.getByText(/avg latency:/i).parentElement).toHaveTextContent("12.3");
 
     expect(screen.getByText("m1")).toBeInTheDocument();
   });
@@ -123,6 +123,8 @@ describe("AdminStatsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
     await waitFor(() => expect(adminGetStats).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/total requests:/i)).toHaveTextContent("5");
+    await waitFor(() => {
+      expect(screen.getByText(/total requests:/i).parentElement).toHaveTextContent("5");
+    });
   });
 });

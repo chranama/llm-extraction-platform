@@ -7,16 +7,16 @@ describe("api.ts base URL normalization", async () => {
     expect(mod.getApiBaseUrl()).toBe("/api");
   });
 
-  test("setApiBaseUrl('http://localhost:8000') appends /api", async () => {
+  test("setApiBaseUrl('http://localhost:8000') keeps host-only base", async () => {
     const mod = await import("../api");
     mod.setApiBaseUrl("http://localhost:8000");
-    expect(mod.getApiBaseUrl()).toBe("http://localhost:8000/api");
+    expect(mod.getApiBaseUrl()).toBe("http://localhost:8000");
   });
 
-  test("setApiBaseUrl('http://localhost:8000/') strips trailing slash and appends /api", async () => {
+  test("setApiBaseUrl('http://localhost:8000/') strips trailing slash", async () => {
     const mod = await import("../api");
     mod.setApiBaseUrl("http://localhost:8000/");
-    expect(mod.getApiBaseUrl()).toBe("http://localhost:8000/api");
+    expect(mod.getApiBaseUrl()).toBe("http://localhost:8000");
   });
 
   test("setApiBaseUrl('http://localhost:8000/api') keeps /api (no double append)", async () => {

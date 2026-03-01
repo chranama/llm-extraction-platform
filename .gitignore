@@ -180,7 +180,11 @@ docker-compose.override.yml
 # Test Coverage
 # =========================
 .coverage
+*/coverage.xml
 htmlcov/
+
+# Pytest/JUnit transient reports
+integrations/pytest-*.xml
 
 # =========================
 # Archives
@@ -195,6 +199,9 @@ htmlcov/
 ui/node_modules/
 ui/dist/
 ui/.vite/
+ui/coverage/
+ui/test-results/
+ui/playwright-report/
 
 # UI env files should never be committed (except example/template)
 ui/.env

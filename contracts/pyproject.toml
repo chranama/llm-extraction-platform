@@ -9,6 +9,11 @@ dependencies = [
   "jsonschema>=4.21,<5",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -28,3 +33,7 @@ packages = ["llm_contracts"]
 # (Optional but nice) make sdists include the source package too
 [tool.hatch.build.targets.sdist]
 include = ["src/llm_contracts/**", "pyproject.toml", "README*"]
+
+[tool.pytest.ini_options]
+addopts = "-q -ra --strict-markers"
+testpaths = ["tests"]

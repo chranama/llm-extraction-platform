@@ -21,10 +21,10 @@ vi.mock("../../../lib/api", () => {
   return {
     callExtract: vi.fn(),
     callGenerate: vi.fn(),
+    listModels: vi.fn(),
     listSchemas: vi.fn(),
     getSchema: vi.fn(),
     getApiBaseUrl: vi.fn(),
-    getCapabilities: vi.fn(),
     ApiError,
   };
 });
@@ -40,12 +40,17 @@ vi.mock("../utils", async () => {
 import {
   callExtract,
   callGenerate,
+  listModels,
   listSchemas,
   getSchema,
   getApiBaseUrl,
-  getCapabilities,
 } from "../../../lib/api";
 import { copyToClipboard } from "../utils";
+import {
+  makeExtractResponse,
+  makeModelsResponse,
+  makeSchemaIndex,
+} from "../../../test/factories/api";
 
 function mockSchemaJson() {
   return {
@@ -88,20 +93,14 @@ async function ensureExtractTabVisible(user?: ReturnType<typeof userEvent.setup>
 }
 
 async function bootstrapWithSchemas() {
-  // Full mode by default unless overridden in a test
-  (getCapabilities as any).mockResolvedValueOnce({
-    generate: true,
-    extract: true,
-    mode: "full",
-  });
+  (listModels as any).mockResolvedValueOnce(makeModelsResponse());
 
-  (listSchemas as any).mockResolvedValueOnce([{ schema_id: "b" }, { schema_id: "a" }]);
+  (listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("b", "a"));
   (getSchema as any).mockResolvedValueOnce(mockSchemaJson());
 
   render(<Playground />);
 
-  // Capabilities gate happens before schema boot now
-  await waitFor(() => expect(getCapabilities).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(listModels).toHaveBeenCalledTimes(1));
 
   // Schemas only load when extract is enabled, but Extract UI is only rendered in Extract mode.
   // So: click Extract tab first, then assert schema boot.
@@ -116,12 +115,8 @@ describe("Playground integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getApiBaseUrl as any).mockReturnValue("/api");
-    // Default for tests that *don’t* use bootstrapWithSchemas()
-    (getCapabilities as any).mockResolvedValue({
-      generate: true,
-      extract: true,
-      mode: "full",
-    });
+    // Default for tests that don't use bootstrapWithSchemas()
+    (listModels as any).mockResolvedValue(makeModelsResponse());
   });
 
   afterEach(() => {
@@ -143,13 +138,13 @@ describe("Playground integration", () => {
   it("extract happy path: calls callExtract with correct payload, renders output, auto-baseline enables Clear", async () => {
     await bootstrapWithSchemas();
 
-    (callExtract as any).mockResolvedValueOnce({
-      schema_id: "a",
-      model: "mock-model",
-      cached: false,
-      repair_attempted: false,
-      data: { total: "$12.34" },
-    });
+    (callExtract as any).mockResolvedValueOnce(
+      makeExtractResponse({
+        schema_id: "a",
+        model: "mock-model",
+        data: { total: "$12.34" },
+      })
+    );
 
     const user = userEvent.setup();
 
@@ -203,13 +198,9 @@ describe("Playground integration", () => {
     // IMPORTANT: fake timers before render
     vi.useFakeTimers();
 
-    (getCapabilities as any).mockResolvedValueOnce({
-      generate: true,
-      extract: true,
-      mode: "full",
-    });
+    (listModels as any).mockResolvedValueOnce(makeModelsResponse());
 
-    (listSchemas as any).mockResolvedValueOnce([{ schema_id: "b" }, { schema_id: "a" }]);
+    (listSchemas as any).mockResolvedValueOnce(makeSchemaIndex("b", "a"));
     (getSchema as any).mockResolvedValueOnce(mockSchemaJson());
     (getApiBaseUrl as any).mockReturnValue("/api");
     (copyToClipboard as any).mockResolvedValueOnce(true);
@@ -225,7 +216,7 @@ describe("Playground integration", () => {
 
     render(<Playground />);
 
-    // let capabilities + initial effects settle
+    // let initial effects settle
     await flush(4);
 
     // Ensure we are in Extract mode so the combobox + Copy curl exist

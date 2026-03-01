@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euxo pipefail
           uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
-            --cov=llm_server --cov-report=xml
+            --cov=llm_server --cov-report=term --cov-report=xml --cov-fail-under=70
 
       - name: Upload coverage (server unit)
         uses: codecov/codecov-action@v4
@@ -209,7 +209,15 @@ jobs:
           PYTHONPATH: "src"
         run: |
           set -euxo pipefail
-          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
+            --cov=llm_policy --cov-report=term --cov-report=xml --cov-fail-under=75
+
+      - name: Upload coverage (policy unit)
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: policy/coverage.xml
+          fail_ci_if_error: false
 
       - name: Debug on failure
         if: failure()
@@ -293,13 +301,13 @@ jobs:
           set -euxo pipefail
           npm ci
 
-      - name: Run tests
+      - name: Run tests with coverage gate
         env:
           VITE_API_KEY: "dev"
           VITE_API_BASE_URL: "/api"
         run: |
           set -euxo pipefail
-          npm test
+          npm run test:coverage
 
       - name: Build (optional but useful)
         run: |
@@ -311,6 +319,64 @@ jobs:
         run: |
           set -euxo pipefail
           echo "=== ui debug ==="
+          node -v
+          npm -v
+          cat package.json
+
+
+  # -------------------------
+  # UI: Playwright E2E
+  # -------------------------
+  ui_e2e:
+    name: ui (e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install deps
+        run: |
+          set -euxo pipefail
+          npm ci
+
+      - name: Install Playwright browser (Chromium)
+        run: |
+          set -euxo pipefail
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E
+        env:
+          CI: "true"
+        run: |
+          set -euxo pipefail
+          npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-playwright-report
+          path: |
+            ui/playwright-report
+            ui/test-results
+          if-no-files-found: ignore
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== ui e2e debug ==="
           node -v
           npm -v
           cat package.json
@@ -357,26 +423,20 @@ jobs:
           set -euxo pipefail
           uv run black --check .
 
-      - name: Run eval unit tests (unmarked only)
+      - name: Run eval unit tests
         env:
           PYTHONPATH: "src"
         run: |
           set -euxo pipefail
-          # Temporary excludes while eval tests are rewritten in batches.
           uv run python -m pytest -q -ra --maxfail=1 --disable-warnings tests/unit \
-            --ignore=tests/unit/cli/test_cli_contract.py \
-            --ignore=tests/unit/cli/test_cli_debug_print_does_not_crash.py \
-            --ignore=tests/unit/cli/test_cli_disabled_task.py \
-            --ignore=tests/unit/cli/test_cli_list_tasks.py \
-            --ignore=tests/unit/cli/test_cli_persistence.py \
-            --ignore=tests/unit/cli/test_cli_persistence_edges.py \
-            --ignore=tests/unit/cli/test_cli_reports_persistence.py \
-            --ignore=tests/unit/runners/test_runner_contracts.py \
-            --ignore=tests/unit/runners/test_runner_empty_dataset.py \
-            --ignore=tests/unit/runners/test_runner_error_rows.py \
-            --ignore=tests/unit/runners/test_runner_http_calls.py \
-            --ignore=tests/unit/runners/test_runner_metrics_sanity.py \
-            --ignore=tests/unit/runners/test_runner_patchability.py
+            --cov=llm_eval --cov-report=term --cov-report=xml --cov-fail-under=85
+
+      - name: Upload coverage (eval unit)
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: eval/coverage.xml
+          fail_ci_if_error: false
 
       - name: Debug on failure
         if: failure()
@@ -485,13 +545,185 @@ jobs:
           INTEGRATIONS_TIMEOUT: "30"
         run: |
           set -euxo pipefail
-          uv run pytest -q -ra --maxfail=1 --disable-warnings "${{ matrix.lane.path }}"
+          uv run pytest -q -ra --maxfail=1 --disable-warnings \
+            -m "not server_live" \
+            --junitxml "pytest-${{ matrix.lane.name }}.xml" \
+            "${{ matrix.lane.path }}"
+
+      - name: Enforce no unexpected skips (core integrations lanes)
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = Path("pytest-${{ matrix.lane.name }}.xml")
+          root = ET.parse(report).getroot()
+          skipped = sum(int(ts.attrib.get("skipped", "0")) for ts in root.iter("testsuite"))
+          if skipped:
+              raise SystemExit(f"Unexpected skipped tests in core lane: {skipped} (report={report})")
+          print(f"skip-check ok: 0 skips in {report}")
+          PY
+
+      - name: Upload integrations junit report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrations-junit-${{ matrix.lane.name }}
+          path: integrations/pytest-${{ matrix.lane.name }}.xml
+          if-no-files-found: ignore
 
       - name: Debug on failure
         if: failure()
         run: |
           set -euxo pipefail
           echo "=== integrations lane debug (${{ matrix.lane.path }}) ==="
+          uv --version
+          python -V
+          uv pip list
+          git status --porcelain || true
+
+
+  # -------------------------
+  # Integrations: live server lane (optional)
+  # -------------------------
+  integrations_server_live:
+    name: integrations (server-live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: integrations
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (integrations)
+        run: |
+          set -euxo pipefail
+          uv sync
+
+      - name: Resolve live lane inputs
+        id: live_inputs
+        env:
+          LIVE_BASE_URL: "${{ vars.INTEGRATIONS_BASE_URL }}"
+          LIVE_API_KEY: "${{ secrets.INTEGRATIONS_API_KEY }}"
+        run: |
+          set -euxo pipefail
+          if [ -n "${LIVE_BASE_URL}" ] && [ -n "${LIVE_API_KEY}" ]; then
+            echo "run_live=true" >> "$GITHUB_OUTPUT"
+            echo "base_url=${LIVE_BASE_URL}" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_live=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Live integrations skipped::Set vars.INTEGRATIONS_BASE_URL and secrets.INTEGRATIONS_API_KEY to enable integrations/test_server_live."
+          fi
+
+      - name: Run live server integration tests
+        if: steps.live_inputs.outputs.run_live == 'true'
+        env:
+          PYTHONPATH: "${{ github.workspace }}"
+          INTEGRATIONS_TIMEOUT: "30"
+          API_KEY: "${{ secrets.INTEGRATIONS_API_KEY }}"
+        run: |
+          set -euxo pipefail
+          uv run pytest -q -ra --maxfail=1 --disable-warnings \
+            --base-url "${{ steps.live_inputs.outputs.base_url }}" \
+            --api-key "${API_KEY}" \
+            --junitxml pytest-server-live.xml \
+            test_server_live
+
+      - name: Upload live integrations junit report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrations-junit-server-live
+          path: integrations/pytest-server-live.xml
+          if-no-files-found: ignore
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== integrations live debug ==="
+          uv --version
+          python -V
+          uv pip list
+          git status --porcelain || true
+
+
+  # -------------------------
+  # Repo-level auxiliary test suites
+  # -------------------------
+  repo_aux_tests:
+    name: repo-tests (${{ matrix.suite.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - name: cli
+            path: cli/tests
+          - name: config
+            path: config/tests
+          - name: contracts
+            path: contracts/tests
+          - name: deploy
+            path: deploy/tests
+          - name: schemas
+            path: schemas/tests
+          - name: simulations
+            path: simulations/tests
+          - name: tools
+            path: tools/tests
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: |
+          set -euxo pipefail
+          pipx install uv
+          uv --version
+          python -V
+
+      - name: Sync deps (repo)
+        run: |
+          set -euxo pipefail
+          uv sync --extra dev
+
+      - name: Run auxiliary test suite
+        env:
+          PYTHONPATH: "${{ github.workspace }}"
+        run: |
+          set -euxo pipefail
+          uv run python -m pytest -q -ra --maxfail=1 --disable-warnings "${{ matrix.suite.path }}"
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set -euxo pipefail
+          echo "=== repo auxiliary tests debug (${{ matrix.suite.path }}) ==="
           uv --version
           python -V
           uv pip list
