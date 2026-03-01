@@ -154,7 +154,6 @@ async def test_admin_usage_aggregates_all_keys(
     other_headers,
 ):
     now = datetime.now(UTC)
-    admin_key = admin_headers["X-API-Key"]
     k1 = standard_headers["X-API-Key"]
     k2 = other_headers["X-API-Key"]
 

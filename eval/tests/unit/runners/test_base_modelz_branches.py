@@ -20,7 +20,6 @@ def _deps(client: Any) -> RunnerDeps:
 
 
 def test_default_run_id_and_default_ensure_dir(tmp_path):
-    rid = BaseEvalRunner.__dict__["new_run_id"]
     # sanity only: default function yields UTC-ish id
     from llm_eval.runners import base as b
 

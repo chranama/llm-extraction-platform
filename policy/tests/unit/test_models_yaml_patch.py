@@ -70,7 +70,7 @@ def test_patch_models_yaml_is_idempotent(tmp_path: Path):
         },
     )
 
-    res1 = patch_models_yaml_extract_capability(
+    patch_models_yaml_extract_capability(
         path=path, model_id="m1", enable=True, profile="host-transformers"
     )
     # could still change assessment metadata first time; second call should settle

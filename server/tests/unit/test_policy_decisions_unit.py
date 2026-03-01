@@ -159,15 +159,6 @@ def test_policy_invalid_file_fail_closed_for_all_models(
 
 
 def test_to_backend_snapshot_normalizes_cap_and_extract_semantics():
-    s1 = PolicyDecisionSnapshot(
-        ok=True,
-        model_id="m1",
-        enable_extract=True,
-        generate_max_new_tokens_cap=32,
-        raw={},
-        source_path="/tmp/p.json",
-        error=None,
-    )
     # emulate contracts snapshot shape via SimpleNamespace
     from types import SimpleNamespace
 
