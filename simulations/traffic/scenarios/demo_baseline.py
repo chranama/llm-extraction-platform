@@ -32,80 +32,87 @@ def _baseline_max_new(cfg: TrafficConfig, *, prompt_size: str) -> int:
         try:
             v = int(cfg.max_new_tokens)
         except Exception:
-            v = 128
+            v = 64
     else:
-        # Conservative defaults for portable demos
-        v = 128 if prompt_size == "long" else 64
+        # Conservative defaults for control runs.
+        if prompt_size == "long":
+            v = 96
+        elif prompt_size == "medium":
+            v = 64
+        else:
+            v = 48
 
-    return max(1, min(int(v), 128))
+    return max(1, min(int(v), 96))
 
 
 def _build_requests(cfg: TrafficConfig) -> Iterable[RequestSpec]:
     seed = int(cfg.seed)
 
     # ------------------------------------------------------------
-    # Phase 0: Burst trio to validate baseline behavior
+    # Phase 0: quick warmup requests
     # ------------------------------------------------------------
-    heavy_prompt = _mk_prompt(0, seed=seed, size="long")
-    small_prompt = _mk_prompt(1, seed=seed, size="short")
+    short_prompt_a = _mk_prompt(0, seed=seed, size="short")
+    short_prompt_b = _mk_prompt(1, seed=seed, size="short")
+    medium_prompt = _mk_prompt(2, seed=seed, size="medium")
 
-    heavy_max_new = _baseline_max_new(cfg, prompt_size="long")
-    small_max_new = 8
+    warmup_short_max_new = 16
+    warmup_medium_max_new = 48
 
     temp = cfg.temperature if cfg.temperature is not None else 0.2
 
-    # H1
+    # W1
     yield RequestSpec(
         idx=0,
         endpoint="generate",
         payload={
-            "prompt": heavy_prompt,
+            "prompt": short_prompt_a,
             "cache": False,  # don't let cache hide behavior
             "model": cfg.model,
-            "max_new_tokens": heavy_max_new,
+            "max_new_tokens": warmup_short_max_new,
             "temperature": temp,
             "top_p": cfg.top_p,
             "top_k": cfg.top_k,
             "stop": cfg.stop,
         },
-        tags={"demo": "BASELINE", "phase": "burst", "kind": "H1", "prompt_size": "long"},
+        tags={"demo": "BASELINE", "phase": "warmup", "kind": "W1", "prompt_size": "short"},
     )
 
-    # H2
+    # W2
     yield RequestSpec(
         idx=1,
         endpoint="generate",
         payload={
-            "prompt": heavy_prompt,
+            "prompt": short_prompt_b,
             "cache": False,
             "model": cfg.model,
-            "max_new_tokens": heavy_max_new,
+            "max_new_tokens": warmup_short_max_new,
             "temperature": temp,
             "top_p": cfg.top_p,
             "top_k": cfg.top_k,
             "stop": cfg.stop,
         },
-        tags={"demo": "BASELINE", "phase": "burst", "kind": "H2", "prompt_size": "long"},
+        tags={"demo": "BASELINE", "phase": "warmup", "kind": "W2", "prompt_size": "short"},
     )
 
-    # S1
+    # W3
     yield RequestSpec(
         idx=2,
         endpoint="generate",
         payload={
-            "prompt": small_prompt,
+            "prompt": medium_prompt,
             "cache": False,
             "model": cfg.model,
-            "max_new_tokens": small_max_new,
+            "max_new_tokens": warmup_medium_max_new,
             "temperature": 0.0,
         },
-        tags={"demo": "BASELINE", "phase": "burst", "kind": "S1", "prompt_size": "short"},
+        tags={"demo": "BASELINE", "phase": "warmup", "kind": "W3", "prompt_size": "medium"},
     )
 
     # ------------------------------------------------------------
     # Phase 1: Normal open-loop traffic
     # ------------------------------------------------------------
-    prompt_size = str(cfg.prompt_size)
+    # Control path: keep baseline traffic short to avoid entering clamp territory.
+    prompt_size = "short"
     max_new = _baseline_max_new(cfg, prompt_size=prompt_size)
     temperature = cfg.temperature if cfg.temperature is not None else 0.2
 

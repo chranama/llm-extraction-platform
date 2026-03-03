@@ -387,7 +387,7 @@ profiles:
         deployment_key: docker-llama--smollm2-360m-q8
         backend_constraints: { llamacpp_model_selector: "fixed" }
         llamacpp:
-          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://host.docker.internal:8084}
+          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://llama_server:8080}
           timeout_seconds: 30
           model_name: "SmolLM2-360M-Instruct"
         capabilities: { generate: true, extract: false }

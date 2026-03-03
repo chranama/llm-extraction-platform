@@ -24,7 +24,10 @@ from llm_server.services.llm_runtime.llm_loader import RuntimeModelLoader
 from llm_server.services.limits.early_reject_middleware import EarlyRejectGenerateMiddleware
 
 # NEW: config contracts validation
-from llm_contracts.config import validate_assessment_for_extract, validate_models_config
+from llm_contracts.config.models_config import (
+    validate_assessment_for_extract,
+    validate_models_config,
+)
 
 _REQUEST_ID_HEADER = "X-Request-ID"
 

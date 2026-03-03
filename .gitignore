@@ -45,6 +45,11 @@ weights/
 # ---- Allow curated model tooling directory ----
 !tools/models/
 !tools/models/**
+!server/src/llm_server/services/api_deps/models/
+!server/src/llm_server/services/api_deps/models/**
+# Keep generated Python artifacts ignored within the unignored models package
+server/src/llm_server/services/api_deps/models/**/__pycache__/
+server/src/llm_server/services/api_deps/models/**/*.py[cod]
 
 # =========================
 # ML / Experiment Artifacts

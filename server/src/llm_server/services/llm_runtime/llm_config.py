@@ -256,12 +256,15 @@ def _canonicalize_requested_profile(name: str) -> str:
     if strict:
         return n
 
+    app_profile = (os.environ.get("APP_PROFILE") or "").strip().lower()
+    llama_target = "docker-llama" if app_profile.startswith("docker") else "host-llama"
+
     aliases = {
         "host": "host-transformers",
         "docker": "docker-transformers",
         "docker-portable": "docker-transformers",
-        "llama-server": "host-llama",
-        "llama": "host-llama",
+        "llama-server": llama_target,
+        "llama": llama_target,
     }
     return aliases.get(n, n)
 
