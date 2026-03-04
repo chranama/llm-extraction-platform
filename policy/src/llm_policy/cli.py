@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -176,6 +177,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         required=True,
         help="Path to config/models.yaml to patch.",
+    )
+    mo_apply.add_argument(
+        "--out-models-yaml",
+        type=str,
+        default=None,
+        help=(
+            "Optional output path for patched models YAML. "
+            "If set, --models-yaml is treated as input and copied first."
+        ),
+    )
+    mo_apply.add_argument(
+        "--models-profile",
+        type=str,
+        default=None,
+        help=(
+            "Optional models profile to patch (e.g. host-transformers, docker-llama). "
+            "If omitted, patcher resolves profile from MODELS_PROFILE/APP_PROFILE."
+        ),
     )
     mo_apply.add_argument(
         "--model-id",
@@ -491,12 +510,21 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if res.decision.ok() else 2
 
         if args.subcmd == "apply":
+            models_yaml_target = args.models_yaml
+            if args.out_models_yaml:
+                src = Path(args.models_yaml).expanduser()
+                dst = Path(args.out_models_yaml).expanduser()
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(src, dst)
+                models_yaml_target = str(dst)
+
             apply_res = apply_model_onboarding(
-                models_yaml=args.models_yaml,
+                models_yaml=models_yaml_target,
                 model_id=args.model_id,
                 eval_run_dir=args.eval_run_dir,
                 threshold_profile=args.threshold_profile,
                 thresholds_root=args.thresholds_root,
+                patch_profile=args.models_profile,
                 verbose=not bool(args.quiet),
             )
             return 0 if bool(apply_res.ok) else 2

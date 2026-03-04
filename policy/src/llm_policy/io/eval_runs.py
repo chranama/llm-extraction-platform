@@ -378,8 +378,31 @@ def _load_summary(path: Path, *, issues: list[ContractIssue]) -> EvalSummary:
         )
         return EvalSummary.model_validate({"task": "unknown", "run_id": "unknown", "n_total": 0})
 
+    # Normalize permissive metrics/counts payloads into EvalSummary top-level fields.
+    # This keeps policy robust when summary.json is contract-valid but stores values
+    # under `metrics`/`counts` instead of flattened top-level keys.
     try:
-        return EvalSummary.model_validate(raw)
+        normalized = dict(raw)
+        metrics = normalized.get("metrics")
+        counts = normalized.get("counts")
+        if isinstance(metrics, dict):
+            for k in ("schema_validity_rate", "non_200_rate", "http_5xx_rate", "timeout_rate"):
+                if normalized.get(k) is None and metrics.get(k) is not None:
+                    normalized[k] = metrics.get(k)
+            if normalized.get("n_total") is None and metrics.get("n_total") is not None:
+                normalized["n_total"] = metrics.get("n_total")
+            if normalized.get("n_ok") is None and metrics.get("n_ok") is not None:
+                normalized["n_ok"] = metrics.get("n_ok")
+        if isinstance(counts, dict):
+            if normalized.get("n_total") is None and counts.get("examples_total") is not None:
+                normalized["n_total"] = counts.get("examples_total")
+            if normalized.get("n_ok") is None and counts.get("examples_ok") is not None:
+                normalized["n_ok"] = counts.get("examples_ok")
+    except Exception:
+        normalized = raw
+
+    try:
+        return EvalSummary.model_validate(normalized)
     except ValidationError as ve:
         issues.append(
             ContractIssue(

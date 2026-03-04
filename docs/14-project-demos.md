@@ -4,7 +4,7 @@ This document tracks reproducible project demos.
 
 Current scope:
 - Demo 1: Generate clamp (implemented below)
-- Demo 2: Extract gate (to be added next)
+- Demo 2: Extract gate (implemented below)
 
 ## Demo 1: Generate Clamp
 
@@ -220,4 +220,158 @@ Fixes:
 
 ## Demo 2: Extract Gate
 
-Pending. This section will be added next.
+### Goal
+Show that offline onboarding decisions control extract availability through patched `models.yaml` artifacts.
+
+Acceptance signal:
+- PASS artifact => extract capability enabled => `/v1/extract` not capability-blocked.
+- FAIL artifact => extract capability disabled => `/v1/extract` capability-blocked.
+
+Unlike Demo 1 (runtime policy decision), this demo is artifact-driven:
+- onboarding writes model capabilities into `config/models.patched.*.yaml`
+- server enforces those capabilities at request time.
+
+### Deployment Scope
+Validated deployment shapes:
+1. host + transformers (`host-transformers`)
+2. host + llama (`host-llama`)
+3. docker + host llama-server (`docker-llama` via `server-llama-host`)
+
+### Prerequisites
+- `uv` available
+- Docker running
+- `.env.docker` present with `API_KEY`
+- host llama-server reachable at `http://127.0.0.1:8080` for llama-backed runs
+
+Schema/contract split used by this demo:
+- schema specs: `schemas/`
+- type/validation contracts: `contracts/` (`llm_contracts`)
+
+### Recommended Quickstart
+Use the operational runners from `scripts/demo_extract_gate/`.
+
+Host transformers only:
+```bash
+scripts/demo_extract_gate/run_host_transformers.sh
+```
+
+Docker llama only:
+```bash
+scripts/demo_extract_gate/run_docker_llama.sh
+```
+
+Full matrix (host + docker):
+```bash
+scripts/demo_extract_gate/run_phase41.sh
+```
+
+Success criteria for each run:
+- `<out_dir>/*_runtime.json` has `"ok": true`
+- `<out_dir>/*_extract.json` has `"ok": true`
+- PASS runtime shows `model_extract_capability: true`
+- FAIL runtime shows `model_extract_capability: false`
+
+### Manual Deep-Dive (Optional)
+Use this if you want full control of each step.
+
+Set shared env:
+```bash
+set -a; source .env.docker; set +a
+export HOST_DEMO_MODEL_ID="sshleifer/tiny-gpt2"
+export DOCKER_DEMO_MODEL_ID="llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF"
+export API_PORT=8000
+export POLICY_DECISION_PATH=""
+```
+
+Build deterministic eval fixtures:
+```bash
+uv run sim artifacts demo-eval --fixture pass --run-id demo_extract_host_transformers_pass --model-id "$HOST_DEMO_MODEL_ID"
+uv run sim artifacts demo-eval --fixture fail --run-id demo_extract_host_transformers_fail --model-id "$HOST_DEMO_MODEL_ID"
+uv run sim artifacts demo-eval --fixture pass --run-id demo_extract_docker_llama_pass --model-id "$DOCKER_DEMO_MODEL_ID"
+uv run sim artifacts demo-eval --fixture fail --run-id demo_extract_docker_llama_fail --model-id "$DOCKER_DEMO_MODEL_ID"
+```
+
+Generate patched model artifacts:
+```bash
+uv run sim artifacts onboarding-demo --fixture pass --model-id "$HOST_DEMO_MODEL_ID" --models-profile host-transformers --eval-run-dir results/extract/demo_extract_host_transformers_pass --out-models-yaml config/models.patched.host_transformers.pass.yaml
+uv run sim artifacts onboarding-demo --fixture fail --model-id "$HOST_DEMO_MODEL_ID" --models-profile host-transformers --eval-run-dir results/extract/demo_extract_host_transformers_fail --out-models-yaml config/models.patched.host_transformers.fail.yaml
+uv run sim artifacts onboarding-demo --fixture pass --model-id "$DOCKER_DEMO_MODEL_ID" --models-profile docker-llama --eval-run-dir results/extract/demo_extract_docker_llama_pass --out-models-yaml config/models.patched.docker_llama.pass.yaml
+uv run sim artifacts onboarding-demo --fixture fail --model-id "$DOCKER_DEMO_MODEL_ID" --models-profile docker-llama --eval-run-dir results/extract/demo_extract_docker_llama_fail --out-models-yaml config/models.patched.docker_llama.fail.yaml
+```
+
+Verify host PASS artifact explicitly:
+```bash
+uv run sim artifacts verify-models-cap --path config/models.patched.host_transformers.pass.yaml --model-id "$HOST_DEMO_MODEL_ID" --models-profile host-transformers --expect-extract --expect-assessed
+```
+
+Verify host FAIL artifact explicitly:
+```bash
+uv run sim artifacts verify-models-cap --path config/models.patched.host_transformers.fail.yaml --model-id "$HOST_DEMO_MODEL_ID" --models-profile host-transformers --expect-no-extract --expect-assessed
+```
+
+Host PASS run:
+```bash
+uv run llmctl --project-name llmep compose --defaults-profile docker+llama+models-llama --env-override-file .env.docker up --profiles infra-host -d --remove-orphans --force-recreate
+cd server
+export DATABASE_URL="postgresql+asyncpg://llm:llm@127.0.0.1:5433/llm"
+export REDIS_ENABLED=1
+export REDIS_URL="redis://127.0.0.1:6380/0"
+export MODELS_PROFILE=host-transformers
+export MODELS_YAML="$(pwd)/../config/models.patched.host_transformers.pass.yaml"
+export POLICY_DECISION_PATH=""
+uv run python -m llm_server.cli serve --host 0.0.0.0 --port "$API_PORT"
+```
+
+In another terminal:
+```bash
+set -a; source .env.docker; set +a
+uv run sim --base-url "http://127.0.0.1:${API_PORT}" traffic runtime-proof --model-id "$HOST_DEMO_MODEL_ID" --artifact-models-yaml config/models.patched.host_transformers.pass.yaml --artifact-models-profile host-transformers --expect-policy-source none --expect-policy-enable-extract none --expect-model-extract true
+uv run sim --base-url "http://127.0.0.1:${API_PORT}" traffic extract-gate-check --model-id "$HOST_DEMO_MODEL_ID" --expect allow --allow-model-errors --expect-model-extract true
+```
+
+For FAIL, switch only the artifact path:
+```bash
+export MODELS_YAML="$(pwd)/../config/models.patched.host_transformers.fail.yaml"
+```
+
+Then rerun:
+```bash
+uv run sim --base-url "http://127.0.0.1:${API_PORT}" traffic runtime-proof --model-id "$HOST_DEMO_MODEL_ID" --artifact-models-yaml config/models.patched.host_transformers.fail.yaml --artifact-models-profile host-transformers --expect-policy-source none --expect-policy-enable-extract none --expect-model-extract false
+uv run sim --base-url "http://127.0.0.1:${API_PORT}" traffic extract-gate-check --model-id "$HOST_DEMO_MODEL_ID" --expect block --expect-model-extract false
+```
+
+Docker PASS/FAIL run follows the same pattern with:
+- `MODELS_PROFILE=docker-llama`
+- `MODELS_YAML=/app/config/models.patched.docker_llama.(pass|fail).yaml`
+- `LLAMA_SERVER_URL=http://host.docker.internal:8080`
+- compose profile: `server-llama-host`
+
+### Failure Diagnostics
+Runner scripts automatically capture diagnostics in:
+- `traffic_out/<run_tag>/diagnostics/`
+
+Collected on each stage:
+- `/readyz`, `/modelz`, `/v1/models` snapshots
+- compose/docker process snapshots
+- service logs + focused grep output for profile/model/deployment-key clues
+
+### Troubleshooting
+#### Artifact did not flip extract capability
+- Re-run `sim artifacts verify-models-cap` on PASS/FAIL artifacts.
+- Confirm `--eval-run-dir` and `--models-profile` match your target deployment profile.
+
+#### Runtime is not using intended artifact
+- Confirm `MODELS_YAML` path and `MODELS_PROFILE` are aligned.
+- Run `sim traffic runtime-proof` with `--artifact-models-yaml` and `--artifact-models-profile`.
+- Use recreate, not restart, when switching docker env/artifact wiring.
+
+#### Offline demo contaminated by runtime policy
+- Ensure `POLICY_DECISION_PATH=""` before launching server/compose.
+- In runtime proof, assert:
+  - `--expect-policy-source none`
+  - `--expect-policy-enable-extract none`
+
+#### Docker cannot reach host llama-server
+- Verify host endpoint: `curl -s http://127.0.0.1:8080/health`
+- Use `LLAMA_SERVER_URL=http://host.docker.internal:8080`
+- On Linux, keep `extra_hosts: host.docker.internal:host-gateway`

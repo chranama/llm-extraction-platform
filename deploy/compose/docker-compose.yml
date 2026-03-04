@@ -31,13 +31,13 @@ x-server-env: &server_env
 
   MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
 
-  POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+  POLICY_DECISION_PATH: ${POLICY_DECISION_PATH-/app/policy_out/latest.json}
   SLO_OUT_DIR: ${SLO_OUT_DIR:-/app/slo_out}
 
   API_KEY: ${API_KEY:-}
   HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}
 
-  SCHEMAS_DIR: ${SCHEMAS_DIR:-}
+  SCHEMAS_DIR: ${SCHEMAS_DIR:-/app/schemas/model_output}
 
   CONTAINER_MEMORY_BYTES: ${CONTAINER_MEMORY_BYTES:-}
 
@@ -278,6 +278,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../config:/app/config:rw
       - ../../policy_out:/app/policy_out:rw
       - ../../slo_out:/app/slo_out:rw
     healthcheck:
@@ -313,6 +314,7 @@ services:
         condition: service_healthy
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../config:/app/config:rw
       - ../../policy_out:/app/policy_out:rw
       - ../../slo_out:/app/slo_out:rw
     healthcheck:
@@ -356,6 +358,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../config:/app/config:rw
       - ../../policy_out:/app/policy_out:rw
       - ../../slo_out:/app/slo_out:rw
     healthcheck:
@@ -512,6 +515,7 @@ services:
     environment:
       POLICY_RUN_DIR: ${POLICY_RUN_DIR:-latest}
       POLICY_MODELS_YAML: ${POLICY_MODELS_YAML:-/work/config/models.yaml}
+      SCHEMAS_ROOT: ${SCHEMAS_ROOT:-/work/schemas}
       POLICY_THRESHOLDS_ROOT: ${POLICY_THRESHOLDS_ROOT:-/app/policy/src/llm_policy/thresholds}
       POLICY_THRESHOLD_PROFILE: ${POLICY_THRESHOLD_PROFILE:-extract/default}
       POLICY_GENERATE_PROFILE: ${POLICY_GENERATE_PROFILE:-generate/portable}

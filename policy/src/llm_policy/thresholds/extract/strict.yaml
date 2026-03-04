@@ -1,0 +1,35 @@
+# policy/src/llm_policy/thresholds/extract/strict.yaml
+version: "v2"
+task: null
+
+metrics:
+  # All rates are percent units: 0..100
+  schema_validity_rate:
+    min: 98.0
+
+  required_present_rate:
+    min: null
+
+  doc_required_exact_match_rate:
+    min: null
+
+  latency_p95_ms:
+    max: null
+
+  latency_p99_ms:
+    max: null
+
+params:
+  # Warning-only (non-blocking)
+  min_n_total: 20
+
+  # Compare point estimate once sample size is large enough
+  min_n_for_point_estimate: 200
+
+  # Stricter system health budgets for FAIL-path onboarding demo
+  max_http_5xx_rate: 0.2
+  max_timeout_rate: 0.2
+  max_non_200_rate: 1.0
+
+  # Optional per-field requirements (percent units)
+  min_field_exact_match_rate: {}

@@ -190,6 +190,12 @@ class SimClient:
     def get_admin_policy(self) -> HTTPResponse:
         return self._request("GET", "/v1/admin/policy")
 
+    def get_readyz(self) -> HTTPResponse:
+        return self._request("GET", "/readyz")
+
+    def get_models(self) -> HTTPResponse:
+        return self._request("GET", "/v1/models")
+
     def post_admin_policy_reload(self) -> HTTPResponse:
         return self._request("POST", "/v1/admin/policy/reload")
 

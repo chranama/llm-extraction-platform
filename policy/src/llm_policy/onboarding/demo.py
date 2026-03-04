@@ -52,6 +52,7 @@ def apply_model_onboarding(
     eval_run_dir: str = "latest",
     threshold_profile: Optional[str] = None,
     thresholds_root: Optional[str] = None,
+    patch_profile: Optional[str] = None,
     verbose: bool = True,
     policy_name: str = "model_onboarding",
     pipeline: str = "extract_only",
@@ -93,7 +94,7 @@ def apply_model_onboarding(
             policy_name=str(getattr(decision, "policy", policy_name) or policy_name),
             pipeline=str(getattr(decision, "pipeline", pipeline) or pipeline),
             deployment_key=res.deployment_key,
-            patch_profile=res.thresholds_profile,
+            patch_profile=patch_profile,
             changes=(),
             decision=decision,
         )
@@ -103,7 +104,7 @@ def apply_model_onboarding(
         Path(models_yaml),
         model_id=str(model_id),
         enable=bool(enable_extract),
-        profile=res.thresholds_profile,
+        profile=(str(patch_profile).strip() if isinstance(patch_profile, str) and patch_profile.strip() else None),
         deployment=res.deployment,
         deployment_key=res.deployment_key,
         assessed=True,  # flip assessed to true after an assessment
@@ -150,7 +151,7 @@ def apply_model_onboarding(
         policy_name=str(getattr(decision, "policy", policy_name) or policy_name),
         pipeline=str(getattr(decision, "pipeline", pipeline) or pipeline),
         deployment_key=res.deployment_key,
-        patch_profile=res.thresholds_profile,
+        patch_profile=patch_profile,
         changes=tuple(patch_res.changes or ()),
         decision=decision,
     )

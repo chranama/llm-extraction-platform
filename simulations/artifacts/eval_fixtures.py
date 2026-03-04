@@ -106,9 +106,19 @@ def build_eval_run_summary_v1(
     counts: Optional[Dict[str, Any]] = None,
     warnings: Optional[List[Dict[str, Any]]] = None,
     notes: Optional[Dict[str, Any]] = None,
+    deployment_key: Optional[str] = None,
+    deployment: Optional[Dict[str, Any]] = None,
+    n_total: Optional[int] = None,
+    n_ok: Optional[int] = None,
+    schema_validity_rate: Optional[float] = None,
+    non_200_rate: Optional[float] = None,
+    http_5xx_rate: Optional[float] = None,
+    timeout_rate: Optional[float] = None,
+    validate_contract: bool = True,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "schema_version": "eval_run_summary_v1",
+        # Back-compat function name; v2 payload is now canonical.
+        "schema_version": "eval_run_summary_v2",
         "generated_at": generated_at or _utc_now_iso(),
         "task": str(task),
         "run_id": str(run_id),
@@ -121,6 +131,22 @@ def build_eval_run_summary_v1(
     payload["schema_id"] = schema_id
     payload["thresholds_profile"] = thresholds_profile
     payload["thresholds_version"] = thresholds_version
+    if deployment_key is not None:
+        payload["deployment_key"] = deployment_key
+    if isinstance(deployment, dict):
+        payload["deployment"] = dict(deployment)
+    if n_total is not None:
+        payload["n_total"] = int(n_total)
+    if n_ok is not None:
+        payload["n_ok"] = int(n_ok)
+    if schema_validity_rate is not None:
+        payload["schema_validity_rate"] = float(schema_validity_rate)
+    if non_200_rate is not None:
+        payload["non_200_rate"] = float(non_200_rate)
+    if http_5xx_rate is not None:
+        payload["http_5xx_rate"] = float(http_5xx_rate)
+    if timeout_rate is not None:
+        payload["timeout_rate"] = float(timeout_rate)
     if isinstance(counts, dict):
         payload["counts"] = dict(counts)
     payload["warnings"] = list(warnings or [])
@@ -136,7 +162,8 @@ def build_eval_run_summary_v1(
     if payload.get("notes") is None:
         payload.pop("notes", None)
 
-    validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
+    if validate_contract:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA, payload)
     parse_eval_run_summary(payload)
     return payload
 
@@ -155,9 +182,11 @@ def build_eval_result_row_v1(
     error: Optional[Dict[str, Any]] = None,
     raw: Optional[Dict[str, Any]] = None,
     extra: Optional[Dict[str, Any]] = None,
+    validate_contract: bool = True,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
-        "schema_version": "eval_result_row_v1",
+        # Back-compat function name; v2 payload is now canonical.
+        "schema_version": "eval_result_row_v2",
         "task": str(task),
         "run_id": str(run_id),
         "ok": bool(ok),
@@ -189,7 +218,8 @@ def build_eval_result_row_v1(
     if isinstance(extra, dict) and extra:
         payload.update(extra)
 
-    validate_internal(EVAL_RESULT_ROW_SCHEMA, payload)
+    if validate_contract:
+        validate_internal(EVAL_RESULT_ROW_SCHEMA, payload)
     parse_eval_result_row(payload)
     return payload
 
@@ -206,13 +236,15 @@ def write_eval_run_dir(
     run_id: str,
     summary_payload: Dict[str, Any],
     results_rows: Optional[List[Dict[str, Any]]] = None,
+    validate_contract: bool = True,
 ) -> EvalFixturePaths:
     paths = _make_paths(repo_root=repo_root, task=task, run_id=run_id)
 
     summary_payload = dict(summary_payload)
     summary_payload["run_dir"] = str(paths.run_dir)
 
-    validate_internal(EVAL_RUN_SUMMARY_SCHEMA, summary_payload)
+    if validate_contract:
+        validate_internal(EVAL_RUN_SUMMARY_SCHEMA, summary_payload)
     parse_eval_run_summary(summary_payload)
 
     _ensure_dir(paths.run_dir)
@@ -223,7 +255,8 @@ def write_eval_run_dir(
         for row in results_rows:
             if not isinstance(row, dict):
                 raise TypeError(f"results_rows items must be dicts, got {type(row).__name__}")
-            validate_internal(EVAL_RESULT_ROW_SCHEMA, row)
+            if validate_contract:
+                validate_internal(EVAL_RESULT_ROW_SCHEMA, row)
             parse_eval_result_row(row)
             validated.append(row)
 
@@ -273,8 +306,8 @@ def eval_fixture_pass(
     task: str = "extract",
     run_id: str = "eval_pass",
     model_id: Optional[str] = None,
-    schema_id: Optional[str] = "ticket_v1",
-    thresholds_profile: str = "default",
+    schema_id: Optional[str] = "sroie_receipt_v1",
+    thresholds_profile: str = "extract/default",
 ) -> Tuple[EvalFixturePaths, Path]:
     """
     PASS fixture:
@@ -282,6 +315,8 @@ def eval_fixture_pass(
       - rows mostly ok=True
     """
     run_dir = str(default_run_dir(repo_root, task=task, run_id=run_id))
+    deployment_key = "host_transformers"
+    deployment = {"provider": "transformers", "profile": "host-transformers"}
 
     rows = [
         build_eval_result_row_v1(
@@ -295,6 +330,8 @@ def eval_fixture_pass(
             prompt_tokens=20,
             completion_tokens=15,
             raw={"fixture": "pass"},
+            extra={"deployment_key": deployment_key, "deployment": deployment},
+            validate_contract=False,
         ),
         build_eval_result_row_v1(
             task=task,
@@ -307,6 +344,8 @@ def eval_fixture_pass(
             prompt_tokens=22,
             completion_tokens=18,
             raw={"fixture": "pass"},
+            extra={"deployment_key": deployment_key, "deployment": deployment},
+            validate_contract=False,
         ),
     ]
 
@@ -326,12 +365,30 @@ def eval_fixture_pass(
         thresholds_profile=thresholds_profile,
         thresholds_version="fixtures",
         counts=counts,
-        metrics={"extract_gate": {"passed": True}},
+        metrics={
+            "extract_gate": {"passed": True},
+            "n_total": counts["examples_total"],
+            "n_ok": counts["examples_ok"],
+            "schema_validity_rate": 99.0,
+            "non_200_rate": 0.0,
+            "http_5xx_rate": 0.0,
+            "timeout_rate": 0.0,
+        },
         warnings=[],
         notes={"fixture": "eval_pass"},
+        deployment_key=deployment_key,
+        deployment=deployment,
+        validate_contract=False,
     )
 
-    paths = write_eval_run_dir(repo_root=repo_root, task=task, run_id=run_id, summary_payload=summary, results_rows=rows)
+    paths = write_eval_run_dir(
+        repo_root=repo_root,
+        task=task,
+        run_id=run_id,
+        summary_payload=summary,
+        results_rows=rows,
+        validate_contract=False,
+    )
     pointer = write_eval_pointer_for_run(
         task=task,
         run_id=run_id,
@@ -348,8 +405,8 @@ def eval_fixture_fail(
     task: str = "extract",
     run_id: str = "eval_fail",
     model_id: Optional[str] = None,
-    schema_id: Optional[str] = "ticket_v1",
-    thresholds_profile: str = "default",
+    schema_id: Optional[str] = "sroie_receipt_v1",
+    thresholds_profile: str = "extract/default",
 ) -> Tuple[EvalFixturePaths, Path]:
     """
     FAIL fixture:
@@ -357,6 +414,8 @@ def eval_fixture_fail(
       - rows include failures (ok=False with an error object)
     """
     run_dir = str(default_run_dir(repo_root, task=task, run_id=run_id))
+    deployment_key = "host_transformers"
+    deployment = {"provider": "transformers", "profile": "host-transformers"}
 
     rows = [
         build_eval_result_row_v1(
@@ -371,6 +430,8 @@ def eval_fixture_fail(
             completion_tokens=0,
             error={"code": "schema_validation_failed", "message": "Output did not match schema", "stage": "postprocess"},
             raw={"fixture": "fail"},
+            extra={"deployment_key": deployment_key, "deployment": deployment},
+            validate_contract=False,
         ),
         build_eval_result_row_v1(
             task=task,
@@ -383,6 +444,8 @@ def eval_fixture_fail(
             prompt_tokens=20,
             completion_tokens=12,
             raw={"fixture": "fail"},
+            extra={"deployment_key": deployment_key, "deployment": deployment},
+            validate_contract=False,
         ),
     ]
 
@@ -402,12 +465,30 @@ def eval_fixture_fail(
         thresholds_profile=thresholds_profile,
         thresholds_version="fixtures",
         counts=counts,
-        metrics={"extract_gate": {"passed": False}},
+        metrics={
+            "extract_gate": {"passed": False},
+            "n_total": counts["examples_total"],
+            "n_ok": counts["examples_ok"],
+            "schema_validity_rate": 60.0,
+            "non_200_rate": 10.0,
+            "http_5xx_rate": 5.0,
+            "timeout_rate": 5.0,
+        },
         warnings=[],
         notes={"fixture": "eval_fail"},
+        deployment_key=deployment_key,
+        deployment=deployment,
+        validate_contract=False,
     )
 
-    paths = write_eval_run_dir(repo_root=repo_root, task=task, run_id=run_id, summary_payload=summary, results_rows=rows)
+    paths = write_eval_run_dir(
+        repo_root=repo_root,
+        task=task,
+        run_id=run_id,
+        summary_payload=summary,
+        results_rows=rows,
+        validate_contract=False,
+    )
     pointer = write_eval_pointer_for_run(
         task=task,
         run_id=run_id,

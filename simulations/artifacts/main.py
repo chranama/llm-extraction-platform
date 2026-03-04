@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+import shutil
 
 from simulations.paths import resolve_under_repo
 
@@ -38,6 +39,12 @@ from simulations.artifacts.models_yaml_demo import (
     DemoModelsYamlError,
     build_demo_models_yaml,
 )
+from llm_policy.onboarding.demo import apply_model_onboarding
+
+try:
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None
 
 
 class SimError(Exception):
@@ -237,7 +244,7 @@ def _artifacts_demo_eval(rt: Any, args: argparse.Namespace) -> int:
     fixture = str(getattr(args, "fixture") or "pass")
     run_id = str(getattr(args, "run_id") or "").strip()
     model_id = str(getattr(args, "model_id") or "").strip() or None
-    schema_id = str(getattr(args, "schema_id") or "ticket_v1").strip() or "ticket_v1"
+    schema_id = str(getattr(args, "schema_id") or "sroie_receipt_v1").strip() or "sroie_receipt_v1"
     thresholds_profile = str(getattr(args, "thresholds_profile") or "default").strip() or "default"
 
     if not run_id:
@@ -385,6 +392,246 @@ def _artifacts_build_demo_models_yaml(rt: Any, args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_yaml(path: Path) -> dict[str, Any]:
+    if yaml is None:
+        raise SimError("PyYAML is not available; cannot read models YAML.", code=2)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        raise SimError(f"File not found: {path}", code=2)
+    except Exception as e:
+        raise SimError(f"Failed to read YAML from {path}: {type(e).__name__}: {e}", code=2)
+    if not isinstance(data, dict):
+        raise SimError(f"YAML payload must be a mapping: {path}", code=2)
+    return data
+
+
+def _extract_model_caps_from_models_yaml(path: Path, *, model_id: str, profile: str) -> dict[str, Any]:
+    doc = _read_yaml(path)
+
+    if isinstance(doc.get("profiles"), dict):
+        prof = doc["profiles"].get(profile)
+        if not isinstance(prof, dict):
+            raise SimError(f"profile not found in models yaml: {profile}", code=2)
+        models_any = prof.get("models")
+    else:
+        models_any = doc.get("models")
+
+    if not isinstance(models_any, list):
+        raise SimError(f"models list missing for profile={profile} in {path}", code=2)
+
+    for entry in models_any:
+        if not isinstance(entry, dict):
+            continue
+        mid = entry.get("id")
+        if isinstance(mid, str) and mid.strip() == model_id:
+            caps = entry.get("capabilities")
+            assessment = entry.get("assessment")
+            return {
+                "capabilities": caps if isinstance(caps, dict) else {},
+                "assessment": assessment if isinstance(assessment, dict) else {},
+            }
+
+    raise SimError(f"model_id not found in profile={profile}: {model_id}", code=2)
+
+
+def _artifacts_verify_models_cap(rt: Any, args: argparse.Namespace) -> int:
+    path = resolve_under_repo(rt.repo_root, getattr(args, "path", None)) or resolve_under_repo(rt.repo_root, "config/models.yaml")
+    model_id = str(getattr(args, "model_id") or "").strip()
+    profile = str(getattr(args, "models_profile") or "").strip()
+
+    if not model_id:
+        raise SimError("--model-id is required", code=2)
+    if not profile:
+        raise SimError("--models-profile is required", code=2)
+
+    payload = _extract_model_caps_from_models_yaml(Path(path), model_id=model_id, profile=profile)
+    caps = payload.get("capabilities", {}) or {}
+    assessment = payload.get("assessment", {}) or {}
+
+    ext = caps.get("extract")
+    if isinstance(ext, dict):
+        ext_enabled = ext.get("enabled") if isinstance(ext.get("enabled"), bool) else None
+    elif isinstance(ext, bool):
+        ext_enabled = ext
+    else:
+        ext_enabled = None
+
+    assessed = assessment.get("assessed") if isinstance(assessment.get("assessed"), bool) else None
+
+    expected_extract = getattr(args, "expect_extract", None)
+    expected_assessed = getattr(args, "expect_assessed", None)
+
+    if expected_extract is not None and ext_enabled is not bool(expected_extract):
+        raise SimError(
+            f"extract capability mismatch for {model_id} in {profile}: expected={bool(expected_extract)} actual={ext_enabled}",
+            code=2,
+        )
+    if expected_assessed is not None and assessed is not bool(expected_assessed):
+        raise SimError(
+            f"assessment.assessed mismatch for {model_id} in {profile}: expected={bool(expected_assessed)} actual={assessed}",
+            code=2,
+        )
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "path": str(path),
+                "model_id": model_id,
+                "models_profile": profile,
+                "extract_enabled": ext_enabled,
+                "assessed": assessed,
+                "assessment": assessment,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def _artifacts_onboarding_apply(rt: Any, args: argparse.Namespace) -> int:
+    """
+    Run policy model-onboarding apply and write deterministic models artifact.
+    """
+    in_models = resolve_under_repo(rt.repo_root, getattr(args, "models_yaml", None)) or resolve_under_repo(rt.repo_root, "config/models.yaml")
+    out_models = resolve_under_repo(rt.repo_root, getattr(args, "out_models_yaml", None))
+    model_id = str(getattr(args, "model_id") or "").strip()
+    models_profile = str(getattr(args, "models_profile") or "").strip()
+    eval_run_dir = str(getattr(args, "eval_run_dir") or "").strip()
+    threshold_profile = str(getattr(args, "threshold_profile") or "").strip()
+    thresholds_root = str(getattr(args, "thresholds_root") or "").strip()
+
+    if not model_id:
+        raise SimError("--model-id is required", code=2)
+    if not models_profile:
+        raise SimError("--models-profile is required", code=2)
+    if not eval_run_dir:
+        raise SimError("--eval-run-dir is required", code=2)
+    if not threshold_profile:
+        raise SimError("--threshold-profile is required", code=2)
+    if out_models is None:
+        raise SimError("--out-models-yaml is required", code=2)
+
+    if rt.dry_run:
+        print(
+            json.dumps(
+                {
+                    "dry_run": True,
+                    "models_yaml": str(in_models),
+                    "out_models_yaml": str(out_models),
+                    "model_id": model_id,
+                    "models_profile": models_profile,
+                    "eval_run_dir": eval_run_dir,
+                    "threshold_profile": threshold_profile,
+                    "thresholds_root": thresholds_root or None,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    src = Path(in_models)
+    dst = Path(out_models)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+
+    apply_res = apply_model_onboarding(
+        models_yaml=dst,
+        model_id=model_id,
+        eval_run_dir=eval_run_dir,
+        threshold_profile=threshold_profile,
+        thresholds_root=(thresholds_root or None),
+        patch_profile=models_profile,
+        verbose=not bool(getattr(args, "quiet", False)),
+    )
+
+    allow_deny = bool(getattr(args, "allow_deny", False))
+    acceptable = bool(apply_res.ok) or (allow_deny and bool(apply_res.patch_ok))
+    if not acceptable:
+        raise SimError(
+            f"onboarding apply failed: decision_ok={apply_res.decision_ok} patch_ok={apply_res.patch_ok} message={apply_res.message}",
+            code=2,
+        )
+
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "models_yaml": str(src),
+                "out_models_yaml": str(dst),
+                "model_id": model_id,
+                "models_profile": models_profile,
+                "eval_run_dir": eval_run_dir,
+                "threshold_profile": threshold_profile,
+                "enable_extract": apply_res.enable_extract,
+                "changed": apply_res.changed,
+                "deployment_key": apply_res.deployment_key,
+                "policy": apply_res.policy_name,
+                "pipeline": apply_res.pipeline,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def _artifacts_onboarding_demo(rt: Any, args: argparse.Namespace) -> int:
+    """
+    Convenience wrapper for deterministic PASS/FAIL onboarding artifacts.
+    """
+    fixture = str(getattr(args, "fixture") or "").strip().lower()
+    if fixture not in {"pass", "fail"}:
+        raise SimError("--fixture must be one of: pass, fail", code=2)
+
+    model_id = str(getattr(args, "model_id") or "").strip()
+    models_profile = str(getattr(args, "models_profile") or "").strip()
+    eval_run_dir = str(getattr(args, "eval_run_dir") or "").strip()
+    if not model_id:
+        raise SimError("--model-id is required", code=2)
+    if not models_profile:
+        raise SimError("--models-profile is required", code=2)
+    if not eval_run_dir:
+        raise SimError("--eval-run-dir is required", code=2)
+
+    in_models = resolve_under_repo(rt.repo_root, getattr(args, "models_yaml", None)) or resolve_under_repo(rt.repo_root, "config/models.yaml")
+    out_default = f"config/models.patched.{fixture}.yaml"
+    out_models = resolve_under_repo(rt.repo_root, getattr(args, "out_models_yaml", None)) or resolve_under_repo(rt.repo_root, out_default)
+
+    if fixture == "pass":
+        threshold_profile = str(getattr(args, "threshold_profile_pass") or "extract/default").strip()
+        expect_extract = True
+    else:
+        threshold_profile = str(getattr(args, "threshold_profile_fail") or "extract/strict").strip()
+        expect_extract = False
+
+    fake_args = argparse.Namespace(
+        models_yaml=str(in_models),
+        out_models_yaml=str(out_models),
+        model_id=model_id,
+        models_profile=models_profile,
+        eval_run_dir=eval_run_dir,
+        threshold_profile=threshold_profile,
+        thresholds_root=getattr(args, "thresholds_root", None),
+        allow_deny=(fixture == "fail"),
+        quiet=bool(getattr(args, "quiet", False)),
+    )
+    rc = _artifacts_onboarding_apply(rt, fake_args)
+    if rc != 0:
+        return rc
+
+    verify_args = argparse.Namespace(
+        path=str(out_models),
+        model_id=model_id,
+        models_profile=models_profile,
+        expect_extract=expect_extract,
+        expect_assessed=True,
+    )
+    return _artifacts_verify_models_cap(rt, verify_args)
+
+
 # ---------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------
@@ -394,6 +641,7 @@ def register_artifacts_subcommands(root_subparsers: argparse._SubParsersAction) 
     """
     Adds:
       sim artifacts write-slo / verify-slo / write-policy / verify-policy / demo-eval / build-demo-models-yaml
+      sim artifacts onboarding-apply / onboarding-demo / verify-models-cap
     """
     art = root_subparsers.add_parser("artifacts", help="Write / verify deterministic artifact fixtures.")
     art_sub = art.add_subparsers(dest="art_cmd", required=True)
@@ -435,8 +683,8 @@ def register_artifacts_subcommands(root_subparsers: argparse._SubParsersAction) 
     de.add_argument("--fixture", default="pass", choices=["pass", "fail"])
     de.add_argument("--run-id", default=None, required=True, help="Run id under results/extract/<run_id>/")
     de.add_argument("--model-id", default=None)
-    de.add_argument("--schema-id", default="ticket_v1")
-    de.add_argument("--thresholds-profile", default="default")
+    de.add_argument("--schema-id", default="sroie_receipt_v1")
+    de.add_argument("--thresholds-profile", default="extract/default")
     de.set_defaults(_handler=_artifacts_demo_eval)
 
     # --- Demo models.yaml generator (single model/profile)
@@ -471,3 +719,56 @@ def register_artifacts_subcommands(root_subparsers: argparse._SubParsersAction) 
         help="Set assessment.assessed=true (default is false).",
     )
     dm.set_defaults(_handler=_artifacts_build_demo_models_yaml)
+
+    # --- Onboarding apply (direct)
+    oa = art_sub.add_parser(
+        "onboarding-apply",
+        help="Run model-onboarding apply and write a patched models artifact.",
+    )
+    oa.add_argument("--models-yaml", default="config/models.yaml")
+    oa.add_argument("--out-models-yaml", required=True)
+    oa.add_argument("--model-id", required=True)
+    oa.add_argument("--models-profile", required=True)
+    oa.add_argument("--eval-run-dir", required=True)
+    oa.add_argument("--threshold-profile", required=True, help="e.g. extract/default or extract/strict")
+    oa.add_argument("--thresholds-root", default=None)
+    oa.add_argument(
+        "--allow-deny",
+        action="store_true",
+        help="Treat deny decisions as acceptable when patching succeeded (useful for fail fixtures).",
+    )
+    oa.add_argument("--quiet", action="store_true")
+    oa.set_defaults(_handler=_artifacts_onboarding_apply)
+
+    # --- Onboarding demo convenience
+    od = art_sub.add_parser(
+        "onboarding-demo",
+        help="Generate deterministic PASS/FAIL models artifacts for extract-gate demos.",
+    )
+    od.add_argument("--fixture", required=True, choices=["pass", "fail"])
+    od.add_argument("--models-yaml", default="config/models.yaml")
+    od.add_argument("--out-models-yaml", default=None)
+    od.add_argument("--model-id", required=True)
+    od.add_argument("--models-profile", required=True)
+    od.add_argument("--eval-run-dir", required=True)
+    od.add_argument("--threshold-profile-pass", default="extract/default")
+    od.add_argument("--threshold-profile-fail", default="extract/strict")
+    od.add_argument("--thresholds-root", default=None)
+    od.add_argument("--quiet", action="store_true")
+    od.set_defaults(_handler=_artifacts_onboarding_demo)
+
+    # --- Verify models capability in artifact
+    vm = art_sub.add_parser(
+        "verify-models-cap",
+        help="Verify extract capability + assessed state for a model in a models YAML artifact.",
+    )
+    vm.add_argument("--path", default="config/models.yaml")
+    vm.add_argument("--model-id", required=True)
+    vm.add_argument("--models-profile", required=True)
+    vm.add_argument("--expect-extract", dest="expect_extract", action="store_true")
+    vm.add_argument("--expect-no-extract", dest="expect_extract", action="store_false")
+    vm.set_defaults(expect_extract=None)
+    vm.add_argument("--expect-assessed", dest="expect_assessed", action="store_true")
+    vm.add_argument("--expect-not-assessed", dest="expect_assessed", action="store_false")
+    vm.set_defaults(expect_assessed=None)
+    vm.set_defaults(_handler=_artifacts_verify_models_cap)
