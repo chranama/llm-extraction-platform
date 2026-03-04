@@ -12,7 +12,6 @@ concurrency:
 jobs:
   integrations_live:
     name: integrations (live)
-    if: ${{ secrets.INTEGRATIONS_LIVE_BASE_URL != '' && secrets.INTEGRATIONS_LIVE_API_KEY != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -20,14 +19,28 @@ jobs:
         shell: bash
         working-directory: integrations
     steps:
+      - name: Guard required live secrets
+        id: guard
+        run: |
+          set -euo pipefail
+          if [[ -n "${{ secrets.INTEGRATIONS_LIVE_BASE_URL }}" && -n "${{ secrets.INTEGRATIONS_LIVE_API_KEY }}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping integrations-live: required secrets are not configured."
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.enabled == 'true'
 
       - name: Set up Python
+        if: steps.guard.outputs.enabled == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install uv
+        if: steps.guard.outputs.enabled == 'true'
         run: |
           set -euxo pipefail
           pipx install uv
@@ -35,11 +48,13 @@ jobs:
           python -V
 
       - name: Sync deps (integrations)
+        if: steps.guard.outputs.enabled == 'true'
         run: |
           set -euxo pipefail
           uv sync
 
       - name: Run live integrations lanes
+        if: steps.guard.outputs.enabled == 'true'
         env:
           PYTHONPATH: "${{ github.workspace }}"
           INTEGRATIONS_BASE_URL: "${{ secrets.INTEGRATIONS_LIVE_BASE_URL }}"
@@ -51,7 +66,7 @@ jobs:
           bash scripts/run_live_lanes.sh
 
       - name: Debug on failure
-        if: failure()
+        if: failure() && steps.guard.outputs.enabled == 'true'
         run: |
           set -euxo pipefail
           echo "=== integrations live debug ==="

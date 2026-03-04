@@ -61,6 +61,16 @@ def _ensure_contracts_config_module() -> None:
 
         cfg_mod.validate_models_config = _always_ok  # type: ignore[attr-defined]
         cfg_mod.validate_assessment_for_extract = _always_ok  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    # Newer server code imports validators directly from
+    # llm_contracts.config.models_config; patch that surface too.
+    try:
+        import llm_contracts.config.models_config as cfg_models_mod  # type: ignore
+
+        cfg_models_mod.validate_models_config = _always_ok  # type: ignore[attr-defined]
+        cfg_models_mod.validate_assessment_for_extract = _always_ok  # type: ignore[attr-defined]
         return
     except Exception:
         pass
