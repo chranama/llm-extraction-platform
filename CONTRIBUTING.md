@@ -1,216 +1,62 @@
-# Contributing to LLM Server
+# Contributing
 
-Thank you for your interest in contributing to **LLM Server**!  
-This project aims to provide a production-style LLM API gateway with observability, authentication, quotas, caching, and multi-model orchestration. Contributions that improve stability, clarity, and maintainability are always welcome.
+Thanks for contributing to this repository.
 
----
+## Development setup
 
-## 1. Code of Conduct
-
-By participating in this project, you agree to uphold the standards in the included `CODE_OF_CONDUCT.md`.  
-Respectful communication and collaboration help maintain a productive environment.
-
----
-
-## 2. How to Contribute
-
-There are many ways to contribute:
-
-- Reporting bugs
-- Improving documentation
-- Enhancing observability
-- Adding new metrics or tests
-- Refactoring code for clarity or performance
-- Submitting new features (please open an issue first)
-
-If you're unsure whether something fits, **open an issue**—discussion before implementation is encouraged.
-
----
-
-## 3. Development Environment Setup
-
-### 3.1 Requirements
-
-- Python 3.11+
-- `uv` package manager  
-- Docker + Docker Compose
-- `make`
-
-### 3.2 Clone the Repository
+### Python packages
+- `server/`, `policy/`, `eval/`, `contracts/`, `integrations/` use `uv`.
+- Run commands with package scoping where applicable, for example:
 
 ```bash
-git clone https://github.com/<your-org>/llm-server.git
-cd llm-server
+uv run --project server python -m pytest -q tests/unit
+uv run --project policy python -m pytest -q tests/unit
+uv run --project eval python -m pytest -q tests/unit
 ```
 
-### 3.3 Install Dependencies (Local Development Mode)
+### UI package
+- `ui/` uses npm + vitest/playwright.
 
 ```bash
-uv sync --extra cpu
+cd ui
+npm ci
+npm run test:coverage
+npm run test:e2e
 ```
 
-This installs all development extras including test dependencies.
-
-### 3.4 Local LLM Mode (MPS / CPU)
-
-Local mode runs the API **on the host**, while Docker runs Postgres, Redis, Prometheus, Grafana, and Nginx.
-
-```bash
-cp .env.example .env.local
-make dev-local
-```
-
-In another terminal:
-
-```bash
-make api-local
-```
-
-### 3.5 Full Containerized Mode
-
-```bash
-cp .env.example .env
-make up
-```
-
-Seed an admin API key:
-
-```bash
-make seed-key API_KEY=$(openssl rand -hex 24)
-```
-
----
-
-## 4. Running Tests
-
-The test suite uses **pytest** and includes API, rate-limiting, auth, caching, quota, and health tests.
-
-To run all tests:
-
-```bash
-uv run pytest
-```
-
-To run a specific test file:
-
-```bash
-uv run pytest tests/test_generate.py
-```
-
-Tests must pass before any PR can be merged.
-
----
-
-## 5. Style Guidelines
-
-### 5.1 Python Code
-
-- Follow **PEP 8** style.
-- Prefer descriptive function names.
-- Use `mypy`-friendly type hints.
-- Avoid unnecessary abstractions.
-- Ensure imports are sorted (`isort`) and formatted (`black`).
-
-### 5.2 API Endpoints
-
-Stable endpoints **must not** introduce breaking changes without discussion.  
-Experimental endpoints may evolve quickly but still require documentation.
-
-### 5.3 Documentation
-
-All new features must include:
-
-- Updated README sections
-- Updated docs in `docs/`
-- Examples if applicable
-
-Documentation is treated as a first-class contribution.
-
----
-
-## 6. Git Workflow
-
-### 6.1 Branching Model
-
-- `main` — stable releases, production-ready
-- Feature branches — `feature/<short-description>`
-- Bugfix branches — `fix/<short-description>`
-
-### 6.2 Commit Messages
-
-Use conventional commits when possible:
-
-```
-feat: add redis hot-cache layer
-fix: correct rpm limit behavior
-docs: improve architecture explanation
-refactor: simplify multimodel registry
-test: extend authentication coverage
-```
-
-### 6.3 Pull Requests
+## Pull request expectations
 
 Before opening a PR:
+- tests pass for changed areas,
+- lint/format checks pass for changed areas,
+- docs are updated when behavior/configuration/commands change.
 
-- Ensure tests pass
-- Ensure lint passes
-- Ensure docs are updated
-- Describe *what* changed and *why*
+Keep PRs focused and reviewable.
 
-PRs should be **small, focused, and easy to review**.
+## Documentation update rules
 
----
+When changing these areas, update docs in the same PR:
+- `deploy/compose/` or profile wiring changes:
+  - `docs/03-deployment-modes.md`
+  - `deploy/README.md`
+- extraction contract/status-code/shape changes:
+  - `docs/01-extraction-contract.md`
+  - relevant integration tests
+- demo scripts or workflows:
+  - `docs/02-project-demos.md`
+  - `scripts/README.md`
+- test layout/CI lane changes:
+  - `docs/00-testing.md`
+  - `.github/workflows/ci.yml`
 
-## 7. Adding New Features
+Treat docs as product assets; stale docs are considered defects.
 
-For significant feature work:
+## Branch and commit guidance
 
-1. **Open an issue** describing the proposed change.
-2. Provide:
-   - Rationale
-   - High-level design
-   - API changes (if any)
-3. Wait for maintainer approval before implementing.
+- Use short-lived feature branches.
+- Use clear commit messages (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`).
+- If a change is behaviorally significant, include before/after notes in PR description.
 
-This ensures alignment with project direction.
+## Security
 
----
-
-## 8. Reporting Bugs
-
-When opening a bug report, please include:
-
-- Reproduction steps
-- Logs or stack traces
-- API responses
-- LLM Server version
-- Deployment mode (local vs docker)
-- Your `.env` (scrub sensitive values)
-
----
-
-## 9. Security Policy
-
-**Do NOT report vulnerabilities publicly.**
-
-Please email:
-
-`<your-security-email>@protonmail.com`
-
-Include:
-
-- Description of the issue
-- Impact assessment
-- Steps to reproduce
-
-Responsible disclosure is appreciated.
-
----
-
-## 10. License
-
-By contributing, you agree that your contributions will be licensed under the **MIT License** used by this project.
-
----
-
-Thank you for helping make **LLM Server** better and more reliable!
+Do not post secrets, tokens, or private infrastructure details in issues or PRs.

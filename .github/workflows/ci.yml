@@ -11,6 +11,21 @@ concurrency:
 
 jobs:
   # -------------------------
+  # Documentation: links + stale-token guard
+  # -------------------------
+  docs_quality:
+    name: docs (quality)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run docs checks
+        run: |
+          set -euxo pipefail
+          bash scripts/check_docs.sh
+
+  # -------------------------
   # Server: unit + lint/format
   # -------------------------
   server_unit:
