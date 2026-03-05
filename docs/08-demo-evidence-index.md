@@ -9,6 +9,7 @@ Reference: [02-project-demos.md](02-project-demos.md)
 Expected evidence:
 - SLO artifact: `slo_out/generate/latest.json`
 - Policy artifact: `policy_out/latest.json`
+- Evidence manifest: `traffic_out/<run>/evidence_manifest.json`
 - Runtime reload response with non-null `generate_max_new_tokens_cap`
 - Generate response showing clamp fields:
   - `requested_max_new_tokens`
@@ -21,6 +22,7 @@ Reference: [02-project-demos.md](02-project-demos.md)
 
 Expected evidence:
 - PASS/FAIL patched model artifacts under `config/models.patched.*.yaml`
+- Evidence manifest: `traffic_out/<run>/evidence_manifest.json`
 - `/v1/models` response showing target model extract capability toggled
 - PASS run extract success path
 - FAIL run capability-blocked extract path

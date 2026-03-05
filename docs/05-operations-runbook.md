@@ -74,7 +74,7 @@ Fix categories:
 ## 6. Demo flow failures
 
 Use wrapper scripts (with diagnostics output):
-- `scripts/demo_extract_gate/run_phase41.sh`
+- `scripts/demo_extract_gate/run_extract_gate_matrix.sh`
 - `scripts/demo_extract_gate/run_host_transformers.sh`
 - `scripts/demo_extract_gate/run_docker_llama.sh`
 

@@ -44,10 +44,15 @@ When changing these areas, update docs in the same PR:
   - relevant integration tests
 - demo scripts or workflows:
   - `docs/02-project-demos.md`
+  - `docs/08-demo-evidence-index.md`
   - `scripts/README.md`
 - test layout/CI lane changes:
   - `docs/00-testing.md`
+  - `docs/09-ci-hardening.md`
   - `.github/workflows/ci.yml`
+- model onboarding/eval threshold decision semantics:
+  - `docs/06-eval-methodology.md`
+  - `docs/10-model-decision-memo.md`
 
 Treat docs as product assets; stale docs are considered defects.
 

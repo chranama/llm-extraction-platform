@@ -15,6 +15,8 @@
 - [06) Eval Methodology](06-eval-methodology.md)
 - [07) ADR Index](07-adr-index.md)
 - [08) Demo Evidence Index](08-demo-evidence-index.md)
+- [09) CI Hardening](09-ci-hardening.md)
+- [10) Model Decision Memo](10-model-decision-memo.md)
 
 ## Archive (Historical)
 

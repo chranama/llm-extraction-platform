@@ -1,0 +1,23 @@
+{
+  "schema_version": "portfolio_quality_summary_v1",
+  "generated_at": "2026-03-04T00:00:00Z",
+  "summary": {
+    "flagship_demos": ["generate_clamp", "extract_gate"],
+    "ci_quality": {
+      "docs_gate_present": true,
+      "python_lint_gate_present": true,
+      "python_format_gate_present": true,
+      "ui_unit_gate_present": true,
+      "ui_e2e_gate_present": true
+    },
+    "evidence_contract": {
+      "demo_manifest_path_pattern": "traffic_out/<run>/evidence_manifest.json",
+      "extract_gate_manifest_generated": true,
+      "generate_clamp_manifest_generation_supported": true
+    }
+  },
+  "notes": [
+    "This artifact is a portfolio-level summary and should be regenerated when demo or CI contracts change.",
+    "For numeric benchmark snapshots, attach run-specific evidence manifests under traffic_out/."
+  ]
+}

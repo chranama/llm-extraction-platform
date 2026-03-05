@@ -9,7 +9,7 @@ SCRIPT_NAME="$(basename "$0")"
 usage() {
   cat <<'EOF'
 Usage:
-  run_phase41.sh [--skip-host] [--skip-docker]
+  run_extract_gate_matrix.sh [--skip-host] [--skip-docker]
 
 Environment knobs:
   API_PORT            API port to probe (default: 8000)
@@ -324,6 +324,9 @@ fi
 if [[ "$SKIP_DOCKER" -eq 0 ]]; then
   run_docker_matrix "$DOCKER_PROFILE" "$DOCKER_PASS_MODELS" "$DOCKER_FAIL_MODELS" "$DOCKER_DEMO_MODEL_ID"
 fi
+
+CURRENT_PHASE="manifest"
+python3 "$ROOT/scripts/demo_extract_gate/write_evidence_manifest.py" --run-dir "$OUT_DIR" || true
 
 CURRENT_PHASE="done"
 echo "Phase 4.1 complete. Evidence written to: $OUT_DIR"

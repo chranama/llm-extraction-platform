@@ -6,11 +6,14 @@ cd "$ROOT"
 
 CANONICAL_DOCS=(
   README.md
+  PORTFOLIO_ONE_PAGER.md
   docs/README.md
   docs/00-testing.md
   docs/01-extraction-contract.md
   docs/02-project-demos.md
   docs/03-deployment-modes.md
+  docs/09-ci-hardening.md
+  docs/10-model-decision-memo.md
   CONTRIBUTING.md
 )
 

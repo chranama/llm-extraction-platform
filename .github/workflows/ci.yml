@@ -61,10 +61,10 @@ jobs:
           set -euxo pipefail
           uv run ruff check .
 
-      - name: Format check (black) [temporary noop]
+      - name: Format check (black)
         run: |
           set -euxo pipefail
-          echo "Skipping server black --check temporarily; scheduled for dedicated formatting batch."
+          uv run black --check src tests
 
       - name: Run unit tests
         env:
@@ -101,6 +101,30 @@ jobs:
           python -V
           uv pip list
           git status --porcelain || true
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=server_unit"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-unit-failure-bundle
+          path: server/_ci_failure
+          if-no-files-found: ignore
 
 
   # -------------------------
@@ -189,6 +213,35 @@ jobs:
           docker logs ${{ job.services.postgres.id }} || true
           docker logs ${{ job.services.redis.id }} || true
 
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=server_integration"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+            echo "postgres_port=${{ job.services.postgres.ports[5432] }}"
+            echo "redis_port=${{ job.services.redis.ports[6379] }}"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+          docker ps -a > _ci_failure/docker_ps.txt || true
+          docker logs ${{ job.services.postgres.id }} > _ci_failure/postgres.log 2>&1 || true
+          docker logs ${{ job.services.redis.id }} > _ci_failure/redis.log 2>&1 || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-integration-failure-bundle
+          path: server/_ci_failure
+          if-no-files-found: ignore
+
 
   # -------------------------
   # Policy: unit + lint/format
@@ -226,10 +279,10 @@ jobs:
           set -euxo pipefail
           uv run ruff check .
 
-      - name: Format check (black) [temporary noop]
+      - name: Format check (black)
         run: |
           set -euxo pipefail
-          echo "Skipping policy black --check temporarily; scheduled for dedicated formatting batch."
+          uv run black --check src tests
 
       - name: Run policy unit tests
         env:
@@ -255,6 +308,30 @@ jobs:
           python -V
           uv pip list
           git status --porcelain || true
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=policy_unit"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-unit-failure-bundle
+          path: policy/_ci_failure
+          if-no-files-found: ignore
 
   policy_integration:
     name: policy (integration)
@@ -445,10 +522,10 @@ jobs:
           set -euxo pipefail
           uv run ruff check .
 
-      - name: Format check (black) [temporary noop]
+      - name: Format check (black)
         run: |
           set -euxo pipefail
-          echo "Skipping eval black --check temporarily; scheduled for dedicated formatting batch."
+          uv run black --check src tests
 
       - name: Run eval unit tests
         env:
@@ -474,6 +551,30 @@ jobs:
           python -V
           uv pip list
           git status --porcelain || true
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=eval_unit"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-unit-failure-bundle
+          path: eval/_ci_failure
+          if-no-files-found: ignore
 
 
   # -------------------------

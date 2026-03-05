@@ -10,6 +10,33 @@ I built this repository to demonstrate skills relevant to an entry-level AI Engi
 - evaluating model behavior and enforcing policy decisions,
 - shipping reliable systems with CI, integration tests, and operational diagnostics.
 
+## How To Review This Repo
+
+Recommended review flow (5-10 minutes):
+1. Read the two demo proof cards below.
+2. Run one demo command and inspect the produced evidence manifest.
+3. Open the docs index for deeper technical references.
+
+Deep index: [`docs/README.md`](docs/README.md)
+
+## Demo Proof Cards
+
+### Demo 1: Generate Clamp
+- Risk: tail-latency spikes can degrade UX/cost.
+- Control: policy runtime decision applies `generate_max_new_tokens_cap` when SLO threshold is exceeded.
+- One-command repro (scripted evidence writer):
+  - `scripts/demo_generate_clamp/write_evidence_manifest.py --slo slo_out/generate/latest.json --policy policy_out/latest.json --out traffic_out/generate_clamp_latest/evidence_manifest.json`
+- Evidence artifact:
+  - `traffic_out/<run>/evidence_manifest.json` with baseline/clamp status and cap proof.
+
+### Demo 2: Extract Gate
+- Risk: unsupported models silently producing invalid extraction behavior.
+- Control: offline onboarding artifacts toggle extract capability in `models.patched.*.yaml`; server enforces capability at runtime.
+- One-command repro:
+  - `scripts/demo_extract_gate/run_host_transformers.sh`
+- Evidence artifact:
+  - `traffic_out/<run>/evidence_manifest.json` with PASS/FAIL capability + endpoint behavior.
+
 ## Skills Demonstrated
 
 ### 1) LLM Systems Engineering
@@ -53,25 +80,13 @@ scripts/demo_extract_gate/run_host_transformers.sh
 ```
 
 3. Inspect produced evidence:
-- `traffic_out/<latest phase41 run>/host_pass_runtime.json`
-- `traffic_out/<latest phase41 run>/host_fail_runtime.json`
+- `traffic_out/<latest run>/evidence_manifest.json`
+- `traffic_out/<latest run>/host_pass_runtime.json`
+- `traffic_out/<latest run>/host_fail_runtime.json`
 
 4. Review CI and tests:
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 - [`docs/00-testing.md`](docs/00-testing.md)
-
-## Demo Summary
-
-### Demo 1: Generate Clamp
-- Shows baseline (no clamp) versus high-latency clamp behavior.
-- Deep reference: [`docs/02-project-demos.md`](docs/02-project-demos.md)
-
-### Demo 2: Extract Gate
-- Shows PASS/FAIL onboarding artifacts controlling extract capability at runtime.
-- Operational scripts:
-  - `scripts/demo_extract_gate/run_phase41.sh`
-  - `scripts/demo_extract_gate/run_host_transformers.sh`
-  - `scripts/demo_extract_gate/run_docker_llama.sh`
 
 ## Testing And CI Signals
 
@@ -100,7 +115,7 @@ scripts/demo_extract_gate/run_host_transformers.sh
 
 ### Near-term
 - Broaden integration smoke coverage for deployment/profile variants.
-- Add docs CI checks for links and stale command patterns.
+- Keep docs CI checks strict for links and stale command patterns.
 - Expand reviewer quickstart with expected outputs/screenshots.
 - Improve architecture visual clarity.
 

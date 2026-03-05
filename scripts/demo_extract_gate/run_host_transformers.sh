@@ -7,4 +7,4 @@ cd "$ROOT"
 API_PORT="${API_PORT:-18010}" \
 HOST_PROFILE="${HOST_PROFILE:-host-transformers}" \
 HOST_DEMO_MODEL_ID="${HOST_DEMO_MODEL_ID:-sshleifer/tiny-gpt2}" \
-./scripts/demo_extract_gate/run_phase41.sh --skip-docker "$@"
+./scripts/demo_extract_gate/run_extract_gate_matrix.sh --skip-docker "$@"

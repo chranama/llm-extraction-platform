@@ -1,4 +1,4 @@
-# 14) Project Demos
+# 02) Project Demos
 
 This document tracks reproducible project demos.
 
@@ -262,7 +262,7 @@ scripts/demo_extract_gate/run_docker_llama.sh
 
 Full matrix (host + docker):
 ```bash
-scripts/demo_extract_gate/run_phase41.sh
+scripts/demo_extract_gate/run_extract_gate_matrix.sh
 ```
 
 Success criteria for each run:
@@ -375,3 +375,27 @@ Collected on each stage:
 - Verify host endpoint: `curl -s http://127.0.0.1:8080/health`
 - Use `LLAMA_SERVER_URL=http://host.docker.internal:8080`
 - On Linux, keep `extra_hosts: host.docker.internal:host-gateway`
+
+## Evidence Manifest Contract (Both Demos)
+
+Each demo should emit `traffic_out/<run>/evidence_manifest.json` with:
+- demo id and run id
+- control input summary
+- expected behavior summary
+- observed behavior summary
+- pass/fail verdict
+- key evidence file paths
+
+This is used as the recruiter/hiring-manager quick proof artifact.
+
+## Adversarial / Failure-Case Proof (Required)
+
+### Generate Clamp
+Failure case to demonstrate:
+- high-latency traffic should trigger clamp;
+- if clamp does not trigger, manifest should record mismatch and include policy artifact path.
+
+### Extract Gate
+Failure case to demonstrate:
+- FAIL onboarding artifact should capability-block extract;
+- if extract is allowed under FAIL artifact, manifest should record mismatch and include runtime model capability snapshot.
