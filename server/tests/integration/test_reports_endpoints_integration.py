@@ -9,9 +9,7 @@ import pytest
 from sqlalchemy import select
 
 
-async def _mk_role_and_key(
-    test_sessionmaker, *, role_name: str, active: bool = True
-) -> str:
+async def _mk_role_and_key(test_sessionmaker, *, role_name: str, active: bool = True) -> str:
     from llm_server.db.models import ApiKey, RoleTable
 
     key = f"test_{uuid.uuid4().hex}"

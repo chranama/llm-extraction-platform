@@ -9,7 +9,9 @@ from llm_server.services.backends import llamacpp_backend as mod
 class _FakeClient:
     def __init__(self):
         self.health_value = {"status": "ok"}
-        self.models_value = {"data": [{"id": "m-live", "owned_by": "llamacpp", "meta": {"ctx": 4096}}]}
+        self.models_value = {
+            "data": [{"id": "m-live", "owned_by": "llamacpp", "meta": {"ctx": 4096}}]
+        }
         self.raw_map = {
             "/version": RuntimeError("no version"),
             "/v1/version": {"version": "1.0.0"},

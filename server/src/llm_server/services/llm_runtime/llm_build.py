@@ -11,11 +11,13 @@ from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 from llm_server.services.backends.backend_api import OpenAICompatClient, OpenAICompatClientConfig
 from llm_server.services.backends.llamacpp_backend import LlamaCppBackend, LlamaCppBackendConfig
-from llm_server.services.backends.transformers_backend import TransformersBackend, TransformersBackendConfig
+from llm_server.services.backends.transformers_backend import (
+    TransformersBackend,
+    TransformersBackendConfig,
+)
 
 # Gate config is the source-of-truth for total budget
 from llm_server.services.limits.config import load_generate_gate_config
-
 
 # ------------------------------------------------------------
 # Helpers
@@ -155,6 +157,7 @@ def _deployment_key_for_model(sp: ModelSpec) -> Optional[str]:
 # Timeout alignment helpers
 # ------------------------------------------------------------
 
+
 def _timeout_alignment_buffer_seconds() -> float:
     """
     Buffer so the upstream HTTP call times out BEFORE the gate budget expires.
@@ -202,7 +205,11 @@ def _aligned_connect_timeout_seconds(total_timeout_seconds: float) -> float:
     """
     Ensure connect timeout never exceeds total timeout (httpx will complain).
     """
-    t = float(total_timeout_seconds) if total_timeout_seconds and total_timeout_seconds > 0 else 60.0
+    t = (
+        float(total_timeout_seconds)
+        if total_timeout_seconds and total_timeout_seconds > 0
+        else 60.0
+    )
     return float(min(5.0, t))
 
 
@@ -230,10 +237,12 @@ def _requested_connect_timeout_seconds(cfg_block: Any, *, total_timeout_seconds:
 # Remote backend (OpenAI-compat)
 # ------------------------------------------------------------
 
+
 class RemoteBackend:
     """
     Generic OpenAI-compatible remote completion backend.
     """
+
     backend_name: str = "remote"
 
     def __init__(
@@ -303,6 +312,7 @@ class RemoteBackend:
 # Backend builder
 # ------------------------------------------------------------
 
+
 def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict[str, Any]]:
     backend_name = _normalize_backend_name(getattr(sp, "backend", None) or "transformers")
     caps = _caps_meta(sp)
@@ -337,8 +347,12 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
                 device=device,
                 dtype=dtype,
                 trust_remote_code=trc,
-                default_temperature=float(_as_float(_get_nested(transformers_cfg, "default_temperature")) or 0.7),
-                default_top_p=float(_as_float(_get_nested(transformers_cfg, "default_top_p")) or 0.95),
+                default_temperature=float(
+                    _as_float(_get_nested(transformers_cfg, "default_temperature")) or 0.7
+                ),
+                default_top_p=float(
+                    _as_float(_get_nested(transformers_cfg, "default_top_p")) or 0.95
+                ),
             ),
         )
         meta = {
@@ -356,7 +370,9 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
     # llamacpp (external llama-server)
     # -------------------------
     if backend_name == "llamacpp":
-        server_url = _as_str(_get_nested(llamacpp_cfg, "server_url")) or _as_str(os.environ.get("LLAMA_SERVER_URL"))
+        server_url = _as_str(_get_nested(llamacpp_cfg, "server_url")) or _as_str(
+            os.environ.get("LLAMA_SERVER_URL")
+        )
         if not server_url:
             raise AppError(
                 code="backend_config_invalid",
@@ -365,14 +381,20 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
                 extra={"model_id": sp.id},
             )
 
-        api_key = _as_str(_get_nested(llamacpp_cfg, "api_key")) or _as_str(os.environ.get("LLAMA_SERVER_API_KEY"))
+        api_key = _as_str(_get_nested(llamacpp_cfg, "api_key")) or _as_str(
+            os.environ.get("LLAMA_SERVER_API_KEY")
+        )
 
         requested_timeout = _requested_timeout_seconds(llamacpp_cfg, settings=settings)
         timeout_seconds = _aligned_backend_timeout_seconds(requested=requested_timeout)
-        connect_timeout_seconds = _requested_connect_timeout_seconds(llamacpp_cfg, total_timeout_seconds=timeout_seconds)
+        connect_timeout_seconds = _requested_connect_timeout_seconds(
+            llamacpp_cfg, total_timeout_seconds=timeout_seconds
+        )
 
         model_name = _as_str(_get_nested(llamacpp_cfg, "model_name"))
-        default_temperature = float(_as_float(_get_nested(llamacpp_cfg, "default_temperature")) or 0.7)
+        default_temperature = float(
+            _as_float(_get_nested(llamacpp_cfg, "default_temperature")) or 0.7
+        )
         default_top_p = float(_as_float(_get_nested(llamacpp_cfg, "default_top_p")) or 0.95)
 
         b = LlamaCppBackend(
@@ -405,7 +427,9 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
     # remote (OpenAI-compat)
     # -------------------------
     if backend_name == "remote":
-        base_url = _as_str(_get_nested(remote_cfg, "base_url")) or _as_str(getattr(settings, "llm_service_url", None))
+        base_url = _as_str(_get_nested(remote_cfg, "base_url")) or _as_str(
+            getattr(settings, "llm_service_url", None)
+        )
         if not base_url:
             raise AppError(
                 code="remote_models_require_llm_service_url",
@@ -414,13 +438,19 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
                 extra={"model_id": sp.id},
             )
 
-        api_key = _as_str(_get_nested(remote_cfg, "api_key")) or _as_str(os.environ.get("REMOTE_BACKEND_API_KEY"))
+        api_key = _as_str(_get_nested(remote_cfg, "api_key")) or _as_str(
+            os.environ.get("REMOTE_BACKEND_API_KEY")
+        )
 
         requested_timeout = _requested_timeout_seconds(remote_cfg, settings=settings)
         timeout_seconds = _aligned_backend_timeout_seconds(requested=requested_timeout)
-        connect_timeout_seconds = _requested_connect_timeout_seconds(remote_cfg, total_timeout_seconds=timeout_seconds)
+        connect_timeout_seconds = _requested_connect_timeout_seconds(
+            remote_cfg, total_timeout_seconds=timeout_seconds
+        )
 
-        remote_model_id = _as_str(_get_nested(remote_cfg, "model_id")) or _as_str(_get_nested(remote_cfg, "model_name"))
+        remote_model_id = _as_str(_get_nested(remote_cfg, "model_id")) or _as_str(
+            _get_nested(remote_cfg, "model_name")
+        )
 
         b = RemoteBackend(
             model_id=sp.id,
@@ -448,13 +478,18 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
         code="backend_config_invalid",
         message="Unknown backend in model spec",
         status_code=500,
-        extra={"model_id": sp.id, "backend": backend_name, "allowed": ["transformers", "llamacpp", "remote"]},
+        extra={
+            "model_id": sp.id,
+            "backend": backend_name,
+            "allowed": ["transformers", "llamacpp", "remote"],
+        },
     )
 
 
 # ------------------------------------------------------------
 # Public builder (wiring)
 # ------------------------------------------------------------
+
 
 def build_llm_from_settings() -> Any:
     """
@@ -480,7 +515,10 @@ def build_llm_from_settings() -> Any:
     ordered_ids: List[str] = [
         mid
         for mid in cfg.model_ids
-        if (spec_map.get(mid) is not None and str(getattr(spec_map[mid], "load_mode", "lazy")).lower() != "off")
+        if (
+            spec_map.get(mid) is not None
+            and str(getattr(spec_map[mid], "load_mode", "lazy")).lower() != "off"
+        )
     ]
     if not ordered_ids:
         raise AppError(

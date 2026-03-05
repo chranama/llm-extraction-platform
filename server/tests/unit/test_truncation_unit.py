@@ -7,9 +7,15 @@ from llm_server.services.api_deps.extract import truncation as trunc
 
 
 def test_truncation_guard_ignores_non_applicable_cases():
-    trunc.maybe_raise_truncation_error(raw_output="x", effective_max_new_tokens=10, applied_cap=None, stage="extract")
-    trunc.maybe_raise_truncation_error(raw_output="x", effective_max_new_tokens=None, applied_cap=5, stage="extract")
-    trunc.maybe_raise_truncation_error(raw_output="   ", effective_max_new_tokens=10, applied_cap=5, stage="extract")
+    trunc.maybe_raise_truncation_error(
+        raw_output="x", effective_max_new_tokens=10, applied_cap=None, stage="extract"
+    )
+    trunc.maybe_raise_truncation_error(
+        raw_output="x", effective_max_new_tokens=None, applied_cap=5, stage="extract"
+    )
+    trunc.maybe_raise_truncation_error(
+        raw_output="   ", effective_max_new_tokens=10, applied_cap=5, stage="extract"
+    )
 
 
 def test_truncation_guard_no_error_for_complete_json_like_output():

@@ -22,9 +22,7 @@ class FakeModelSpec:
 
 class _Req:
     def __init__(self, *, enable_extract: bool = True, enable_generate: bool = True):
-        settings = SimpleNamespace(
-            enable_extract=enable_extract, enable_generate=enable_generate
-        )
+        settings = SimpleNamespace(enable_extract=enable_extract, enable_generate=enable_generate)
         self.app = SimpleNamespace(state=SimpleNamespace(settings=settings, llm=None))
 
 
@@ -89,9 +87,7 @@ def test_deployment_gate_still_wins_over_policy(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_models_yaml_unspecified_means_allow_all(monkeypatch: pytest.MonkeyPatch):
-    cfg = FakeModelsConfig(
-        defaults={}, models=[FakeModelSpec(model_id="m1", capabilities=None)]
-    )
+    cfg = FakeModelsConfig(defaults={}, models=[FakeModelSpec(model_id="m1", capabilities=None)])
     monkeypatch.setattr(caps, "models_config_from_request", lambda _req=None: cfg)
 
     assert caps.model_capabilities("m1", request=None) is None

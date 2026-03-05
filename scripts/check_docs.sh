@@ -36,6 +36,11 @@ TOP_LEVEL_READMES=(
 
 ARCHIVE_DOCS=(docs/archive/*.md)
 
+has_rg=0
+if command -v rg >/dev/null 2>&1; then
+  has_rg=1
+fi
+
 echo "[docs] checking required README inventory"
 for f in "${TOP_LEVEL_READMES[@]}"; do
   [[ -f "$f" ]] || { echo "missing required README: $f" >&2; exit 1; }
@@ -45,17 +50,29 @@ echo "[docs] checking archive banner"
 for f in "${ARCHIVE_DOCS[@]}"; do
   [[ -f "$f" ]] || continue
   [[ "$(basename "$f")" == "README.md" ]] && continue
-  if ! head -n 2 "$f" | rg -q "Historical snapshot; may not reflect current implementation"; then
+  if [[ "$has_rg" -eq 1 ]]; then
+    ok_banner="$(head -n 2 "$f" | rg -q "Historical snapshot; may not reflect current implementation"; echo $?)"
+  else
+    ok_banner="$(head -n 2 "$f" | grep -q "Historical snapshot; may not reflect current implementation"; echo $?)"
+  fi
+  if [[ "$ok_banner" -ne 0 ]]; then
     echo "archive banner missing: $f" >&2
     exit 1
   fi
 done
 
 echo "[docs] checking stale tokens in canonical docs"
-if rg -n --hidden --glob '!docs/archive/**' --glob 'README.md' --glob 'docs/*.md' --glob 'CONTRIBUTING.md' \
-  "ticket_v1|make dev-local|make up|llm-server.git" "${CANONICAL_DOCS[@]}"; then
-  echo "stale token detected in canonical docs" >&2
-  exit 1
+if [[ "$has_rg" -eq 1 ]]; then
+  if rg -n --hidden --glob '!docs/archive/**' --glob 'README.md' --glob 'docs/*.md' --glob 'CONTRIBUTING.md' \
+    "ticket_v1|make dev-local|make up|llm-server.git" "${CANONICAL_DOCS[@]}"; then
+    echo "stale token detected in canonical docs" >&2
+    exit 1
+  fi
+else
+  if grep -nE "ticket_v1|make dev-local|make up|llm-server.git" "${CANONICAL_DOCS[@]}"; then
+    echo "stale token detected in canonical docs" >&2
+    exit 1
+  fi
 fi
 
 echo "[docs] checking markdown links"

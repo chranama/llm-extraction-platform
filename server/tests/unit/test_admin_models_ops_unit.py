@@ -41,7 +41,9 @@ def test_summarize_registry_for_duck_typed_registry_and_single_backend():
 
 
 def test_runtime_default_model_id_from_app_and_get_loader(monkeypatch):
-    req = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(runtime_default_model_id="  mm  ")))
+    req = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(runtime_default_model_id="  mm  "))
+    )
     assert mo.runtime_default_model_id_from_app(req) == "mm"
 
     loader = object()

@@ -301,7 +301,9 @@ class Settings(BaseSettings):
     model_device: Optional[str] = Field(default=None)
 
     # --- runtime model behavior toggles ---
-    model_load_mode: Literal["off", "lazy", "eager"] = Field(default="lazy", validation_alias="MODEL_LOAD_MODE")
+    model_load_mode: Literal["off", "lazy", "eager"] = Field(
+        default="lazy", validation_alias="MODEL_LOAD_MODE"
+    )
     require_model_ready: bool = Field(default=False, validation_alias="REQUIRE_MODEL_READY")
     token_counting: bool = Field(default=True, validation_alias="TOKEN_COUNTING")
 
@@ -326,7 +328,9 @@ class Settings(BaseSettings):
     max_concurrent_requests: int = Field(default=2, validation_alias="MAX_CONCURRENT_REQUESTS")
     mem_guard_enabled: bool = Field(default=False, validation_alias="MEM_GUARD_ENABLED")
     mem_guard_rss_pct: float = Field(default=0.85, validation_alias="MEM_GUARD_RSS_PCT")
-    container_memory_bytes: Optional[int] = Field(default=None, validation_alias="CONTAINER_MEMORY_BYTES")
+    container_memory_bytes: Optional[int] = Field(
+        default=None, validation_alias="CONTAINER_MEMORY_BYTES"
+    )
 
     # --- rate limits / quotas ---
     rate_limit_rpm_admin: int = 0

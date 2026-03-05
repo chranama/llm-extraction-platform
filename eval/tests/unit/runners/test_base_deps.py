@@ -10,6 +10,7 @@ from llm_eval.runners.base import BaseEvalRunner, EvalConfig, RunnerDeps
 
 class _FakeClient:
     """Simple fake to prove DI wiring works."""
+
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url
         self.api_key = api_key
@@ -99,7 +100,9 @@ async def test_run_updates_config_from_args_before_run_impl():
         task_name = "observing"
 
         def __init__(self, *, deps: RunnerDeps):
-            super().__init__(base_url="http://example", api_key="KEY", config=EvalConfig(), deps=deps)
+            super().__init__(
+                base_url="http://example", api_key="KEY", config=EvalConfig(), deps=deps
+            )
 
         async def _run_impl(self) -> Any:
             observed["max_examples"] = self.config.max_examples
@@ -131,6 +134,7 @@ def test_dataset_overrides_can_be_injected():
     )
     assert "x" in deps.dataset_overrides
     assert deps.dataset_overrides["x"] is _dummy_iter
+
 
 def test_get_dataset_callable_returns_default_when_no_override():
     deps = RunnerDeps(client_factory=lambda base_url, api_key: _FakeClient(base_url, api_key))

@@ -22,6 +22,7 @@ class ArtifactReadResult(Generic[T]):
       - ok=True means payload is valid/usable
       - ok=False means payload may be fail-closed and error should be inspected
     """
+
     ok: bool
     artifact: T
     resolved_path: str

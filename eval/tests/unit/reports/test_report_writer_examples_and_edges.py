@@ -10,8 +10,20 @@ def test_render_report_md_examples_failures_sorted_first(monkeypatch):
 
     results = [
         {"ok": True, "status_code": 200, "error_code": None, "latency_ms": 12.0, "id": "b"},
-        {"ok": False, "status_code": 422, "error_code": "schema_validation_failed", "latency_ms": 34.0, "id": "a"},
-        {"ok": False, "status_code": 500, "error_code": "internal_error", "latency_ms": 56.0, "id": "c"},
+        {
+            "ok": False,
+            "status_code": 422,
+            "error_code": "schema_validation_failed",
+            "latency_ms": 34.0,
+            "id": "a",
+        },
+        {
+            "ok": False,
+            "status_code": 500,
+            "error_code": "internal_error",
+            "latency_ms": 56.0,
+            "id": "c",
+        },
     ]
 
     md = writer.render_report_md(

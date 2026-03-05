@@ -18,6 +18,7 @@ _ALLOWED_STATUSES = {"unknown", "allowed", "blocked"}
 # Deployment key (stable correlation id for eval/policy/runtime)
 # ============================================================
 
+
 def deployment_key_from_snapshot(dep: Dict[str, Any]) -> str:
     """
     Compute a stable deployment key from the deployment metadata snapshot.
@@ -34,14 +35,36 @@ def deployment_key_from_snapshot(dep: Dict[str, Any]) -> str:
             "profiles": profiles if isinstance(profiles, dict) else {},
             "container": bool(container),
             "platform": {
-                "system": (platform_info or {}).get("system") if isinstance(platform_info, dict) else None,
-                "machine": (platform_info or {}).get("machine") if isinstance(platform_info, dict) else None,
+                "system": (
+                    (platform_info or {}).get("system") if isinstance(platform_info, dict) else None
+                ),
+                "machine": (
+                    (platform_info or {}).get("machine")
+                    if isinstance(platform_info, dict)
+                    else None
+                ),
             },
             "accelerators": {
-                "torch_present": bool((accelerators or {}).get("torch_present")) if isinstance(accelerators, dict) else False,
-                "cuda_available": bool((accelerators or {}).get("cuda_available")) if isinstance(accelerators, dict) else False,
-                "cuda_device_count": int((accelerators or {}).get("cuda_device_count") or 0) if isinstance(accelerators, dict) else 0,
-                "mps_available": bool((accelerators or {}).get("mps_available")) if isinstance(accelerators, dict) else False,
+                "torch_present": (
+                    bool((accelerators or {}).get("torch_present"))
+                    if isinstance(accelerators, dict)
+                    else False
+                ),
+                "cuda_available": (
+                    bool((accelerators or {}).get("cuda_available"))
+                    if isinstance(accelerators, dict)
+                    else False
+                ),
+                "cuda_device_count": (
+                    int((accelerators or {}).get("cuda_device_count") or 0)
+                    if isinstance(accelerators, dict)
+                    else 0
+                ),
+                "mps_available": (
+                    bool((accelerators or {}).get("mps_available"))
+                    if isinstance(accelerators, dict)
+                    else False
+                ),
             },
         }
 
@@ -71,6 +94,7 @@ def deployment_key_from_request(request: Request) -> str:
 # models.yaml -> assessed snapshot
 # ============================================================
 
+
 def _get_model_spec(request: Request, model_id: str) -> Any | None:
     try:
         cfg = models_config_from_request(request)
@@ -82,7 +106,9 @@ def _get_model_spec(request: Request, model_id: str) -> Any | None:
     return None
 
 
-def _cap_assessed_from_capability_raw(v: Any) -> Tuple[Optional[bool], Optional[str], Dict[str, Any]]:
+def _cap_assessed_from_capability_raw(
+    v: Any,
+) -> Tuple[Optional[bool], Optional[str], Dict[str, Any]]:
     """
     Parse assessed semantics from a single capability raw value.
 
@@ -114,7 +140,9 @@ def _cap_assessed_from_capability_raw(v: Any) -> Tuple[Optional[bool], Optional[
     return assessed_bool, st_norm, extra
 
 
-def _assessed_snapshot_from_models_yaml(*, request: Request, model_id: str, capability: str) -> Dict[str, Any]:
+def _assessed_snapshot_from_models_yaml(
+    *, request: Request, model_id: str, capability: str
+) -> Dict[str, Any]:
     """
     Source of truth: models.yaml (via parsed ModelsConfig on app.state / cached loader).
 
@@ -161,11 +189,20 @@ def _assessed_snapshot_from_models_yaml(*, request: Request, model_id: str, capa
 
         if isinstance(assessment_blk.get("reason"), str) and assessment_blk["reason"].strip():
             reason = assessment_blk["reason"].strip()
-        if isinstance(assessment_blk.get("assessed_at_utc"), str) and assessment_blk["assessed_at_utc"].strip():
+        if (
+            isinstance(assessment_blk.get("assessed_at_utc"), str)
+            and assessment_blk["assessed_at_utc"].strip()
+        ):
             assessed_at_utc = assessment_blk["assessed_at_utc"].strip()
 
         # best-effort extra details
-        details.update({k: v for k, v in assessment_blk.items() if k not in ("require_assessed_gate", "required", "require_for")})
+        details.update(
+            {
+                k: v
+                for k, v in assessment_blk.items()
+                if k not in ("require_assessed_gate", "required", "require_for")
+            }
+        )
 
     # Capability-level raw metadata (preferred for per-capability assessed)
     cap_raw_map = getattr(sp, "capabilities_effective", None) if sp is not None else None
@@ -219,7 +256,9 @@ def _assessed_snapshot_from_models_yaml(*, request: Request, model_id: str, capa
         "required": bool(required),
         "status": st_final,
         "selected_model_id": model_id,
-        "selected_deployment_key": deployment_key if isinstance(deployment_key, str) and deployment_key.strip() else None,
+        "selected_deployment_key": (
+            deployment_key if isinstance(deployment_key, str) and deployment_key.strip() else None
+        ),
         "assessed": assessed,
         "assessed_at_utc": assessed_at_utc,
         "reason": reason,
@@ -231,6 +270,7 @@ def _assessed_snapshot_from_models_yaml(*, request: Request, model_id: str, capa
 # ============================================================
 # Enforcement
 # ============================================================
+
 
 def require_assessed_gate(
     *,
@@ -266,7 +306,9 @@ def require_assessed_gate(
         if isinstance(selected_deployment_key, str) and selected_deployment_key.strip()
         else (snap.get("selected_deployment_key") if isinstance(snap, dict) else None)
     )
-    expected_key = expected_key.strip() if isinstance(expected_key, str) and expected_key.strip() else None
+    expected_key = (
+        expected_key.strip() if isinstance(expected_key, str) and expected_key.strip() else None
+    )
 
     reason = snap.get("reason")
     reason = reason.strip() if isinstance(reason, str) and reason.strip() else None

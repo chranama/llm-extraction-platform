@@ -28,7 +28,18 @@ def _mk_request(app, path="/v1/generate"):
 
 
 def test_cfg_from_app_and_cache_invalidation():
-    state = SimpleNamespace(settings=SimpleNamespace(limits={"generate_early_reject": {"enabled": True, "reject_queue_depth_gte": 1, "reject_in_flight_gte": 2, "routes": ["/v1/generate"]}}))
+    state = SimpleNamespace(
+        settings=SimpleNamespace(
+            limits={
+                "generate_early_reject": {
+                    "enabled": True,
+                    "reject_queue_depth_gte": 1,
+                    "reject_in_flight_gte": 2,
+                    "routes": ["/v1/generate"],
+                }
+            }
+        )
+    )
     app = SimpleNamespace(state=state)
 
     c1 = erm._cfg_from_app(app)
@@ -53,7 +64,20 @@ async def test_middleware_dispatch_paths(monkeypatch):
         return None
 
     mw = erm.EarlyRejectGenerateMiddleware(_app)
-    app = SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(limits={"generate_early_reject": {"enabled": True, "reject_queue_depth_gte": 3, "reject_in_flight_gte": 2, "routes": ["/v1/generate"]}})))
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            settings=SimpleNamespace(
+                limits={
+                    "generate_early_reject": {
+                        "enabled": True,
+                        "reject_queue_depth_gte": 3,
+                        "reject_in_flight_gte": 2,
+                        "routes": ["/v1/generate"],
+                    }
+                }
+            )
+        )
+    )
 
     async def _call_next(request):
         return Response("ok", status_code=200)
@@ -67,7 +91,15 @@ async def test_middleware_dispatch_paths(monkeypatch):
     monkeypatch.setattr(
         erm,
         "get_generate_gate",
-        lambda: SimpleNamespace(snapshot=lambda: SimpleNamespace(enabled=False, in_flight_estimate=0, queue_depth_estimate=0, max_concurrent=1, max_queue=1)),
+        lambda: SimpleNamespace(
+            snapshot=lambda: SimpleNamespace(
+                enabled=False,
+                in_flight_estimate=0,
+                queue_depth_estimate=0,
+                max_concurrent=1,
+                max_queue=1,
+            )
+        ),
         raising=True,
     )
     req2 = _mk_request(app, path="/v1/generate")
@@ -80,7 +112,15 @@ async def test_middleware_dispatch_paths(monkeypatch):
     monkeypatch.setattr(
         erm,
         "get_generate_gate",
-        lambda: SimpleNamespace(snapshot=lambda: SimpleNamespace(enabled=True, in_flight_estimate=2, queue_depth_estimate=0, max_concurrent=1, max_queue=1)),
+        lambda: SimpleNamespace(
+            snapshot=lambda: SimpleNamespace(
+                enabled=True,
+                in_flight_estimate=2,
+                queue_depth_estimate=0,
+                max_concurrent=1,
+                max_queue=1,
+            )
+        ),
         raising=True,
     )
     with pytest.raises(AppError) as e3:
@@ -88,11 +128,28 @@ async def test_middleware_dispatch_paths(monkeypatch):
     assert e3.value.extra["reason"] == "in_flight_high"
 
     # queue threshold => reject
-    app.state.settings = SimpleNamespace(limits={"generate_early_reject": {"enabled": True, "reject_queue_depth_gte": 1, "reject_in_flight_gte": 0, "routes": ["/v1/generate"]}})
+    app.state.settings = SimpleNamespace(
+        limits={
+            "generate_early_reject": {
+                "enabled": True,
+                "reject_queue_depth_gte": 1,
+                "reject_in_flight_gte": 0,
+                "routes": ["/v1/generate"],
+            }
+        }
+    )
     monkeypatch.setattr(
         erm,
         "get_generate_gate",
-        lambda: SimpleNamespace(snapshot=lambda: SimpleNamespace(enabled=True, in_flight_estimate=0, queue_depth_estimate=1, max_concurrent=1, max_queue=1)),
+        lambda: SimpleNamespace(
+            snapshot=lambda: SimpleNamespace(
+                enabled=True,
+                in_flight_estimate=0,
+                queue_depth_estimate=1,
+                max_concurrent=1,
+                max_queue=1,
+            )
+        ),
         raising=True,
     )
     with pytest.raises(AppError) as e4:
@@ -103,7 +160,15 @@ async def test_middleware_dispatch_paths(monkeypatch):
     monkeypatch.setattr(
         erm,
         "get_generate_gate",
-        lambda: SimpleNamespace(snapshot=lambda: SimpleNamespace(enabled=True, in_flight_estimate=0, queue_depth_estimate=0, max_concurrent=1, max_queue=1)),
+        lambda: SimpleNamespace(
+            snapshot=lambda: SimpleNamespace(
+                enabled=True,
+                in_flight_estimate=0,
+                queue_depth_estimate=0,
+                max_concurrent=1,
+                max_queue=1,
+            )
+        ),
         raising=True,
     )
     r5 = await mw.dispatch(_mk_request(app, "/v1/generate"), _call_next)

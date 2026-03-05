@@ -45,7 +45,13 @@ def test_write_eval_run_artifacts_writes_expected_files(tmp_path: Path) -> None:
     }
     results = [
         {"id": "1", "ok": True, "status_code": 200, "latency_ms": 12.3},
-        {"id": "2", "ok": False, "status_code": 500, "error_code": "server_error", "latency_ms": 50.0},
+        {
+            "id": "2",
+            "ok": False,
+            "status_code": 500,
+            "error_code": "server_error",
+            "latency_ms": 50.0,
+        },
     ]
     report_txt = "task=extraction_sroie\nrun_id=RUN123\n"
     report_md = "# Eval Report\n"
@@ -138,7 +144,9 @@ def test_write_eval_latest_pointer_writes_expected_shape(tmp_path: Path) -> None
 
     # Create fake run_dir + summary.json to simulate a real run
     run_dir.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps({"task": "task", "run_id": "RUN1"}, indent=2), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps({"task": "task", "run_id": "RUN1"}, indent=2), encoding="utf-8"
+    )
 
     out_path = write_eval_latest_pointer(
         pointer_path=str(pointer),

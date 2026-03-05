@@ -16,6 +16,7 @@ class RenderedReports:
     - md:   PR/docs-friendly markdown report
     - json_summary: json string of summary (optional convenience)
     """
+
     text: str
     md: str
     json_summary: str
@@ -220,8 +221,10 @@ def render_report_md(
         return not bool(ok)
 
     if rows:
-        rows_sorted = sorted(rows, key=lambda r: (not _is_fail(r), str(r.get("doc_id") or r.get("id") or "")))
-        preview = rows_sorted[: max_example_rows]
+        rows_sorted = sorted(
+            rows, key=lambda r: (not _is_fail(r), str(r.get("doc_id") or r.get("id") or ""))
+        )
+        preview = rows_sorted[:max_example_rows]
 
         lines.append(f"## Example results (first {len(preview)})")
         lines.append("")

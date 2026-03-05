@@ -63,9 +63,7 @@ def test_policy_no_env_path(monkeypatch: pytest.MonkeyPatch):
     assert snap.raw == {}
 
 
-def test_policy_missing_file_fail_closed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+def test_policy_missing_file_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     p = tmp_path / "missing.json"
     monkeypatch.setenv("POLICY_DECISION_PATH", str(p))
     snap = load_policy_decision_from_env()
@@ -75,9 +73,7 @@ def test_policy_missing_file_fail_closed(
     assert snap.source_path == str(p)
 
 
-def test_policy_invalid_json_fail_closed(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+def test_policy_invalid_json_fail_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     p = tmp_path / "bad.json"
     p.write_text("{not-json", encoding="utf-8")
     monkeypatch.setenv("POLICY_DECISION_PATH", str(p))
@@ -86,9 +82,7 @@ def test_policy_invalid_json_fail_closed(
     assert snap.enable_extract is False
     assert snap.source_path == str(p)
     assert snap.error is not None
-    assert snap.error.startswith(
-        ("policy_decision_read_error:", "policy_decision_parse_error:")
-    )
+    assert snap.error.startswith(("policy_decision_read_error:", "policy_decision_parse_error:"))
 
 
 def test_policy_enable_extract_true(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -101,9 +95,7 @@ def test_policy_enable_extract_true(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert snap.error is None
 
 
-def test_policy_contract_errors_nonzero_denies(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+def test_policy_contract_errors_nonzero_denies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     p = tmp_path / "deny.json"
     _write(p, _payload(ok=False, contract_errors=2, enable_extract=False))
     monkeypatch.setenv("POLICY_DECISION_PATH", str(p))
@@ -125,19 +117,15 @@ def test_policy_status_deny_denies(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
 class _Req:
     def __init__(self):
-        class _State:
-            ...
+        class _State: ...
 
-        class _App:
-            ...
+        class _App: ...
 
         self.app = _App()
         self.app.state = _State()
 
 
-def test_policy_override_scoped_to_model(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+def test_policy_override_scoped_to_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     p = tmp_path / "scoped.json"
     _write(p, _payload(model_id="m1", enable_extract=False))
     monkeypatch.setenv("POLICY_DECISION_PATH", str(p))

@@ -7,13 +7,11 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.anyio
-async def test_readyz_off_mode_does_not_require_model_when_policy_disabled(
-    monkeypatch, app_client
-):
+async def test_readyz_off_mode_does_not_require_model_when_policy_disabled(monkeypatch, app_client):
     monkeypatch.setenv("MODEL_LOAD_MODE", "off")
     monkeypatch.setenv("REQUIRE_MODEL_READY", "0")
 
-    async with (await app_client()) as c:
+    async with await app_client() as c:
         r = await c.get("/readyz")
         assert r.status_code == 200, r.text
         body = r.json()
@@ -23,13 +21,11 @@ async def test_readyz_off_mode_does_not_require_model_when_policy_disabled(
 
 
 @pytest.mark.anyio
-async def test_readyz_off_mode_requires_model_when_policy_enabled(
-    monkeypatch, app_client
-):
+async def test_readyz_off_mode_requires_model_when_policy_enabled(monkeypatch, app_client):
     monkeypatch.setenv("MODEL_LOAD_MODE", "off")
     monkeypatch.setenv("REQUIRE_MODEL_READY", "1")
 
-    async with (await app_client()) as c:
+    async with await app_client() as c:
         r = await c.get("/readyz")
         assert r.status_code == 200, r.text
         body = r.json()
@@ -39,12 +35,10 @@ async def test_readyz_off_mode_requires_model_when_policy_enabled(
 
 
 @pytest.mark.anyio
-async def test_modelz_reports_not_ready_when_off_and_not_loaded(
-    monkeypatch, app_client
-):
+async def test_modelz_reports_not_ready_when_off_and_not_loaded(monkeypatch, app_client):
     monkeypatch.setenv("MODEL_LOAD_MODE", "off")
 
-    async with (await app_client()) as c:
+    async with await app_client() as c:
         r = await c.get("/modelz")
         assert r.status_code == 200, r.text
         body = r.json()

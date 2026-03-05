@@ -12,6 +12,7 @@ class ModelStatus:
     """
     Lightweight status view used for /models and readiness/debug.
     """
+
     model_id: str
     backend: str
     load_mode: str
@@ -75,7 +76,11 @@ class MultiModelManager:
             code="model_missing",
             message=f"Model '{model_id}' not found in LLM registry",
             status_code=500,
-            extra={"model_id": model_id, "available": self.list_models(), "default_id": self.default_id},
+            extra={
+                "model_id": model_id,
+                "available": self.list_models(),
+                "default_id": self.default_id,
+            },
         )
 
     def get(self, model_id: str) -> Any:
@@ -119,7 +124,9 @@ class MultiModelManager:
             return True if not s else (cap == s)
 
         if isinstance(caps_meta, (list, tuple, set)):
-            allowed = {str(x).strip().lower() for x in caps_meta if isinstance(x, str) and str(x).strip()}
+            allowed = {
+                str(x).strip().lower() for x in caps_meta if isinstance(x, str) and str(x).strip()
+            }
             return cap in allowed
 
         return True

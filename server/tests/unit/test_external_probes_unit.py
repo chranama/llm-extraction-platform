@@ -47,7 +47,9 @@ def test_sync_llamacpp_dependency_check_prefers_is_ready():
 
 
 def test_sync_llamacpp_dependency_check_health_fallback_and_missing():
-    ok1, st1, d1 = probes.sync_llamacpp_dependency_check(_ClientOnlyBackend(_Client({"status": "ok"})))
+    ok1, st1, d1 = probes.sync_llamacpp_dependency_check(
+        _ClientOnlyBackend(_Client({"status": "ok"}))
+    )
     assert (ok1, st1) == (True, "ok")
     assert d1["health"]["status"] == "ok"
 
@@ -98,7 +100,9 @@ async def test_async_probe_wrappers_delegate_to_sync():
     backend = _IsReadyBackend((True, {"ok": 1}))
 
     ok1, st1, _ = await probes.llamacpp_dependency_check_async(backend)
-    ok2, st2, _ = await probes.external_backend_generate_check_async(_CanGenerateBackend((False, {"ok": 2})))
+    ok2, st2, _ = await probes.external_backend_generate_check_async(
+        _CanGenerateBackend((False, {"ok": 2}))
+    )
     ok3, st3, _ = await probes.remote_probe_async(backend)
 
     assert (ok1, st1) == (True, "ok")

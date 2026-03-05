@@ -78,7 +78,9 @@ def test_policy_summary_and_generate_gate_snapshot(monkeypatch):
     assert gs["enabled"] is True
     assert gs["max_queue"] == 10
 
-    monkeypatch.setattr(snap, "get_generate_gate", lambda: (_ for _ in ()).throw(RuntimeError("x")), raising=True)
+    monkeypatch.setattr(
+        snap, "get_generate_gate", lambda: (_ for _ in ()).throw(RuntimeError("x")), raising=True
+    )
     assert snap.generate_gate_snapshot() == {"error": "unavailable"}
 
 
@@ -92,9 +94,16 @@ def test_deployment_key_from_app_state_and_deployment_metadata(monkeypatch):
     monkeypatch.delenv("DEPLOYMENT_KEY", raising=False)
     assert snap._deployment_key_from_app_state(req, model_id="m1") == "dk-meta"
 
-    monkeypatch.setattr(snap, "resolve_default_model_id_and_backend_obj", lambda request: ("m1", "transformers", SimpleNamespace(model_info=lambda: {"ok": True})), raising=True)
+    monkeypatch.setattr(
+        snap,
+        "resolve_default_model_id_and_backend_obj",
+        lambda request: ("m1", "transformers", SimpleNamespace(model_info=lambda: {"ok": True})),
+        raising=True,
+    )
     monkeypatch.setattr(snap, "_in_container_best_effort", lambda: False, raising=True)
-    monkeypatch.setattr(snap, "_torch_accel_snapshot", lambda: {"torch_present": False}, raising=True)
+    monkeypatch.setattr(
+        snap, "_torch_accel_snapshot", lambda: {"torch_present": False}, raising=True
+    )
     monkeypatch.setenv("APP_PROFILE", "host")
     dep = snap.deployment_metadata_snapshot(req)
     assert dep["ok"] is True
@@ -108,21 +117,40 @@ def test_assessed_gate_snapshot_paths(monkeypatch):
         id="m1",
         deployment_key="dk1",
         assessment={"require_assessed_gate": True},
-        capabilities_effective={"extract": {"assessed": False, "status": "blocked", "reason": "no eval", "details": {"a": 1}}},
+        capabilities_effective={
+            "extract": {
+                "assessed": False,
+                "status": "blocked",
+                "reason": "no eval",
+                "details": {"a": 1},
+            }
+        },
     )
     cfg = SimpleNamespace(models=[sp])
 
-    monkeypatch.setattr(snap, "resolve_default_model_id_and_backend_obj", lambda request: ("m1", "transformers", None), raising=True)
+    monkeypatch.setattr(
+        snap,
+        "resolve_default_model_id_and_backend_obj",
+        lambda request: ("m1", "transformers", None),
+        raising=True,
+    )
     monkeypatch.setattr(snap, "models_config_from_request", lambda request: cfg, raising=True)
     out = snap.assessed_gate_snapshot(req)
     assert out["ok"] is True
     assert out["snapshot"]["required"] is True
     assert out["snapshot"]["status"] == "blocked"
 
-    monkeypatch.setattr(snap, "models_config_from_request", lambda request: SimpleNamespace(models=[]), raising=True)
+    monkeypatch.setattr(
+        snap, "models_config_from_request", lambda request: SimpleNamespace(models=[]), raising=True
+    )
     out2 = snap.assessed_gate_snapshot(req)
     assert out2["snapshot"]["error"] == "model_spec_not_found"
 
-    monkeypatch.setattr(snap, "models_config_from_request", lambda request: (_ for _ in ()).throw(RuntimeError("bad")), raising=True)
+    monkeypatch.setattr(
+        snap,
+        "models_config_from_request",
+        lambda request: (_ for _ in ()).throw(RuntimeError("bad")),
+        raising=True,
+    )
     out3 = snap.assessed_gate_snapshot(req)
     assert out3["ok"] is False

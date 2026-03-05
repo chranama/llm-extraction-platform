@@ -6,10 +6,10 @@ from typing import Optional
 
 from starlette.requests import Request
 
-
 # ---------------------------------------------------------------------------
 # Canonical request timing (wall-clock, request lifecycle)
 # ---------------------------------------------------------------------------
+
 
 def request_start_ts(request: Request) -> Optional[float]:
     """
@@ -57,6 +57,7 @@ def request_latency_ms(request: Request) -> Optional[float]:
 # ---------------------------------------------------------------------------
 # Monotonic helpers (internal spans only; NOT request SLO baseline)
 # ---------------------------------------------------------------------------
+
 
 def monotonic_now() -> float:
     """

@@ -60,12 +60,7 @@ def _safe_float(x: Any) -> float | None:
 
 
 def _utc_iso_z() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 # -----------------------------
@@ -80,17 +75,16 @@ async def fetch_role_name(session: AsyncSession, role_id: int | None) -> Optiona
     return role_row.name if role_row else None
 
 
-async def get_me_usage(session: AsyncSession, *, api_key_value: str, role_name: Optional[str]) -> MeUsage:
-    stmt = (
-        select(
-            func.count(InferenceLog.id),
-            func.min(InferenceLog.created_at),
-            func.max(InferenceLog.created_at),
-            func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
-            func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
-        )
-        .where(InferenceLog.api_key == api_key_value)
-    )
+async def get_me_usage(
+    session: AsyncSession, *, api_key_value: str, role_name: Optional[str]
+) -> MeUsage:
+    stmt = select(
+        func.count(InferenceLog.id),
+        func.min(InferenceLog.created_at),
+        func.max(InferenceLog.created_at),
+        func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
+        func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
+    ).where(InferenceLog.api_key == api_key_value)
     res = await session.execute(stmt)
     (
         total_requests,
@@ -112,17 +106,14 @@ async def get_me_usage(session: AsyncSession, *, api_key_value: str, role_name: 
 
 
 async def get_admin_usage(session: AsyncSession) -> list[AdminUsageRow]:
-    stmt = (
-        select(
-            InferenceLog.api_key,
-            func.count(InferenceLog.id),
-            func.min(InferenceLog.created_at),
-            func.max(InferenceLog.created_at),
-            func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
-            func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
-        )
-        .group_by(InferenceLog.api_key)
-    )
+    stmt = select(
+        InferenceLog.api_key,
+        func.count(InferenceLog.id),
+        func.min(InferenceLog.created_at),
+        func.max(InferenceLog.created_at),
+        func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
+        func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
+    ).group_by(InferenceLog.api_key)
 
     rows = (await session.execute(stmt)).all()
 
@@ -130,9 +121,7 @@ async def get_admin_usage(session: AsyncSession) -> list[AdminUsageRow]:
     key_map: dict[str, ApiKey] = {}
     if key_values:
         keys_stmt = (
-            select(ApiKey)
-            .options(selectinload(ApiKey.role))
-            .where(ApiKey.key.in_(key_values))
+            select(ApiKey).options(selectinload(ApiKey.role)).where(ApiKey.key.in_(key_values))
         )
         key_objs = (await session.execute(keys_stmt)).scalars().all()
         key_map = {k.key: k for k in key_objs}
@@ -257,15 +246,12 @@ async def get_admin_stats(session: AsyncSession, *, window_days: int) -> AdminSt
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=window_days)
 
-    global_stmt = (
-        select(
-            func.count(InferenceLog.id),
-            func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
-            func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
-            func.avg(InferenceLog.latency_ms),
-        )
-        .where(InferenceLog.created_at >= since)
-    )
+    global_stmt = select(
+        func.count(InferenceLog.id),
+        func.coalesce(func.sum(InferenceLog.prompt_tokens), 0),
+        func.coalesce(func.sum(InferenceLog.completion_tokens), 0),
+        func.avg(InferenceLog.latency_ms),
+    ).where(InferenceLog.created_at >= since)
 
     total_requests, total_prompt_tokens, total_completion_tokens, avg_latency_ms = (
         await session.execute(global_stmt)
@@ -309,9 +295,7 @@ async def get_admin_stats(session: AsyncSession, *, window_days: int) -> AdminSt
 
 async def reload_key_with_role(session: AsyncSession, *, api_key_id: int) -> ApiKey | None:
     result = await session.execute(
-        select(ApiKey)
-        .options(joinedload(ApiKey.role))
-        .where(ApiKey.id == api_key_id)
+        select(ApiKey).options(joinedload(ApiKey.role)).where(ApiKey.id == api_key_id)
     )
     return result.scalar_one_or_none()
 
@@ -347,7 +331,9 @@ async def compute_window_generate_slo_contracts_payload(
 
     totals_stmt = select(
         func.count(InferenceLog.id).label("n"),
-        func.coalesce(func.sum(case((InferenceLog.status_code >= 400, 1), else_=0)), 0).label("errors"),
+        func.coalesce(func.sum(case((InferenceLog.status_code >= 400, 1), else_=0)), 0).label(
+            "errors"
+        ),
         func.avg(InferenceLog.latency_ms).label("avg_latency_ms"),
         func.max(InferenceLog.latency_ms).label("max_latency_ms"),
         func.avg(InferenceLog.prompt_tokens).label("prompt_avg"),
@@ -362,18 +348,20 @@ async def compute_window_generate_slo_contracts_payload(
     error_rate = (errors / n) if n > 0 else 0.0
 
     lat_stmt = (
-        select(InferenceLog.latency_ms)
-        .where(*filters)
-        .where(InferenceLog.latency_ms.is_not(None))
+        select(InferenceLog.latency_ms).where(*filters).where(InferenceLog.latency_ms.is_not(None))
     )
-    latencies = [float(x[0]) for x in (await session.execute(lat_stmt)).all() if x and x[0] is not None]
+    latencies = [
+        float(x[0]) for x in (await session.execute(lat_stmt)).all() if x and x[0] is not None
+    ]
 
     ct_stmt = (
         select(InferenceLog.completion_tokens)
         .where(*filters)
         .where(InferenceLog.completion_tokens.is_not(None))
     )
-    completion_vals = [float(x[0]) for x in (await session.execute(ct_stmt)).all() if x and x[0] is not None]
+    completion_vals = [
+        float(x[0]) for x in (await session.execute(ct_stmt)).all() if x and x[0] is not None
+    ]
 
     ts = _utc_iso_z()
     routes_out = list(routes or ["/v1/generate", "/v1/generate/batch"])

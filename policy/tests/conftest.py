@@ -35,6 +35,7 @@ def make_run_dir(tmp_run_dir):
     Factory that writes a minimal summary.json (and optional results.jsonl) into tmp_run_dir.
     Returns the run_dir Path.
     """
+
     def _make(*, summary: dict[str, Any], results: list[dict[str, Any]] | None = None):
         write_summary(tmp_run_dir, summary)
         if results is not None:

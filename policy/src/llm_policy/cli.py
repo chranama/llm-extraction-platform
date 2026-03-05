@@ -22,7 +22,10 @@ from llm_policy.io.policy_decisions import (
 from llm_policy.onboarding.demo import apply_model_onboarding
 from llm_policy.onboarding.runner import evaluate_model_onboarding
 from llm_policy.policies.extract_enablement import decide_extract_enablement
-from llm_policy.policies.generate_slo_clamp import decide_generate_slo_clamp, thresholds_from_mapping
+from llm_policy.policies.generate_slo_clamp import (
+    decide_generate_slo_clamp,
+    thresholds_from_mapping,
+)
 from llm_policy.reports.writer import render_decision_md, render_decision_text
 from llm_policy.types.decision import (
     Decision,
@@ -146,7 +149,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     mo_sub = mo.add_subparsers(dest="subcmd", required=True)
 
-    mo_eval = mo_sub.add_parser("evaluate", help="Evaluate onboarding policy against an eval run dir.")
+    mo_eval = mo_sub.add_parser(
+        "evaluate", help="Evaluate onboarding policy against an eval run dir."
+    )
     mo_eval.add_argument(
         "--eval-run-dir",
         type=str,
@@ -347,8 +352,12 @@ def _write_generate_only_artifact(decision: Decision, out_path: str) -> None:
     """
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    reasons = [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in (decision.reasons or [])]
-    warnings = [w.model_dump() if hasattr(w, "model_dump") else dict(w) for w in (decision.warnings or [])]
+    reasons = [
+        r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in (decision.reasons or [])
+    ]
+    warnings = [
+        w.model_dump() if hasattr(w, "model_dump") else dict(w) for w in (decision.warnings or [])
+    ]
 
     payload = {
         "schema_version": "policy_decision_v2",
@@ -392,7 +401,9 @@ def _apply_generate_clamp(args, decision: Decision) -> Decision:
     slo_res = read_generate_slo_snapshot_result(args.generate_slo_path)
     slo_ok, slo_snap, slo_path, slo_err = _unwrap_slo_read_result(slo_res)
 
-    resolved_prof, gen_th = load_generate_thresholds(cfg=pcfg, profile=args.generate_threshold_profile)
+    resolved_prof, gen_th = load_generate_thresholds(
+        cfg=pcfg, profile=args.generate_threshold_profile
+    )
     th = thresholds_from_mapping(gen_th.model_dump())
 
     updated = decide_generate_slo_clamp(

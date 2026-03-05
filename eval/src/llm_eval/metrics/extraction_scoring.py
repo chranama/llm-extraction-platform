@@ -25,6 +25,7 @@ class ExtractAttempt:
       - API response on success OR error payload on failure
       - timing, caching, etc.
     """
+
     doc_id: str
     schema_id: str
 
@@ -190,6 +191,7 @@ def norm_date_loose(s: str) -> str:
 # Field comparators
 # -------------------------
 
+
 def default_field_normalizer(field: FieldName):
     if field == "company":
         return norm_company
@@ -233,6 +235,7 @@ def field_equal(
 # -------------------------
 # Core per-document scoring
 # -------------------------
+
 
 @dataclass(frozen=True)
 class DocFieldScore:
@@ -340,6 +343,7 @@ def score_document(
 # Aggregation helpers
 # -------------------------
 
+
 def _percent(num: int, den: int) -> float:
     if den <= 0:
         return 0.0
@@ -396,7 +400,9 @@ def wilson_ci_low(num: int, den: int, z: float = 1.96) -> Optional[float]:
     return low
 
 
-def _rate_for_gating(*, percent: Optional[float], num: int, den: int, n_strict: int) -> Optional[float]:
+def _rate_for_gating(
+    *, percent: Optional[float], num: int, den: int, n_strict: int
+) -> Optional[float]:
     """
     Phase 1.3 rule:
       - if den < n_strict: gate on Wilson ci95 low
@@ -414,6 +420,7 @@ def _rate_for_gating(*, percent: Optional[float], num: int, den: int, n_strict: 
 # -------------------------
 # Aggregate metrics
 # -------------------------
+
 
 @dataclass(frozen=True)
 class ExtractionScoreSummary:
@@ -534,7 +541,8 @@ def summarize_extraction(
     n_invalid_initial = n_repair_success + sum(
         1
         for a in attempts
-        if (not a.ok) and (a.error_stage in {"parse", "validate", "repair_parse", "repair_validate"})
+        if (not a.ok)
+        and (a.error_stage in {"parse", "validate", "repair_parse", "repair_validate"})
     )
 
     repair_success_rate = (n_repair_success / n_repair_attempted) if n_repair_attempted else 0.0
@@ -613,7 +621,9 @@ def summarize_extraction(
         if ds.required_all_correct:
             doc_req_num += 1
     doc_required_exact_match_rate = _percent(doc_req_num, doc_req_den) if doc_req_den else None
-    doc_required_exact_match_counts = {"num": int(doc_req_num), "den": int(doc_req_den)} if doc_req_den else None
+    doc_required_exact_match_counts = (
+        {"num": int(doc_req_num), "den": int(doc_req_den)} if doc_req_den else None
+    )
 
     pres_den = 0
     pres_num = 0
@@ -657,7 +667,10 @@ def summarize_extraction(
         doc_required_exact_match_ci95_low = (100.0 * float(low)) if low is not None else None
 
     schema_validity_gate = float(
-        _rate_for_gating(percent=schema_validity_rate, num=sv_num, den=sv_den, n_strict=int(n_strict)) or 0.0
+        _rate_for_gating(
+            percent=schema_validity_rate, num=sv_num, den=sv_den, n_strict=int(n_strict)
+        )
+        or 0.0
     )
     required_present_gate = _rate_for_gating(
         percent=required_present_rate, num=rp_num, den=rp_den, n_strict=int(n_strict)
@@ -717,6 +730,7 @@ def summarize_extraction(
 # Convenience: pretty printing
 # -------------------------
 
+
 def format_summary(s: ExtractionScoreSummary) -> str:
     lines: List[str] = []
     lines.append(f"n_total={s.n_total}")
@@ -737,7 +751,9 @@ def format_summary(s: ExtractionScoreSummary) -> str:
         f"http_5xx_rate={s.http_5xx_rate:.2f}% ({s.http_5xx_counts.get('num', 0)}/{s.http_5xx_counts.get('den', 0)}), "
         f"timeout_rate={s.timeout_rate:.2f}% ({s.timeout_counts.get('num', 0)}/{s.timeout_counts.get('den', 0)})"
     )
-    lines.append(f"passed_system={s.passed_system} passed_quality={s.passed_quality} passed={s.passed}")
+    lines.append(
+        f"passed_system={s.passed_system} passed_quality={s.passed_quality} passed={s.passed}"
+    )
 
     # repair/cache
     lines.append(
@@ -766,9 +782,13 @@ def format_summary(s: ExtractionScoreSummary) -> str:
         else:
             lines.append(f"doc_required_exact_match_rate={s.doc_required_exact_match_rate:.2f}%")
         if s.doc_required_exact_match_ci95_low is not None:
-            lines.append(f"doc_required_exact_match_ci95_low={s.doc_required_exact_match_ci95_low:.2f}%")
+            lines.append(
+                f"doc_required_exact_match_ci95_low={s.doc_required_exact_match_ci95_low:.2f}%"
+            )
         if s.doc_required_exact_match_gate is not None:
-            lines.append(f"doc_required_exact_match_gate={s.doc_required_exact_match_gate:.2f}% (n_strict gating)")
+            lines.append(
+                f"doc_required_exact_match_gate={s.doc_required_exact_match_gate:.2f}% (n_strict gating)"
+            )
 
     # field scoring (+ denominators)
     lines.append("field_exact_match_rate:")

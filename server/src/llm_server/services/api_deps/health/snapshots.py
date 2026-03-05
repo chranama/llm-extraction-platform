@@ -15,10 +15,10 @@ from llm_server.services.api_deps.core.policy_snapshot import policy_snapshot_su
 from llm_server.services.api_deps.routing.models import resolve_default_model_id_and_backend_obj
 from llm_server.services.limits.generate_gating import get_generate_gate
 
-
 # ============================================================
 # Helpers
 # ============================================================
+
 
 def _utc_now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -57,7 +57,9 @@ def _torch_accel_snapshot() -> Dict[str, Any]:
             out["cuda_available"] = False
 
         try:
-            out["cuda_device_count"] = int(torch.cuda.device_count()) if out["cuda_available"] else 0
+            out["cuda_device_count"] = (
+                int(torch.cuda.device_count()) if out["cuda_available"] else 0
+            )
         except Exception:
             out["cuda_device_count"] = 0
 
@@ -143,6 +145,7 @@ def _deployment_key_from_app_state(request: Request, *, model_id: str | None) ->
 # Policy + Generate Gate
 # ============================================================
 
+
 def policy_summary(request: Request) -> Dict[str, Any]:
     snap = None
     try:
@@ -184,7 +187,9 @@ def assessed_gate_snapshot(request: Request) -> Dict[str, Any]:
       { ok, timestamp_utc, snapshot: {required,status,selected_model_id,...} }
     """
     try:
-        default_model_id, _default_backend, _backend_obj = resolve_default_model_id_and_backend_obj(request)
+        default_model_id, _default_backend, _backend_obj = resolve_default_model_id_and_backend_obj(
+            request
+        )
 
         cfg = models_config_from_request(request)
 
@@ -271,7 +276,11 @@ def assessed_gate_snapshot(request: Request) -> Dict[str, Any]:
             "required": bool(required),
             "status": st_final,
             "selected_model_id": default_model_id,
-            "selected_deployment_key": deployment_key if isinstance(deployment_key, str) and deployment_key.strip() else None,
+            "selected_deployment_key": (
+                deployment_key
+                if isinstance(deployment_key, str) and deployment_key.strip()
+                else None
+            ),
             "assessed": assessed,
             "assessed_at_utc": assessed_at_utc,
             "reason": reason,
@@ -287,6 +296,7 @@ def assessed_gate_snapshot(request: Request) -> Dict[str, Any]:
 # ============================================================
 # Deployment Metadata Snapshot (with deployment_key)
 # ============================================================
+
 
 def deployment_metadata_snapshot(request: Request) -> Dict[str, Any]:
     try:
@@ -304,7 +314,9 @@ def deployment_metadata_snapshot(request: Request) -> Dict[str, Any]:
         except Exception:
             models_profile_selected = None
 
-        default_model_id, default_backend, backend_obj = resolve_default_model_id_and_backend_obj(request)
+        default_model_id, default_backend, backend_obj = resolve_default_model_id_and_backend_obj(
+            request
+        )
 
         backend_info = None
         if backend_obj is not None:

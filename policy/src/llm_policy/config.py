@@ -18,6 +18,7 @@ class PolicyConfig:
 
     - thresholds_root: directory containing threshold profiles (e.g. thresholds/extract/*.yaml)
     """
+
     thresholds_root: str
 
     @staticmethod
@@ -100,7 +101,9 @@ def load_extract_thresholds(
     if not yml_path.exists():
         fallback = _safe_profile_path(root=root, resolved="extract/default")
         if not fallback.exists():
-            raise FileNotFoundError(f"Thresholds file not found: {yml_path} (and no fallback {fallback})")
+            raise FileNotFoundError(
+                f"Thresholds file not found: {yml_path} (and no fallback {fallback})"
+            )
         obj = _load_thresholds_yaml(str(fallback))
         return "extract/default", ExtractThresholds.model_validate(obj)
 
@@ -128,7 +131,9 @@ def load_generate_thresholds(
     if not yml_path.exists():
         fallback = _safe_profile_path(root=root, resolved="generate/portable")
         if not fallback.exists():
-            raise FileNotFoundError(f"Generate thresholds file not found: {yml_path} (and no fallback {fallback})")
+            raise FileNotFoundError(
+                f"Generate thresholds file not found: {yml_path} (and no fallback {fallback})"
+            )
         obj = _load_thresholds_yaml(str(fallback))
         return "generate/portable", GenerateThresholds.model_validate(obj)
 

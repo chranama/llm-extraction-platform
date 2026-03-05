@@ -33,7 +33,9 @@ def _single_backend_payload(
 ) -> list[dict[str, Any]]:
     model_id = str(getattr(llm, "model_id", "") or default_model or "").strip() or "default"
     backend_name = getattr(llm, "backend_name", None)
-    loaded = bool(getattr(request.app.state, "model_loaded", False)) if load_mode == "eager" else None
+    loaded = (
+        bool(getattr(request.app.state, "model_loaded", False)) if load_mode == "eager" else None
+    )
     return [
         {
             "id": model_id,
@@ -104,7 +106,11 @@ def list_models_payload(*, request: Request, llm: Any) -> dict[str, Any]:
                     {
                         "id": mid,
                         "default": mid == llm.default_id,
-                        "backend": str(backend_name) if isinstance(backend_name, str) else type(backend).__name__,
+                        "backend": (
+                            str(backend_name)
+                            if isinstance(backend_name, str)
+                            else type(backend).__name__
+                        ),
                         "capabilities": effective_capabilities(mid, request=request),
                         "load_mode": "unknown",
                         "loaded": None,

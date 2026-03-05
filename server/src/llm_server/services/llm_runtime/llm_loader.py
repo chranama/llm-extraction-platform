@@ -250,7 +250,10 @@ class RuntimeModelLoader:
                     model_id=resolved_id,
                     loaded=bool(loaded_now),
                     load_mode=mode,
-                    detail={**detail, "status": "loaded_in_process" if loaded_now else "load_attempted"},
+                    detail={
+                        **detail,
+                        "status": "loaded_in_process" if loaded_now else "load_attempted",
+                    },
                 )
 
             except AppError as e:
@@ -258,7 +261,11 @@ class RuntimeModelLoader:
                 self._ms.set_loaded_model_id(None)
                 self._ms.set_model_error(getattr(e, "message", None) or str(e))
                 self._emit_state_gauges()
-                self._metric_inc(LLM_LOADER_OPS_FAIL_TOTAL, op=op, reason=e.code if hasattr(e, "code") else "AppError")
+                self._metric_inc(
+                    LLM_LOADER_OPS_FAIL_TOTAL,
+                    op=op,
+                    reason=e.code if hasattr(e, "code") else "AppError",
+                )
                 raise
             except Exception as e:
                 msg = f"{type(e).__name__}: {e}"
@@ -408,24 +415,42 @@ class RuntimeModelLoader:
                         res = await anyio.to_thread.run_sync(fn_probe)
                         if isinstance(res, dict):
                             ok = bool(res.get("ok", True))
-                            return ProbeResult(model_id=resolved_id, ok=ok, detail={**detail, **res})
-                        return ProbeResult(model_id=resolved_id, ok=bool(res), detail={**detail, "probe": bool(res)})
+                            return ProbeResult(
+                                model_id=resolved_id, ok=ok, detail={**detail, **res}
+                            )
+                        return ProbeResult(
+                            model_id=resolved_id,
+                            ok=bool(res),
+                            detail={**detail, "probe": bool(res)},
+                        )
                     except Exception as e:
                         msg = f"{type(e).__name__}: {e}"
                         self._metric_inc(LLM_LOADER_OPS_FAIL_TOTAL, op=op, reason=type(e).__name__)
-                        return ProbeResult(model_id=resolved_id, ok=False, detail={**detail, "status": "failed", "error": msg})
+                        return ProbeResult(
+                            model_id=resolved_id,
+                            ok=False,
+                            detail={**detail, "status": "failed", "error": msg},
+                        )
 
                 fn_loaded = getattr(backend, "is_loaded", None)
                 if callable(fn_loaded):
                     try:
                         ok = bool(fn_loaded())
-                        return ProbeResult(model_id=resolved_id, ok=ok, detail={**detail, "is_loaded": ok})
+                        return ProbeResult(
+                            model_id=resolved_id, ok=ok, detail={**detail, "is_loaded": ok}
+                        )
                     except Exception as e:
                         msg = f"{type(e).__name__}: {e}"
                         self._metric_inc(LLM_LOADER_OPS_FAIL_TOTAL, op=op, reason=type(e).__name__)
-                        return ProbeResult(model_id=resolved_id, ok=False, detail={**detail, "status": "failed", "error": msg})
+                        return ProbeResult(
+                            model_id=resolved_id,
+                            ok=False,
+                            detail={**detail, "status": "failed", "error": msg},
+                        )
 
-                return ProbeResult(model_id=resolved_id, ok=True, detail={**detail, "status": "unknown_ok"})
+                return ProbeResult(
+                    model_id=resolved_id, ok=True, detail={**detail, "status": "unknown_ok"}
+                )
         finally:
             self._metric_obs(LLM_LOADER_OP_LATENCY_SECONDS, time.perf_counter() - t0, op=op)
 

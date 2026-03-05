@@ -67,7 +67,9 @@ def render_md_table(title: str, *, columns: list[str], rows: Iterable[Mapping[st
     return "\n".join(lines)
 
 
-def render_admin_summary(*, stats_payload: Mapping[str, Any], per_model: list[Mapping[str, Any]], fmt: str) -> str:
+def render_admin_summary(
+    *, stats_payload: Mapping[str, Any], per_model: list[Mapping[str, Any]], fmt: str
+) -> str:
     """
     A lightweight "presentation output" that can be served from llm_server.
 
@@ -77,12 +79,20 @@ def render_admin_summary(*, stats_payload: Mapping[str, Any], per_model: list[Ma
     title = "LLM Server Admin Summary"
 
     if fmt == "json":
-        return render_json({"title": title, "stats": dict(stats_payload), "per_model": list(per_model)})
+        return render_json(
+            {"title": title, "stats": dict(stats_payload), "per_model": list(per_model)}
+        )
 
     if fmt == "md":
         out = []
         out.append(render_md_kv(title, stats_payload))
-        out.append(render_md_table("Per-model", columns=list(per_model[0].keys()) if per_model else ["model_id"], rows=per_model))
+        out.append(
+            render_md_table(
+                "Per-model",
+                columns=list(per_model[0].keys()) if per_model else ["model_id"],
+                rows=per_model,
+            )
+        )
         return "\n".join(out).strip() + "\n"
 
     # text

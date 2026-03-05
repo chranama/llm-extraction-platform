@@ -19,6 +19,7 @@ class OnboardingEvalResult:
 
     This is intentionally policy-agnostic but currently supports extract enablement.
     """
+
     decision: Decision
     eval_run_dir: str
     thresholds_profile: Optional[str]
@@ -87,7 +88,9 @@ def _print_decision(decision: Decision) -> None:
     print("=" * 80 + "\n")
 
 
-def _deployment_from_artifact(artifact: EvalArtifact) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+def _deployment_from_artifact(
+    artifact: EvalArtifact,
+) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Pull deployment provenance from eval summary.
 

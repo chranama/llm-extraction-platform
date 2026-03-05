@@ -58,9 +58,7 @@ async def test_extract_is_disabled(client, auth_headers):
 
 @pytest.mark.anyio
 async def test_generate_log_written(client, auth_headers, test_sessionmaker):
-    await client.post(
-        "/v1/generate", headers=auth_headers, json={"prompt": "hi", "cache": False}
-    )
+    await client.post("/v1/generate", headers=auth_headers, json={"prompt": "hi", "cache": False})
 
     from llm_server.db.models import InferenceLog
 

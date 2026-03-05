@@ -128,11 +128,17 @@ def write_eval_latest_pointer(
         store=store,
     )
 
-    p = Path(out_path).expanduser().resolve() if out_path is not None else pointer_out_path_for_task(task)
+    p = (
+        Path(out_path).expanduser().resolve()
+        if out_path is not None
+        else pointer_out_path_for_task(task)
+    )
     return write_eval_run_pointer(p, payload)
 
 
-def read_eval_latest_pointer(*, task: str, path: Optional[Pathish] = None) -> EvalRunPointerSnapshot:
+def read_eval_latest_pointer(
+    *, task: str, path: Optional[Pathish] = None
+) -> EvalRunPointerSnapshot:
     """
     Read and validate the canonical eval_out/latest.json pointer.
 

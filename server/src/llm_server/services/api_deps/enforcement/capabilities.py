@@ -23,11 +23,17 @@ def deployment_capabilities(request: Request | None = None) -> Dict[str, bool]:
     }
 
 
-def _model_capabilities_from_models_yaml(model_id: str, *, request: Request | None = None) -> Optional[Dict[str, bool]]:
+def _model_capabilities_from_models_yaml(
+    model_id: str, *, request: Request | None = None
+) -> Optional[Dict[str, bool]]:
     cfg = models_config_from_request(request)
 
-    defaults_caps = getattr(cfg, "defaults", {}).get("capabilities") if hasattr(cfg, "defaults") else None
-    defaults_caps = cast(Optional[Dict[str, bool]], defaults_caps) if isinstance(defaults_caps, dict) else None
+    defaults_caps = (
+        getattr(cfg, "defaults", {}).get("capabilities") if hasattr(cfg, "defaults") else None
+    )
+    defaults_caps = (
+        cast(Optional[Dict[str, bool]], defaults_caps) if isinstance(defaults_caps, dict) else None
+    )
 
     spec_caps: Optional[Dict[str, bool]] = None
     for sp in getattr(cfg, "models", []) or []:
@@ -52,7 +58,9 @@ def _model_capabilities_from_models_yaml(model_id: str, *, request: Request | No
     return out
 
 
-def model_capabilities(model_id: str, *, request: Request | None = None) -> Optional[Dict[str, bool]]:
+def model_capabilities(
+    model_id: str, *, request: Request | None = None
+) -> Optional[Dict[str, bool]]:
     base_caps: Optional[Dict[str, bool]] = None
 
     if request is not None:
@@ -68,7 +76,11 @@ def model_capabilities(model_id: str, *, request: Request | None = None) -> Opti
                         out[k] = bool(caps_meta.get(k))
                 base_caps = out or None
             elif isinstance(caps_meta, (list, tuple, set)):
-                allowed = {str(x).strip().lower() for x in caps_meta if isinstance(x, str) and str(x).strip()}
+                allowed = {
+                    str(x).strip().lower()
+                    for x in caps_meta
+                    if isinstance(x, str) and str(x).strip()
+                }
                 base_caps = {k: (k in allowed) for k in _CAP_KEYS}
             else:
                 base_caps = None
@@ -101,7 +113,9 @@ def effective_capabilities(model_id: str, *, request: Request | None = None) -> 
     return {k: bool(raw[k]) and bool(dep.get(k, True)) for k in _CAP_KEYS}
 
 
-def require_capability(model_id: str, capability: Capability, *, request: Request | None = None) -> None:
+def require_capability(
+    model_id: str, capability: Capability, *, request: Request | None = None
+) -> None:
     dep = deployment_capabilities(request)
     if not bool(dep.get(capability, True)):
         raise AppError(

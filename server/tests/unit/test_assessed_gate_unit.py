@@ -17,14 +17,24 @@ def test_deployment_key_from_snapshot_and_request(monkeypatch):
         "profiles": {"app": "host"},
         "container": True,
         "platform": {"system": "Darwin", "machine": "arm64"},
-        "accelerators": {"torch_present": True, "cuda_available": False, "cuda_device_count": 0, "mps_available": True},
+        "accelerators": {
+            "torch_present": True,
+            "cuda_available": False,
+            "cuda_device_count": 0,
+            "mps_available": True,
+        },
     }
     k1 = gate.deployment_key_from_snapshot(dep)
     k2 = gate.deployment_key_from_snapshot(dep)
     assert isinstance(k1, str) and len(k1) == 16
     assert k1 == k2
 
-    monkeypatch.setattr(gate, "deployment_metadata_snapshot", lambda request: {"deployment_key": "  dk-1  "}, raising=True)
+    monkeypatch.setattr(
+        gate,
+        "deployment_metadata_snapshot",
+        lambda request: {"deployment_key": "  dk-1  "},
+        raising=True,
+    )
     assert gate.deployment_key_from_request(_req()) == "dk-1"
 
     monkeypatch.setattr(gate, "deployment_metadata_snapshot", lambda request: dep, raising=True)
@@ -62,7 +72,9 @@ def test_cap_assessed_from_capability_raw_parsing():
 
 def test_assessed_snapshot_from_models_yaml_defaults_when_missing_spec(monkeypatch):
     monkeypatch.setattr(gate, "_get_model_spec", lambda request, model_id: None, raising=True)
-    snap = gate._assessed_snapshot_from_models_yaml(request=_req(), model_id="m1", capability="extract")
+    snap = gate._assessed_snapshot_from_models_yaml(
+        request=_req(), model_id="m1", capability="extract"
+    )
     assert snap["required"] is False
     assert snap["status"] == "allowed"
     assert snap["selected_deployment_key"] is None
@@ -88,7 +100,9 @@ def test_assessed_snapshot_model_and_capability_overrides(monkeypatch):
         },
     )
     monkeypatch.setattr(gate, "_get_model_spec", lambda request, model_id: sp, raising=True)
-    snap = gate._assessed_snapshot_from_models_yaml(request=_req(), model_id="m2", capability="extract")
+    snap = gate._assessed_snapshot_from_models_yaml(
+        request=_req(), model_id="m2", capability="extract"
+    )
     assert snap["required"] is True
     assert snap["status"] == "blocked"
     assert snap["assessed"] is False
@@ -132,7 +146,9 @@ def test_require_assessed_gate_allows_and_blocks(monkeypatch):
         },
         raising=True,
     )
-    monkeypatch.setattr(gate, "deployment_key_from_request", lambda request: "dk-current", raising=True)
+    monkeypatch.setattr(
+        gate, "deployment_key_from_request", lambda request: "dk-current", raising=True
+    )
 
     with pytest.raises(AppError) as e:
         gate.require_assessed_gate(request=req, model_id="m1", capability="extract")

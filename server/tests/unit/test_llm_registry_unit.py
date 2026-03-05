@@ -39,7 +39,9 @@ class RemoteClientNoState:
         self.model_id = model_id
 
 
-def make_mgr(models: dict[str, object], default_id: str, meta: dict | None = None) -> MultiModelManager:
+def make_mgr(
+    models: dict[str, object], default_id: str, meta: dict | None = None
+) -> MultiModelManager:
     # NOTE: current constructor kw is model_meta (not meta)
     return MultiModelManager(models=models, default_id=default_id, model_meta=meta or {})
 
@@ -130,7 +132,10 @@ def _mgr_is_loaded(mgr: MultiModelManager, model_id: str) -> bool:
                 return bool(fn())
             except Exception:
                 pass
-        if getattr(backend, "_model", None) is not None and getattr(backend, "_tokenizer", None) is not None:
+        if (
+            getattr(backend, "_model", None) is not None
+            and getattr(backend, "_tokenizer", None) is not None
+        ):
             return True
         return False
 
@@ -142,7 +147,10 @@ def _mgr_is_loaded(mgr: MultiModelManager, model_id: str) -> bool:
             return bool(fn())
         except Exception:
             pass
-    if getattr(backend, "_model", None) is not None and getattr(backend, "_tokenizer", None) is not None:
+    if (
+        getattr(backend, "_model", None) is not None
+        and getattr(backend, "_tokenizer", None) is not None
+    ):
         return True
     return False
 

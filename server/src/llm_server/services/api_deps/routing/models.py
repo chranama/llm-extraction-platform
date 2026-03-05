@@ -82,7 +82,9 @@ def loaded_model_id(request: Request | None) -> str | None:
     return None
 
 
-def resolve_default_model_id_and_backend_obj(request: Request) -> tuple[Optional[str], Optional[str], Any]:
+def resolve_default_model_id_and_backend_obj(
+    request: Request,
+) -> tuple[Optional[str], Optional[str], Any]:
     """
     Determine the currently-selected effective model id + backend object without forcing loads.
 
@@ -128,10 +130,16 @@ def resolve_default_model_id_and_backend_obj(request: Request) -> tuple[Optional
         mid = getattr(backend_obj, "model_id", None) if backend_obj is not None else None
         effective_mid = str(mid).strip() if isinstance(mid, str) and str(mid).strip() else None
 
-    return effective_mid, (str(backend_name) if isinstance(backend_name, str) else None), backend_obj
+    return (
+        effective_mid,
+        (str(backend_name) if isinstance(backend_name, str) else None),
+        backend_obj,
+    )
 
 
-def model_flags_from_app_state(request: Request) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
+def model_flags_from_app_state(
+    request: Request,
+) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
     """
     Returns:
       (model_loaded, model_error, loaded_model_id, runtime_default_model_id)
@@ -148,10 +156,14 @@ def model_flags_from_app_state(request: Request) -> tuple[bool, Optional[str], O
         )
     except Exception:
         loaded_mid = getattr(request.app.state, "loaded_model_id", None)
-        loaded_mid = loaded_mid.strip() if isinstance(loaded_mid, str) and loaded_mid.strip() else None
+        loaded_mid = (
+            loaded_mid.strip() if isinstance(loaded_mid, str) and loaded_mid.strip() else None
+        )
 
         model_error = getattr(request.app.state, "model_error", None)
-        model_error = model_error.strip() if isinstance(model_error, str) and model_error.strip() else None
+        model_error = (
+            model_error.strip() if isinstance(model_error, str) and model_error.strip() else None
+        )
 
         return (
             bool(getattr(request.app.state, "model_loaded", False)),
@@ -247,9 +259,15 @@ def resolve_model(
         return model_id, llm[model_id]
 
     if isinstance(llm, dict):
-        model_id = model_override or default_model_id_from_settings(request=request) or next(iter(llm.keys()), "")
+        model_id = (
+            model_override
+            or default_model_id_from_settings(request=request)
+            or next(iter(llm.keys()), "")
+        )
         if not model_id:
-            raise AppError(code="model_config_invalid", message="No model configured", status_code=500)
+            raise AppError(
+                code="model_config_invalid", message="No model configured", status_code=500
+            )
 
         if model_override is not None and allowed and model_id not in allowed:
             raise AppError(
@@ -260,7 +278,11 @@ def resolve_model(
             )
 
         if model_id not in llm:
-            raise AppError(code="model_missing", message=f"Model '{model_id}' not found in LLM registry", status_code=500)
+            raise AppError(
+                code="model_missing",
+                message=f"Model '{model_id}' not found in LLM registry",
+                status_code=500,
+            )
 
         return model_id, llm[model_id]
 

@@ -40,9 +40,15 @@ async def model_ready_check_async(request: Request) -> Tuple[bool, str, Dict[str
     readiness_mode = per_model_readiness_mode(request, model_id=model_id)
 
     if readiness_mode == "off":
-        return True, "skipped (readiness_mode=off)", {"readiness_mode": readiness_mode, "model_id": model_id, "backend": backend_name}
+        return (
+            True,
+            "skipped (readiness_mode=off)",
+            {"readiness_mode": readiness_mode, "model_id": model_id, "backend": backend_name},
+        )
 
-    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(request)
+    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(
+        request
+    )
 
     # External backend readiness
     if backend_name in ("llamacpp", "remote"):
@@ -52,14 +58,41 @@ async def model_ready_check_async(request: Request) -> Tuple[bool, str, Dict[str
         if readiness_mode == "probe":
             if backend_name == "llamacpp":
                 ok, st, details = await llamacpp_dependency_check_async(backend_obj)
-                return ok, st, {"model_id": model_id, "backend": backend_name, "readiness_mode": readiness_mode, **details}
+                return (
+                    ok,
+                    st,
+                    {
+                        "model_id": model_id,
+                        "backend": backend_name,
+                        "readiness_mode": readiness_mode,
+                        **details,
+                    },
+                )
 
             ok, st, details = await remote_probe_async(backend_obj)
-            return ok, st, {"model_id": model_id, "backend": backend_name, "readiness_mode": readiness_mode, **details}
+            return (
+                ok,
+                st,
+                {
+                    "model_id": model_id,
+                    "backend": backend_name,
+                    "readiness_mode": readiness_mode,
+                    **details,
+                },
+            )
 
         # readiness_mode == "generate"
         ok, st, details = await external_backend_generate_check_async(backend_obj)
-        return ok, st, {"model_id": model_id, "backend": backend_name, "readiness_mode": readiness_mode, **details}
+        return (
+            ok,
+            st,
+            {
+                "model_id": model_id,
+                "backend": backend_name,
+                "readiness_mode": readiness_mode,
+                **details,
+            },
+        )
 
     # In-process backend readiness: reflect runtime truth only.
     ok_inproc = bool(model_loaded and model_error is None)

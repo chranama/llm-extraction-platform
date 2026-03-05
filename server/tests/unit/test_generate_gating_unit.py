@@ -59,7 +59,16 @@ async def test_token_helpers():
 
 @pytest.mark.anyio
 async def test_gate_disabled_bypasses():
-    gate = gg.GenerateGate(GenerateGateConfig(enabled=False, max_concurrent=1, max_queue=1, timeout_seconds=1.0, fail_fast=True, count_queued_as_in_flight=False))
+    gate = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=False,
+            max_concurrent=1,
+            max_queue=1,
+            timeout_seconds=1.0,
+            fail_fast=True,
+            count_queued_as_in_flight=False,
+        )
+    )
 
     async def _fn():
         return "ok"
@@ -69,7 +78,16 @@ async def test_gate_disabled_bypasses():
 
 @pytest.mark.anyio
 async def test_gate_fail_fast_queue_full_and_concurrency_full():
-    gate_q = gg.GenerateGate(GenerateGateConfig(enabled=True, max_concurrent=1, max_queue=1, timeout_seconds=1.0, fail_fast=True, count_queued_as_in_flight=False))
+    gate_q = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=True,
+            max_concurrent=1,
+            max_queue=1,
+            timeout_seconds=1.0,
+            fail_fast=True,
+            count_queued_as_in_flight=False,
+        )
+    )
     gate_q._state.queue_slots._value = 0  # type: ignore[attr-defined]
 
     async def _fn():
@@ -81,7 +99,16 @@ async def test_gate_fail_fast_queue_full_and_concurrency_full():
     assert e1.value.status_code == 429
     assert e1.value.extra["max_queue"] == 1
 
-    gate_c = gg.GenerateGate(GenerateGateConfig(enabled=True, max_concurrent=1, max_queue=0, timeout_seconds=1.0, fail_fast=True, count_queued_as_in_flight=False))
+    gate_c = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=True,
+            max_concurrent=1,
+            max_queue=0,
+            timeout_seconds=1.0,
+            fail_fast=True,
+            count_queued_as_in_flight=False,
+        )
+    )
     gate_c._state.sem._value = 0  # type: ignore[attr-defined]
     with pytest.raises(AppError) as e2:
         await gate_c.run(_fn)
@@ -95,20 +122,47 @@ async def test_gate_timeouts_and_success():
         await asyncio.sleep(0.05)
         return "late"
 
-    gate_exec = gg.GenerateGate(GenerateGateConfig(enabled=True, max_concurrent=1, max_queue=1, timeout_seconds=0.01, fail_fast=False, count_queued_as_in_flight=False))
+    gate_exec = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=True,
+            max_concurrent=1,
+            max_queue=1,
+            timeout_seconds=0.01,
+            fail_fast=False,
+            count_queued_as_in_flight=False,
+        )
+    )
     with pytest.raises(AppError) as e1:
         await gate_exec.run(_slow)
     assert e1.value.code == "generate_overloaded"
     assert e1.value.extra["stage"] in ("execution", "queue_wait")
 
-    gate_qwait = gg.GenerateGate(GenerateGateConfig(enabled=True, max_concurrent=1, max_queue=1, timeout_seconds=0.01, fail_fast=False, count_queued_as_in_flight=False))
+    gate_qwait = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=True,
+            max_concurrent=1,
+            max_queue=1,
+            timeout_seconds=0.01,
+            fail_fast=False,
+            count_queued_as_in_flight=False,
+        )
+    )
     gate_qwait._state.sem._value = 0  # type: ignore[attr-defined]
     with pytest.raises(AppError) as e2:
         await gate_qwait.run(_slow)
     assert e2.value.code == "generate_overloaded"
     assert e2.value.extra["stage"] == "queue_wait"
 
-    gate_ok = gg.GenerateGate(GenerateGateConfig(enabled=True, max_concurrent=2, max_queue=2, timeout_seconds=1.0, fail_fast=False, count_queued_as_in_flight=True))
+    gate_ok = gg.GenerateGate(
+        GenerateGateConfig(
+            enabled=True,
+            max_concurrent=2,
+            max_queue=2,
+            timeout_seconds=1.0,
+            fail_fast=False,
+            count_queued_as_in_flight=True,
+        )
+    )
 
     async def _fast():
         return 42
@@ -125,7 +179,14 @@ def test_singleton_get_and_reset(monkeypatch):
     monkeypatch.setattr(
         gg,
         "load_generate_gate_config",
-        lambda settings=None: GenerateGateConfig(enabled=True, max_concurrent=1, max_queue=1, timeout_seconds=1.0, fail_fast=True, count_queued_as_in_flight=False),
+        lambda settings=None: GenerateGateConfig(
+            enabled=True,
+            max_concurrent=1,
+            max_queue=1,
+            timeout_seconds=1.0,
+            fail_fast=True,
+            count_queued_as_in_flight=False,
+        ),
         raising=True,
     )
     g1 = gg.get_generate_gate()

@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
-from llm_policy.io.models_yaml_patch import PatchChange, PatchResult, patch_models_yaml_extract_capability
+from llm_policy.io.models_yaml_patch import (
+    PatchChange,
+    PatchResult,
+    patch_models_yaml_extract_capability,
+)
 from llm_policy.onboarding.runner import OnboardingEvalResult, evaluate_model_onboarding
 
 
@@ -21,6 +25,7 @@ class OnboardingApplyResult:
       - `enable_extract` may be None if decision didn't produce a boolean.
       - `changes` reflects what was modified in models.yaml (base + profiles).
     """
+
     ok: bool
     decision_ok: bool
     patch_ok: bool
@@ -104,14 +109,20 @@ def apply_model_onboarding(
         Path(models_yaml),
         model_id=str(model_id),
         enable=bool(enable_extract),
-        profile=(str(patch_profile).strip() if isinstance(patch_profile, str) and patch_profile.strip() else None),
+        profile=(
+            str(patch_profile).strip()
+            if isinstance(patch_profile, str) and patch_profile.strip()
+            else None
+        ),
         deployment=res.deployment,
         deployment_key=res.deployment_key,
         assessed=True,  # flip assessed to true after an assessment
         assessed_by=str(getattr(decision, "policy", policy_name) or policy_name),
         assessed_pipeline=str(getattr(decision, "pipeline", pipeline) or pipeline),
         eval_run_dir=str(res.eval_run_dir),
-        thresholds_profile=str(res.thresholds_profile) if res.thresholds_profile is not None else None,
+        thresholds_profile=(
+            str(res.thresholds_profile) if res.thresholds_profile is not None else None
+        ),
     )
 
     if verbose:

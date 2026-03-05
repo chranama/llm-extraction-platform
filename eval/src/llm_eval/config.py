@@ -23,6 +23,7 @@ def _expand_env_str(s: str) -> str:
     Expand ${VAR} and ${VAR:-default} using current environment.
     Leaves unknown vars without defaults as "" (like many shells).
     """
+
     def repl(m: re.Match[str]) -> str:
         var = m.group(1)
         default = m.group(2)

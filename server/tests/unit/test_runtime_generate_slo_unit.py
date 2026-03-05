@@ -49,7 +49,9 @@ async def test_write_generate_slo_artifact(monkeypatch, tmp_path: Path):
     async def _compute(session, *, window_seconds, routes=None, model_id=None):
         return dict(payload)
 
-    monkeypatch.setattr(slo, "compute_window_generate_slo_contracts_payload", _compute, raising=True)
+    monkeypatch.setattr(
+        slo, "compute_window_generate_slo_contracts_payload", _compute, raising=True
+    )
     monkeypatch.setattr(slo, "parse_generate_slo", lambda x: x, raising=True)
 
     out_path = tmp_path / "artifact.json"

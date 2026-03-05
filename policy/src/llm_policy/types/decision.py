@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
-
 # -------------------------
 # Enums / literals
 # -------------------------
@@ -19,6 +18,7 @@ class DecisionStatus(str, Enum):
       - deny: explicitly fail / disable
       - unknown: policy could not determine (treat as deny for gating)
     """
+
     allow = "allow"
     deny = "deny"
     unknown = "unknown"

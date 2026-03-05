@@ -35,6 +35,7 @@ class GenerateGateSnapshot:
     Best-effort view of gate pressure for early-reject middleware.
     Values are approximate under contention (good enough for overload rejection).
     """
+
     enabled: bool
     max_concurrent: int
     max_queue: int
@@ -161,7 +162,9 @@ class GenerateGate:
 
         # max_queue <= 0 => no queue admission token (no waiting room)
         use_queue = cfg.max_queue > 0
-        queue_token: _Token = _SemaphoreToken(self._state.queue_slots) if use_queue else _NullToken()
+        queue_token: _Token = (
+            _SemaphoreToken(self._state.queue_slots) if use_queue else _NullToken()
+        )
         exec_token = _SemaphoreToken(self._state.sem)
 
         try:
@@ -169,7 +172,11 @@ class GenerateGate:
             # Queue admission
             # -------------------------
             if use_queue:
-                ok_q = queue_token.try_acquire() if cfg.fail_fast else await queue_token.acquire_with_timeout(timeout_s)
+                ok_q = (
+                    queue_token.try_acquire()
+                    if cfg.fail_fast
+                    else await queue_token.acquire_with_timeout(timeout_s)
+                )
                 if not ok_q:
                     self._reject(
                         "queue_full",
@@ -205,7 +212,11 @@ class GenerateGate:
             t_wait = time.perf_counter()
 
             # fail_fast must apply here too
-            ok_exec = exec_token.try_acquire() if cfg.fail_fast else await exec_token.acquire_with_timeout(remaining)
+            ok_exec = (
+                exec_token.try_acquire()
+                if cfg.fail_fast
+                else await exec_token.acquire_with_timeout(remaining)
+            )
             if not ok_exec:
                 if cfg.fail_fast:
                     self._reject(
@@ -328,6 +339,7 @@ class GenerateGate:
 # ----------------------------
 # Internal helpers
 # ----------------------------
+
 
 class _Token:
     held: bool

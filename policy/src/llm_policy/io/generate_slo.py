@@ -67,7 +67,9 @@ def read_generate_slo_snapshot(path: Optional[Pathish] = None) -> GenerateSLOSna
     return read_generate_slo(p)
 
 
-def read_generate_slo_snapshot_result(path: Optional[Pathish] = None) -> ArtifactReadResult[GenerateSLOSnapshot]:
+def read_generate_slo_snapshot_result(
+    path: Optional[Pathish] = None,
+) -> ArtifactReadResult[GenerateSLOSnapshot]:
     """
     Same as read_generate_slo_snapshot(), but returns a generic status wrapper
     so callers can log/diagnose without duplicating logic.

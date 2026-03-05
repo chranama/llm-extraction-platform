@@ -78,7 +78,14 @@ def test_set_request_meta_and_parse_redis_output():
 
 @pytest.mark.anyio
 async def test_cache_reads_and_writes(monkeypatch):
-    cache = inf.CacheSpec(model_id="m1", prompt="p", prompt_hash="h", params_fp="fp", redis_key="rk", redis_ttl_seconds=10)
+    cache = inf.CacheSpec(
+        model_id="m1",
+        prompt="p",
+        prompt_hash="h",
+        params_fp="fp",
+        redis_key="rk",
+        redis_ttl_seconds=10,
+    )
     session = _Session()
 
     # Redis hit
@@ -86,34 +93,46 @@ async def test_cache_reads_and_writes(monkeypatch):
         return '{"output":"from-redis"}'
 
     monkeypatch.setattr(inf, "redis_get", _redis_get_hit, raising=True)
-    out, cached, layer = await inf.get_cached_output(session, redis=object(), cache=cache, kind="single", enabled=True)
+    out, cached, layer = await inf.get_cached_output(
+        session, redis=object(), cache=cache, kind="single", enabled=True
+    )
     assert (out, cached, layer) == ("from-redis", True, "redis")
 
     # DB hit + redis backfill
     session.exec_result = _ScalarOneOrNone(SimpleNamespace(output="from-db"))
+
     async def _redis_get_miss(redis, key, *, model_id="unknown", kind="single"):
         return None
+
     writes = []
+
     async def _redis_set(redis, key, value, *, ex=None):
         writes.append((key, value, ex))
 
     monkeypatch.setattr(inf, "redis_get", _redis_get_miss, raising=True)
     monkeypatch.setattr(inf, "redis_set", _redis_set, raising=True)
-    out2, cached2, layer2 = await inf.get_cached_output(session, redis=object(), cache=cache, kind="single", enabled=True)
+    out2, cached2, layer2 = await inf.get_cached_output(
+        session, redis=object(), cache=cache, kind="single", enabled=True
+    )
     assert (out2, cached2, layer2) == ("from-db", True, "db")
     assert writes and writes[0][2] == 10
 
     # Disabled
-    out3, cached3, layer3 = await inf.get_cached_output(session, redis=None, cache=cache, kind="single", enabled=False)
+    out3, cached3, layer3 = await inf.get_cached_output(
+        session, redis=None, cache=cache, kind="single", enabled=False
+    )
     assert (out3, cached3, layer3) == (None, False, None)
 
 
 @pytest.mark.anyio
 async def test_write_cache_and_write_logs(monkeypatch):
-    cache = inf.CacheSpec(model_id="m1", prompt="p", prompt_hash="h", params_fp="fp", redis_key="rk")
+    cache = inf.CacheSpec(
+        model_id="m1", prompt="p", prompt_hash="h", params_fp="fp", redis_key="rk"
+    )
     session = _Session()
 
     writes = []
+
     async def _redis_set(redis, key, value, *, ex=None):
         writes.append((key, ex))
 

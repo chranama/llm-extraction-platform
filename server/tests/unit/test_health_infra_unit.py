@@ -16,7 +16,9 @@ def test_settings_from_request_prefers_app_state(monkeypatch):
     req.app.state.settings = SimpleNamespace(redis_enabled=True)
     assert infra.settings_from_request(req).redis_enabled is True
 
-    monkeypatch.setattr(infra, "get_settings", lambda: SimpleNamespace(redis_enabled=False), raising=True)
+    monkeypatch.setattr(
+        infra, "get_settings", lambda: SimpleNamespace(redis_enabled=False), raising=True
+    )
     req2 = _req()
     assert infra.settings_from_request(req2).redis_enabled is False
 
@@ -41,11 +43,21 @@ async def test_db_check_paths():
 @pytest.mark.anyio
 async def test_redis_check_paths(monkeypatch):
     req = _req()
-    monkeypatch.setattr(infra, "settings_from_request", lambda request: SimpleNamespace(redis_enabled=False), raising=True)
+    monkeypatch.setattr(
+        infra,
+        "settings_from_request",
+        lambda request: SimpleNamespace(redis_enabled=False),
+        raising=True,
+    )
     ok0, st0 = await infra.redis_check(req)
     assert (ok0, st0) == (True, "disabled")
 
-    monkeypatch.setattr(infra, "settings_from_request", lambda request: SimpleNamespace(redis_enabled=True), raising=True)
+    monkeypatch.setattr(
+        infra,
+        "settings_from_request",
+        lambda request: SimpleNamespace(redis_enabled=True),
+        raising=True,
+    )
     monkeypatch.setattr(infra, "get_redis_from_request", lambda request: None, raising=True)
     ok1, st1 = await infra.redis_check(req)
     assert (ok1, st1) == (False, "not initialized")

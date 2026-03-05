@@ -165,7 +165,10 @@ class EarlyRejectGenerateMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        if cfg.reject_queue_depth_gte > 0 and snap.queue_depth_estimate >= cfg.reject_queue_depth_gte:
+        if (
+            cfg.reject_queue_depth_gte > 0
+            and snap.queue_depth_estimate >= cfg.reject_queue_depth_gte
+        ):
             raise AppError(
                 code="generate_overloaded",
                 message="Generate is overloaded. Try again later.",

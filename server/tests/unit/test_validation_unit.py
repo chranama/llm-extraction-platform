@@ -25,7 +25,7 @@ def test_parse_json_strict_rejects_code_fence():
     from llm_server.core.validation import StrictJSONError, parse_json_strict
 
     with pytest.raises(StrictJSONError) as e:
-        parse_json_strict("```json\n{\"a\":1}\n```")
+        parse_json_strict('```json\n{"a":1}\n```')
 
     assert e.value.code == "invalid_json"
 

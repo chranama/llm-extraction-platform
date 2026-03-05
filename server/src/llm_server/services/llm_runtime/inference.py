@@ -45,7 +45,9 @@ def set_request_meta(request: Any, *, route: str, model_id: str, cached: bool = 
     request.state.cached = cached
 
 
-def record_token_metrics(model_id: str, prompt_tokens: int | None, completion_tokens: int | None) -> None:
+def record_token_metrics(
+    model_id: str, prompt_tokens: int | None, completion_tokens: int | None
+) -> None:
     # Best-effort metrics
     if prompt_tokens is not None:
         LLM_TOKENS.labels(direction="prompt", model_id=model_id).inc(prompt_tokens)

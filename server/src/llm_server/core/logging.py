@@ -11,10 +11,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from llm_server.core.time import request_latency_ms
 
-
 # -----------------------------
 # JSON log formatter
 # -----------------------------
+
 
 class JsonFormatter(logging.Formatter):
     """
@@ -166,6 +166,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 # -----------------------------
 # Setup
 # -----------------------------
+
 
 def _configure_root_logging() -> None:
     """

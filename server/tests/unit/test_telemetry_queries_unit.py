@@ -17,7 +17,9 @@ class _Scalars:
 
 
 class _Result:
-    def __init__(self, *, one=None, all_rows=None, scalar_one=None, scalar_one_or_none=None, scalars=None):
+    def __init__(
+        self, *, one=None, all_rows=None, scalar_one=None, scalar_one_or_none=None, scalars=None
+    ):
         self._one = one
         self._all = all_rows or []
         self._scalar_one = scalar_one
@@ -90,8 +92,20 @@ async def test_fetch_role_name_and_me_usage():
 
 @pytest.mark.anyio
 async def test_get_admin_usage_and_list_api_keys():
-    k1 = SimpleNamespace(key="key-abc-123", name="svc-a", role=SimpleNamespace(name="admin"), created_at=datetime.now(timezone.utc), disabled_at=None)
-    k2 = SimpleNamespace(key="key-def-456", name="svc-b", role=None, created_at=datetime.now(timezone.utc), disabled_at=datetime.now(timezone.utc))
+    k1 = SimpleNamespace(
+        key="key-abc-123",
+        name="svc-a",
+        role=SimpleNamespace(name="admin"),
+        created_at=datetime.now(timezone.utc),
+        disabled_at=None,
+    )
+    k2 = SimpleNamespace(
+        key="key-def-456",
+        name="svc-b",
+        role=None,
+        created_at=datetime.now(timezone.utc),
+        disabled_at=datetime.now(timezone.utc),
+    )
     session = _Session(
         execute_results=[
             _Result(all_rows=[("key-abc-123", 3, None, None, 10, 20)]),

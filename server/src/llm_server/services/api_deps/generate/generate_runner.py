@@ -35,6 +35,7 @@ async def run_generate_rich_offloop(model: Any, **kwargs: Any) -> tuple[str, dic
       - Else fallback to model.generate(**kwargs) -> string-ish output
       - Always returns (text, usage_dict_or_none)
     """
+
     def _run() -> tuple[str, dict[str, Any] | None]:
         gen_rich = getattr(model, "generate_rich", None)
         if callable(gen_rich):

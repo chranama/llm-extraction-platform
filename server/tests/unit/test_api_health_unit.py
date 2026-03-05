@@ -42,7 +42,12 @@ def test_llm_state_variants():
 
 
 def test_model_required_for_readyz(monkeypatch):
-    monkeypatch.setattr(health_api, "settings_from_request", lambda request: SimpleNamespace(require_model_ready=True), raising=True)
+    monkeypatch.setattr(
+        health_api,
+        "settings_from_request",
+        lambda request: SimpleNamespace(require_model_ready=True),
+        raising=True,
+    )
     assert health_api._model_required_for_readyz(_request()) is True
 
 
@@ -53,7 +58,13 @@ async def test_readyz_when_model_not_required(monkeypatch):
     req.app.state.runtime_model_loader = object()
     req.app.state.models_config = object()
 
-    monkeypatch.setattr(health_api, "settings_from_request", lambda request: SimpleNamespace(db_instance="dbA", require_model_ready=False), raising=True)
+    monkeypatch.setattr(
+        health_api,
+        "settings_from_request",
+        lambda request: SimpleNamespace(db_instance="dbA", require_model_ready=False),
+        raising=True,
+    )
+
     async def _db_ok(_session):
         return True, "ok"
 
@@ -62,14 +73,37 @@ async def test_readyz_when_model_not_required(monkeypatch):
 
     monkeypatch.setattr(health_api, "db_check", _db_ok, raising=True)
     monkeypatch.setattr(health_api, "redis_check", _redis_ok, raising=True)
-    monkeypatch.setattr(health_api, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True)
-    monkeypatch.setattr(health_api, "model_flags_from_app_state", lambda request: (True, None, "m1", "m1"), raising=True)
-    monkeypatch.setattr(health_api, "resolve_default_model_id_and_backend_obj", lambda request: ("m1", "transformers", object()), raising=True)
-    monkeypatch.setattr(health_api, "per_model_readiness_mode", lambda request, model_id: "generate", raising=True)
+    monkeypatch.setattr(
+        health_api, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True
+    )
+    monkeypatch.setattr(
+        health_api,
+        "model_flags_from_app_state",
+        lambda request: (True, None, "m1", "m1"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api,
+        "resolve_default_model_id_and_backend_obj",
+        lambda request: ("m1", "transformers", object()),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api, "per_model_readiness_mode", lambda request, model_id: "generate", raising=True
+    )
     monkeypatch.setattr(health_api, "policy_summary", lambda request: {"ok": True}, raising=True)
-    monkeypatch.setattr(health_api, "generate_gate_snapshot", lambda: {"enabled": True}, raising=True)
-    monkeypatch.setattr(health_api, "assessed_gate_snapshot", lambda request: {"status": "allowed"}, raising=True)
-    monkeypatch.setattr(health_api, "deployment_metadata_snapshot", lambda request: {"deployment_key": "dk"}, raising=True)
+    monkeypatch.setattr(
+        health_api, "generate_gate_snapshot", lambda: {"enabled": True}, raising=True
+    )
+    monkeypatch.setattr(
+        health_api, "assessed_gate_snapshot", lambda request: {"status": "allowed"}, raising=True
+    )
+    monkeypatch.setattr(
+        health_api,
+        "deployment_metadata_snapshot",
+        lambda request: {"deployment_key": "dk"},
+        raising=True,
+    )
 
     async def _model_ready(_request):
         return False, "not ready", {"x": 1}
@@ -89,7 +123,13 @@ async def test_readyz_when_model_not_required(monkeypatch):
 async def test_readyz_model_required_failure(monkeypatch):
     req = _request()
     req.app.state.llm = object()
-    monkeypatch.setattr(health_api, "settings_from_request", lambda request: SimpleNamespace(db_instance="dbB", require_model_ready=True), raising=True)
+    monkeypatch.setattr(
+        health_api,
+        "settings_from_request",
+        lambda request: SimpleNamespace(db_instance="dbB", require_model_ready=True),
+        raising=True,
+    )
+
     async def _db_ok(_session):
         return True, "ok"
 
@@ -98,14 +138,30 @@ async def test_readyz_model_required_failure(monkeypatch):
 
     monkeypatch.setattr(health_api, "db_check", _db_ok, raising=True)
     monkeypatch.setattr(health_api, "redis_check", _redis_ok, raising=True)
-    monkeypatch.setattr(health_api, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True)
-    monkeypatch.setattr(health_api, "model_flags_from_app_state", lambda request: (False, "err", None, None), raising=True)
-    monkeypatch.setattr(health_api, "resolve_default_model_id_and_backend_obj", lambda request: ("m2", "llamacpp", object()), raising=True)
-    monkeypatch.setattr(health_api, "per_model_readiness_mode", lambda request, model_id: "probe", raising=True)
+    monkeypatch.setattr(
+        health_api, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True
+    )
+    monkeypatch.setattr(
+        health_api,
+        "model_flags_from_app_state",
+        lambda request: (False, "err", None, None),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api,
+        "resolve_default_model_id_and_backend_obj",
+        lambda request: ("m2", "llamacpp", object()),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api, "per_model_readiness_mode", lambda request, model_id: "probe", raising=True
+    )
     monkeypatch.setattr(health_api, "policy_summary", lambda request: {}, raising=True)
     monkeypatch.setattr(health_api, "generate_gate_snapshot", lambda: {}, raising=True)
     monkeypatch.setattr(health_api, "assessed_gate_snapshot", lambda request: {}, raising=True)
-    monkeypatch.setattr(health_api, "deployment_metadata_snapshot", lambda request: {}, raising=True)
+    monkeypatch.setattr(
+        health_api, "deployment_metadata_snapshot", lambda request: {}, raising=True
+    )
 
     async def _model_ready(_request):
         return False, "dependency down", {"why": "offline"}
@@ -125,15 +181,36 @@ async def test_readyz_model_required_failure(monkeypatch):
 async def test_modelz_success_and_failure(monkeypatch):
     req = _request()
     req.app.state.llm = object()
-    monkeypatch.setattr(health_api, "settings_from_request", lambda request: SimpleNamespace(db_instance="dbC"), raising=True)
-    monkeypatch.setattr(health_api, "effective_model_load_mode_from_request", lambda request: "off", raising=True)
-    monkeypatch.setattr(health_api, "model_flags_from_app_state", lambda request: (False, None, None, "m3"), raising=True)
-    monkeypatch.setattr(health_api, "resolve_default_model_id_and_backend_obj", lambda request: ("m3", "remote", object()), raising=True)
-    monkeypatch.setattr(health_api, "per_model_readiness_mode", lambda request, model_id: "generate", raising=True)
+    monkeypatch.setattr(
+        health_api,
+        "settings_from_request",
+        lambda request: SimpleNamespace(db_instance="dbC"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api, "effective_model_load_mode_from_request", lambda request: "off", raising=True
+    )
+    monkeypatch.setattr(
+        health_api,
+        "model_flags_from_app_state",
+        lambda request: (False, None, None, "m3"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api,
+        "resolve_default_model_id_and_backend_obj",
+        lambda request: ("m3", "remote", object()),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_api, "per_model_readiness_mode", lambda request, model_id: "generate", raising=True
+    )
     monkeypatch.setattr(health_api, "policy_summary", lambda request: {}, raising=True)
     monkeypatch.setattr(health_api, "generate_gate_snapshot", lambda: {}, raising=True)
     monkeypatch.setattr(health_api, "assessed_gate_snapshot", lambda request: {}, raising=True)
-    monkeypatch.setattr(health_api, "deployment_metadata_snapshot", lambda request: {}, raising=True)
+    monkeypatch.setattr(
+        health_api, "deployment_metadata_snapshot", lambda request: {}, raising=True
+    )
 
     async def _ok(_request):
         return True, "ok", {"k": 1}

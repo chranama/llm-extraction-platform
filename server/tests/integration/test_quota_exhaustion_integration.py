@@ -25,9 +25,7 @@ async def test_quota_exhaustion_blocks_subsequent_requests(test_sessionmaker, cl
 
     headers = {"X-API-Key": key}
 
-    r1 = await client.post(
-        "/v1/generate", headers=headers, json={"prompt": "hi", "cache": False}
-    )
+    r1 = await client.post("/v1/generate", headers=headers, json={"prompt": "hi", "cache": False})
     assert r1.status_code == 200, r1.text
 
     r2 = await client.post(

@@ -16,6 +16,7 @@ Operational wrappers for reproducible demo and validation flows.
 scripts/demo_extract_gate/run_host_transformers.sh
 python3 scripts/demo_generate_clamp/write_evidence_manifest.py --help
 bash scripts/ci_smoke_matrix.sh
+RUN_INTEGRATION=1 bash scripts/ci_smoke_matrix.sh
 ```
 
 ## Dependencies

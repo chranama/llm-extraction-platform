@@ -59,9 +59,7 @@ def test_cli_report_text_is_none_when_missing_or_blank() -> None:
     _, _, report_text1, _ = _coerce({"summary": {"task": "t"}, "results": []})
     assert report_text1 is None
 
-    _, _, report_text2, _ = _coerce(
-        {"summary": {"task": "t"}, "results": [], "report_text": "   "}
-    )
+    _, _, report_text2, _ = _coerce({"summary": {"task": "t"}, "results": [], "report_text": "   "})
     assert report_text2 is None
 
     _, _, report_text3, _ = _coerce(
@@ -77,10 +75,9 @@ def test_cli_config_is_none_when_missing_or_wrong_type() -> None:
     _, _, _, cfg2 = _coerce({"summary": {"task": "t"}, "results": [], "config": "x"})
     assert cfg2 is None
 
-    _, _, _, cfg3 = _coerce(
-        {"summary": {"task": "t"}, "results": [], "config": {"a": 1}}
-    )
+    _, _, _, cfg3 = _coerce({"summary": {"task": "t"}, "results": [], "config": {"a": 1}})
     assert cfg3 == {"a": 1}
+
 
 def test_cli_summary_is_copied_not_aliased() -> None:
     payload = {"summary": {"task": "t"}, "results": []}

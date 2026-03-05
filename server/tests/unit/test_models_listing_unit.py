@@ -21,11 +21,25 @@ class _Backend:
 
 def test_list_models_payload_off_mode(monkeypatch):
     req = _req()
-    monkeypatch.setattr(ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m-default"), raising=True)
-    monkeypatch.setattr(ml, "deployment_capabilities", lambda request: {"generate": True}, raising=True)
-    monkeypatch.setattr(ml, "effective_model_load_mode_from_request", lambda request: "off", raising=True)
+    monkeypatch.setattr(
+        ml,
+        "settings_from_request",
+        lambda request: SimpleNamespace(model_id="m-default"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        ml, "deployment_capabilities", lambda request: {"generate": True}, raising=True
+    )
+    monkeypatch.setattr(
+        ml, "effective_model_load_mode_from_request", lambda request: "off", raising=True
+    )
     monkeypatch.setattr(ml, "allowed_model_ids", lambda request=None: ["m-a"], raising=True)
-    monkeypatch.setattr(ml, "effective_capabilities", lambda mid, request=None: {"extract": mid == "m-default"}, raising=True)
+    monkeypatch.setattr(
+        ml,
+        "effective_capabilities",
+        lambda mid, request=None: {"extract": mid == "m-default"},
+        raising=True,
+    )
 
     out = ml.list_models_payload(request=req, llm=None)
     assert out["default_model"] == "m-default"
@@ -35,9 +49,13 @@ def test_list_models_payload_off_mode(monkeypatch):
 
 def test_list_models_payload_non_off_llm_missing_raises(monkeypatch):
     req = _req()
-    monkeypatch.setattr(ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m1"), raising=True)
+    monkeypatch.setattr(
+        ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m1"), raising=True
+    )
     monkeypatch.setattr(ml, "deployment_capabilities", lambda request: {}, raising=True)
-    monkeypatch.setattr(ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True)
+    monkeypatch.setattr(
+        ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True
+    )
 
     with pytest.raises(AppError) as e:
         ml.list_models_payload(request=req, llm=None)
@@ -50,10 +68,18 @@ def test_list_models_payload_multimodel_status_and_fallback(monkeypatch):
         models={"m1": _Backend("m1", "remote"), "m2": _Backend("m2", "llamacpp")},
         default_id="m2",
     )
-    monkeypatch.setattr(ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m1"), raising=True)
-    monkeypatch.setattr(ml, "deployment_capabilities", lambda request: {"extract": True}, raising=True)
-    monkeypatch.setattr(ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True)
-    monkeypatch.setattr(ml, "effective_capabilities", lambda mid, request=None: {"generate": True}, raising=True)
+    monkeypatch.setattr(
+        ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m1"), raising=True
+    )
+    monkeypatch.setattr(
+        ml, "deployment_capabilities", lambda request: {"extract": True}, raising=True
+    )
+    monkeypatch.setattr(
+        ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True
+    )
+    monkeypatch.setattr(
+        ml, "effective_capabilities", lambda mid, request=None: {"generate": True}, raising=True
+    )
 
     out = ml.list_models_payload(request=req, llm=mm)
     assert out["default_model"] == "m2"
@@ -62,7 +88,9 @@ def test_list_models_payload_multimodel_status_and_fallback(monkeypatch):
     assert by_id["m1"]["backend"] == "_Backend"
 
     # status() failure path still falls back to backend introspection
-    monkeypatch.setattr(mm, "status", lambda: (_ for _ in ()).throw(RuntimeError("boom")), raising=True)
+    monkeypatch.setattr(
+        mm, "status", lambda: (_ for _ in ()).throw(RuntimeError("boom")), raising=True
+    )
     out2 = ml.list_models_payload(request=req, llm=mm)
     by_id2 = {x["id"]: x for x in out2["models"]}
     assert by_id2["m1"]["backend"] == "remote"
@@ -73,14 +101,25 @@ def test_list_models_payload_single_backend(monkeypatch):
     req = _req()
     req.app.state.model_loaded = True
     backend = _Backend("m-single", "transformers")
-    monkeypatch.setattr(ml, "settings_from_request", lambda request: SimpleNamespace(model_id="m-fallback"), raising=True)
+    monkeypatch.setattr(
+        ml,
+        "settings_from_request",
+        lambda request: SimpleNamespace(model_id="m-fallback"),
+        raising=True,
+    )
     monkeypatch.setattr(ml, "deployment_capabilities", lambda request: {}, raising=True)
-    monkeypatch.setattr(ml, "effective_capabilities", lambda mid, request=None: {"generate": True}, raising=True)
+    monkeypatch.setattr(
+        ml, "effective_capabilities", lambda mid, request=None: {"generate": True}, raising=True
+    )
 
-    monkeypatch.setattr(ml, "effective_model_load_mode_from_request", lambda request: "eager", raising=True)
+    monkeypatch.setattr(
+        ml, "effective_model_load_mode_from_request", lambda request: "eager", raising=True
+    )
     out = ml.list_models_payload(request=req, llm=backend)
     assert out["models"][0]["loaded"] is True
 
-    monkeypatch.setattr(ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True)
+    monkeypatch.setattr(
+        ml, "effective_model_load_mode_from_request", lambda request: "lazy", raising=True
+    )
     out2 = ml.list_models_payload(request=req, llm=backend)
     assert out2["models"][0]["loaded"] is None

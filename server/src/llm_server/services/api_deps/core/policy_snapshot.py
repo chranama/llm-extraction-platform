@@ -28,6 +28,7 @@ def policy_snapshot_summary(snap: Any) -> Dict[str, Any]:
     """
     Normalize a policy snapshot object into a small stable dict for health/admin output.
     """
+
     def _get(name: str, default=None):
         try:
             return getattr(snap, name, default)

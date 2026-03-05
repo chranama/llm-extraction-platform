@@ -15,9 +15,7 @@ class _Backend:
 
 
 class _Req:
-    def __init__(
-        self, settings, llm=None, *, runtime_default_model_id=None, loaded_model_id=None
-    ):
+    def __init__(self, settings, llm=None, *, runtime_default_model_id=None, loaded_model_id=None):
         self.app = SimpleNamespace(
             state=SimpleNamespace(
                 settings=settings,
@@ -29,9 +27,7 @@ class _Req:
 
 
 def _settings(*, model_id: str, allowed_models: list[str] | None = None):
-    return SimpleNamespace(
-        model_id=model_id, allowed_models=allowed_models or [], all_model_ids=[]
-    )
+    return SimpleNamespace(model_id=model_id, allowed_models=allowed_models or [], all_model_ids=[])
 
 
 def test_resolve_model_multimodel_override_missing():
@@ -46,9 +42,7 @@ def test_resolve_model_multimodel_override_missing():
 
 
 def test_resolve_model_multimodel_no_override_uses_default_id():
-    llm = MultiModelManager(
-        models={"m1": _Backend("m1"), "m2": _Backend("m2")}, default_id="m2"
-    )
+    llm = MultiModelManager(models={"m1": _Backend("m1"), "m2": _Backend("m2")}, default_id="m2")
     req = _Req(_settings(model_id="m2", allowed_models=["m1", "m2"]), llm)
 
     mid, _ = routing_models.resolve_model(llm, None, capability="generate", request=req)

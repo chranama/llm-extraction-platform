@@ -88,7 +88,9 @@ class ApiKey(Base):
         server_default=sa.text("0"),
         nullable=False,
     )
-    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    quota_reset_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Link each API key to an optional role row
     role_id: Mapped[Optional[int]] = mapped_column(ForeignKey("roles.id"), nullable=True)

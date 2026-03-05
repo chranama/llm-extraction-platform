@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 class GenerateErrorRateThreshold(BaseModel):
     threshold: float = Field(default=0.02, ge=0.0, description="Clamp if error_rate >= threshold.")
-    cap: int = Field(default=128, ge=1, description="Token cap applied when error rate is too high.")
+    cap: int = Field(
+        default=128, ge=1, description="Token cap applied when error rate is too high."
+    )
 
 
 class GenerateLatencyP95Threshold(BaseModel):
@@ -16,6 +18,7 @@ class GenerateLatencyP95Threshold(BaseModel):
     steps: threshold_ms -> cap
     Evaluated in descending threshold order.
     """
+
     steps: Dict[int, int] = Field(default_factory=dict)
 
     @field_validator("steps")
@@ -34,6 +37,7 @@ class GenerateThresholds(BaseModel):
     Threshold profile for SLO-driven /v1/generate clamping.
     Matches policies/generate_slo_clamp.py semantics.
     """
+
     min_requests: int = Field(default=10, ge=0)
     safe_cap_on_invalid_snapshot: int = Field(default=128, ge=1)
 

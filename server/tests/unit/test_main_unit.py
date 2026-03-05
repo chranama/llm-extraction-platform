@@ -19,7 +19,9 @@ def mmod(monkeypatch):
             monkeypatch.setattr(
                 c,
                 "validate_models_config",
-                lambda cfg, allow_generic_deployment_key=False: SimpleNamespace(ok=True, error=None),
+                lambda cfg, allow_generic_deployment_key=False: SimpleNamespace(
+                    ok=True, error=None
+                ),
                 raising=False,
             )
         if not hasattr(c, "validate_assessment_for_extract"):
@@ -35,9 +37,7 @@ def mmod(monkeypatch):
         cfg_mod.validate_models_config = (
             lambda cfg, allow_generic_deployment_key=False: SimpleNamespace(ok=True, error=None)
         )
-        cfg_mod.validate_assessment_for_extract = (
-            lambda cfg: SimpleNamespace(ok=True, error=None)
-        )
+        cfg_mod.validate_assessment_for_extract = lambda cfg: SimpleNamespace(ok=True, error=None)
         sys.modules["llm_contracts"] = pkg
         sys.modules["llm_contracts.config"] = cfg_mod
 

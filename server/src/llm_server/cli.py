@@ -31,7 +31,9 @@ def serve(
         "--reload/--no-reload",
         help="Enable auto-reload (overrides UVICORN_RELOAD if provided).",
     ),
-    proxy_headers: bool = typer.Option(True, "--proxy-headers/--no-proxy-headers", help="Respect proxy headers"),
+    proxy_headers: bool = typer.Option(
+        True, "--proxy-headers/--no-proxy-headers", help="Respect proxy headers"
+    ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",

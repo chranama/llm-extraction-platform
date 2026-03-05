@@ -61,6 +61,7 @@ def _env(name: str) -> str | None:
 # Generate Gate
 # ---------------------------------------
 
+
 @dataclass(frozen=True)
 class GenerateGateConfig:
     enabled: bool
@@ -96,6 +97,7 @@ def load_generate_gate_config(settings: Any | None = None) -> GenerateGateConfig
     """
     if settings is None:
         from llm_server.core.config import get_settings  # late import to avoid cycles
+
         settings = get_settings()
 
     enabled_raw = _get_nested(settings, "limits.generate_gate.enabled")
@@ -109,9 +111,13 @@ def load_generate_gate_config(settings: Any | None = None) -> GenerateGateConfig
     max_concurrent = _as_int(max_conc_raw, GENERATE_GATE_DEFAULTS.max_concurrent)
     max_queue = _as_int(max_queue_raw, GENERATE_GATE_DEFAULTS.max_queue)
     timeout_seconds = _as_float(timeout_raw, GENERATE_GATE_DEFAULTS.timeout_seconds)
-    fail_fast = _truthy(fail_fast_raw) if fail_fast_raw is not None else GENERATE_GATE_DEFAULTS.fail_fast
+    fail_fast = (
+        _truthy(fail_fast_raw) if fail_fast_raw is not None else GENERATE_GATE_DEFAULTS.fail_fast
+    )
     count_queued_as_in_flight = (
-        _truthy(count_queued_raw) if count_queued_raw is not None else GENERATE_GATE_DEFAULTS.count_queued_as_in_flight
+        _truthy(count_queued_raw)
+        if count_queued_raw is not None
+        else GENERATE_GATE_DEFAULTS.count_queued_as_in_flight
     )
 
     # env overrides
@@ -163,6 +169,7 @@ def load_generate_gate_config(settings: Any | None = None) -> GenerateGateConfig
 # Early Reject (middleware)
 # ---------------------------------------
 
+
 @dataclass(frozen=True)
 class GenerateEarlyRejectConfig:
     enabled: bool
@@ -173,8 +180,8 @@ class GenerateEarlyRejectConfig:
 
 GENERATE_EARLY_REJECT_DEFAULTS = GenerateEarlyRejectConfig(
     enabled=True,
-    reject_queue_depth_gte=0,   # 0 => disabled check
-    reject_in_flight_gte=0,     # 0 => disabled check
+    reject_queue_depth_gte=0,  # 0 => disabled check
+    reject_in_flight_gte=0,  # 0 => disabled check
     routes=("/v1/generate", "/v1/generate/batch"),
 )
 
@@ -192,6 +199,7 @@ def load_generate_early_reject_config(settings: Any | None = None) -> GenerateEa
     """
     if settings is None:
         from llm_server.core.config import get_settings  # late import to avoid cycles
+
         settings = get_settings()
 
     enabled_raw = _get_nested(settings, "limits.generate_early_reject.enabled")
@@ -199,7 +207,9 @@ def load_generate_early_reject_config(settings: Any | None = None) -> GenerateEa
     rf_raw = _get_nested(settings, "limits.generate_early_reject.reject_in_flight_gte")
     routes_raw = _get_nested(settings, "limits.generate_early_reject.routes")
 
-    enabled = _truthy(enabled_raw) if enabled_raw is not None else GENERATE_EARLY_REJECT_DEFAULTS.enabled
+    enabled = (
+        _truthy(enabled_raw) if enabled_raw is not None else GENERATE_EARLY_REJECT_DEFAULTS.enabled
+    )
     reject_queue_depth_gte = _as_int(rq_raw, GENERATE_EARLY_REJECT_DEFAULTS.reject_queue_depth_gte)
     reject_in_flight_gte = _as_int(rf_raw, GENERATE_EARLY_REJECT_DEFAULTS.reject_in_flight_gte)
 

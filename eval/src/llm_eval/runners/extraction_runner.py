@@ -231,7 +231,9 @@ class ExtractionEvalRunner(BaseEvalRunner):
 
         # --- dataset seam (patchable in tests) ---
         # Stable key: "iter_voxel51_scanned_receipts"
-        iter_fn = self.get_dataset_callable("iter_voxel51_scanned_receipts", iter_voxel51_scanned_receipts)
+        iter_fn = self.get_dataset_callable(
+            "iter_voxel51_scanned_receipts", iter_voxel51_scanned_receipts
+        )
         iter_fn = cast(Any, iter_fn)
 
         # ✅ Deterministic preflight: only do the heavy FiftyOne preload
@@ -424,7 +426,9 @@ class ExtractionEvalRunner(BaseEvalRunner):
         except Exception:
             deployment_key = None
 
-        effective_mid = server_snap.get("effective_model_id") if isinstance(server_snap, dict) else None
+        effective_mid = (
+            server_snap.get("effective_model_id") if isinstance(server_snap, dict) else None
+        )
         loaded_mid = server_snap.get("loaded_model_id") if isinstance(server_snap, dict) else None
         default_mid = server_snap.get("default_model_id") if isinstance(server_snap, dict) else None
 

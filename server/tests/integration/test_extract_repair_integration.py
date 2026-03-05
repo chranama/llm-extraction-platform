@@ -67,9 +67,7 @@ async def test_extract_repair_success(monkeypatch, tmp_path, client, auth_header
 
 
 @pytest.mark.anyio
-async def test_extract_repair_disabled_returns_422(
-    monkeypatch, tmp_path, client, auth_headers
-):
+async def test_extract_repair_disabled_returns_422(monkeypatch, tmp_path, client, auth_headers):
     """
     Invalid model output + repair=False => 422 AppError envelope.
     """

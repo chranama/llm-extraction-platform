@@ -79,5 +79,6 @@ class ReportDoc:
     """
     A generic "report document" container used by writer.py.
     """
+
     title: str
     data: Mapping[str, Any]

@@ -43,7 +43,9 @@ REDIS_TTL_SECONDS = 3600
 
 class GenerateRequest(BaseModel):
     prompt: str
-    model: str | None = Field(default=None, description="Optional model id override for multi-model routing")
+    model: str | None = Field(
+        default=None, description="Optional model id override for multi-model routing"
+    )
     cache: bool = True
     max_new_tokens: int | None = None
     temperature: float | None = None
@@ -148,16 +150,13 @@ async def generate(
     redis = get_redis_from_request(request)
 
     requested_max_new_tokens = body.max_new_tokens
-    params_with_effective = (
-        body.model_dump(exclude={"prompt", "model"}, exclude_none=True)
-        | {
-            "requested_max_new_tokens": requested_max_new_tokens,
-            "effective_max_new_tokens": effective_max_new_tokens,
-            "policy_generate_max_new_tokens_cap": policy_cap,
-            "clamped": clamped,
-            "max_new_tokens": effective_max_new_tokens,
-        }
-    )
+    params_with_effective = body.model_dump(exclude={"prompt", "model"}, exclude_none=True) | {
+        "requested_max_new_tokens": requested_max_new_tokens,
+        "effective_max_new_tokens": effective_max_new_tokens,
+        "policy_generate_max_new_tokens_cap": policy_cap,
+        "clamped": clamped,
+        "max_new_tokens": effective_max_new_tokens,
+    }
 
     async with db_session.get_sessionmaker()() as session:
         cached_out, cached_flag, _layer = await get_cached_output(
@@ -327,16 +326,13 @@ async def generate_batch(
     results: list[BatchGenerateResult] = []
     all_cached = True if body.cache else False
 
-    params_with_effective = (
-        body.model_dump(exclude={"prompts", "model"}, exclude_none=True)
-        | {
-            "requested_max_new_tokens": body.max_new_tokens,
-            "effective_max_new_tokens": effective_batch_max_new,
-            "policy_generate_max_new_tokens_cap": policy_cap,
-            "clamped": clamped,
-            "max_new_tokens": effective_batch_max_new,
-        }
-    )
+    params_with_effective = body.model_dump(exclude={"prompts", "model"}, exclude_none=True) | {
+        "requested_max_new_tokens": body.max_new_tokens,
+        "effective_max_new_tokens": effective_batch_max_new,
+        "policy_generate_max_new_tokens_cap": policy_cap,
+        "clamped": clamped,
+        "max_new_tokens": effective_batch_max_new,
+    }
 
     gate = get_generate_gate()
 

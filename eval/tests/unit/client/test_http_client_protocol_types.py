@@ -11,7 +11,9 @@ from llm_eval.client.http_client import ExtractErr, ExtractOk, GenerateErr, Gene
 def _assert_has_latency_ms(obj: Any) -> None:
     assert hasattr(obj, "latency_ms"), f"{type(obj).__name__} missing latency_ms"
     v = getattr(obj, "latency_ms")
-    assert isinstance(v, (int, float)), f"{type(obj).__name__}.latency_ms must be numeric, got {type(v).__name__}"
+    assert isinstance(
+        v, (int, float)
+    ), f"{type(obj).__name__}.latency_ms must be numeric, got {type(v).__name__}"
     # normalize to float expectation (your code treats it as float-like)
     float(v)
 

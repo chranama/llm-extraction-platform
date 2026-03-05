@@ -42,9 +42,7 @@ def test_validate_first_matching_prefers_delimited_json(monkeypatch):
     monkeypatch.setattr(ex, "validate_jsonschema", fake_validate, raising=True)
 
     schema = {"type": "object"}  # irrelevant due to fake_validate
-    raw = (
-        'noise {"ok": false} ' + _JSON_BEGIN + '\n{"ok": true}\n' + _JSON_END + " tail"
-    )
+    raw = 'noise {"ok": false} ' + _JSON_BEGIN + '\n{"ok": true}\n' + _JSON_END + " tail"
     out = ex.validate_first_matching(schema, raw)
 
     assert out == {"ok": True}

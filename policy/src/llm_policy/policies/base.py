@@ -14,6 +14,7 @@ class PolicyContext:
     Shared context for policy evaluation. Keep this small in v0.
     Extend later (telemetry, baselines, environment, etc.).
     """
+
     thresholds_profile: Optional[str] = None
     meta: Dict[str, Any] | None = None
 

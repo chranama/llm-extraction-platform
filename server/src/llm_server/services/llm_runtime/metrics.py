@@ -78,7 +78,13 @@ LLM_RUNTIME_DEFAULT_MODEL_ID_INFO = _gauge(
 )
 
 
-def set_state_gauges(*, model_loaded: bool, model_error: bool, loaded_model_id: str | None, runtime_default_model_id: str | None) -> None:
+def set_state_gauges(
+    *,
+    model_loaded: bool,
+    model_error: bool,
+    loaded_model_id: str | None,
+    runtime_default_model_id: str | None,
+) -> None:
     """
     Best-effort state reporting.
     Uses INFO-style gauges with a label for model ids (common Prometheus pattern).

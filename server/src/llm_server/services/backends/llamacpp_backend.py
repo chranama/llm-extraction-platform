@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from llm_server.core.errors import AppError
-from llm_server.services.backends.base import GenerateResult, GenerateTimings, GenerateUsage, LLMBackend
+from llm_server.services.backends.base import (
+    GenerateResult,
+    GenerateTimings,
+    GenerateUsage,
+    LLMBackend,
+)
 from llm_server.services.backends.backend_api import OpenAICompatClient, OpenAICompatClientConfig
 
 
@@ -15,6 +20,7 @@ class LlamaCppBackendConfig:
     """
     OpenAI-compatible llama-server config.
     """
+
     server_url: str  # e.g. http://127.0.0.1:8081
     api_key: Optional[str] = None
 
@@ -174,10 +180,16 @@ class LlamaCppBackend(LLMBackend):
         **kwargs: Any,
     ) -> GenerateResult:
         if not isinstance(prompt, str) or not prompt.strip():
-            raise AppError(code="invalid_request", message="prompt must be a non-empty string", status_code=400)
+            raise AppError(
+                code="invalid_request", message="prompt must be a non-empty string", status_code=400
+            )
 
         # Apply backend defaults when missing
-        temp = float(temperature) if isinstance(temperature, (int, float)) else float(self._cfg.default_temperature)
+        temp = (
+            float(temperature)
+            if isinstance(temperature, (int, float))
+            else float(self._cfg.default_temperature)
+        )
         tp = float(top_p) if isinstance(top_p, (int, float)) else float(self._cfg.default_top_p)
 
         max_tokens: int | None = None

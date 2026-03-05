@@ -18,7 +18,8 @@ def _req(settings=None, llm=None):
     return SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
-                settings=settings or SimpleNamespace(model_id="m1", allowed_models=[], all_model_ids=[]),
+                settings=settings
+                or SimpleNamespace(model_id="m1", allowed_models=[], all_model_ids=[]),
                 llm=llm,
                 model_loaded=False,
                 model_error=None,
@@ -30,12 +31,20 @@ def _req(settings=None, llm=None):
 
 
 def test_allowed_and_default_helpers(monkeypatch):
-    req1 = _req(settings=SimpleNamespace(model_id="  m1 ", allowed_models=["a", " ", "b"], all_model_ids=["x"]))
-    monkeypatch.setattr(rm, "settings_from_request", lambda request: request.app.state.settings, raising=True)
+    req1 = _req(
+        settings=SimpleNamespace(
+            model_id="  m1 ", allowed_models=["a", " ", "b"], all_model_ids=["x"]
+        )
+    )
+    monkeypatch.setattr(
+        rm, "settings_from_request", lambda request: request.app.state.settings, raising=True
+    )
     assert rm.allowed_model_ids(request=req1) == ["a", "b"]
     assert rm.default_model_id_from_settings(request=req1) == "m1"
 
-    req2 = _req(settings=SimpleNamespace(model_id="", allowed_models=[], all_model_ids=["x", "", "y"]))
+    req2 = _req(
+        settings=SimpleNamespace(model_id="", allowed_models=[], all_model_ids=["x", "", "y"])
+    )
     assert rm.allowed_model_ids(request=req2) == ["x", "y"]
     assert rm.default_model_id_from_settings(request=req2) == ""
 
@@ -60,7 +69,9 @@ def test_runtime_default_and_loaded_model_id_fallback(monkeypatch):
 
 def test_resolve_default_model_id_and_backend_obj_branches(monkeypatch):
     # Multi model with runtime default present in registry
-    mm = MultiModelManager(models={"m1": _Backend("m1", "remote"), "m2": _Backend("m2", "llamacpp")}, default_id="m2")
+    mm = MultiModelManager(
+        models={"m1": _Backend("m1", "remote"), "m2": _Backend("m2", "llamacpp")}, default_id="m2"
+    )
     req1 = _req(llm=mm)
     req1.app.state.runtime_default_model_id = "m1"
 
@@ -113,14 +124,31 @@ def test_model_flags_fallback_when_model_state_errors(monkeypatch):
 
 
 def test_settings_and_per_model_readiness_mode(monkeypatch):
-    req = _req(settings=SimpleNamespace(model_readiness_mode="PROBE", model_id="m1", allowed_models=[], all_model_ids=[]))
-    monkeypatch.setattr(rm, "settings_from_request", lambda request: request.app.state.settings, raising=True)
+    req = _req(
+        settings=SimpleNamespace(
+            model_readiness_mode="PROBE", model_id="m1", allowed_models=[], all_model_ids=[]
+        )
+    )
+    monkeypatch.setattr(
+        rm, "settings_from_request", lambda request: request.app.state.settings, raising=True
+    )
     assert rm.settings_readiness_mode(req) == "probe"
 
-    req2 = _req(settings=SimpleNamespace(model_readiness_mode="weird", model_id="m1", allowed_models=[], all_model_ids=[]))
+    req2 = _req(
+        settings=SimpleNamespace(
+            model_readiness_mode="weird", model_id="m1", allowed_models=[], all_model_ids=[]
+        )
+    )
     assert rm.settings_readiness_mode(req2) == "generate"
 
-    mm = MultiModelManager(models={"m1": _Backend("m1")}, default_id="m1", model_meta={"m1": {"readiness_mode": "off"}})
-    req3 = _req(settings=SimpleNamespace(model_readiness_mode="generate", model_id="m1", allowed_models=[], all_model_ids=[]), llm=mm)
+    mm = MultiModelManager(
+        models={"m1": _Backend("m1")}, default_id="m1", model_meta={"m1": {"readiness_mode": "off"}}
+    )
+    req3 = _req(
+        settings=SimpleNamespace(
+            model_readiness_mode="generate", model_id="m1", allowed_models=[], all_model_ids=[]
+        ),
+        llm=mm,
+    )
     assert rm.per_model_readiness_mode(req3, model_id="m1") == "off"
     assert rm.per_model_readiness_mode(req3, model_id=None) == "generate"

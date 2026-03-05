@@ -25,7 +25,9 @@ def test_serve_dev_mode_uses_reload_from_env(monkeypatch):
     monkeypatch.setenv("UVICORN_RELOAD", "1")
     monkeypatch.delenv("APP_PROFILE", raising=False)
 
-    cli.serve(host="127.0.0.1", port=9001, workers=8, reload_=None, proxy_headers=False, profile="host")
+    cli.serve(
+        host="127.0.0.1", port=9001, workers=8, reload_=None, proxy_headers=False, profile="host"
+    )
 
     assert len(calls) == 1
     kwargs = calls[0]["kwargs"]

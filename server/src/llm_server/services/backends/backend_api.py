@@ -106,13 +106,24 @@ class OpenAICompatClient:
                 resp = self._client.get(url, headers=self._headers(), timeout=timeout_seconds)
             else:
                 body = json.dumps(payload or {})
-                resp = self._client.request(method.upper(), url, headers=self._headers(), content=body, timeout=timeout_seconds)
+                resp = self._client.request(
+                    method.upper(),
+                    url,
+                    headers=self._headers(),
+                    content=body,
+                    timeout=timeout_seconds,
+                )
         except Exception as e:
             raise AppError(
                 code="backend_unreachable",
                 message="Backend is unreachable",
                 status_code=502,
-                extra={"base_url": self._base, "endpoint": f"/{p}", "method": method.upper(), "error": repr(e)},
+                extra={
+                    "base_url": self._base,
+                    "endpoint": f"/{p}",
+                    "method": method.upper(),
+                    "error": repr(e),
+                },
             ) from e
 
         dt_ms = (time.perf_counter() - t0) * 1000.0

@@ -287,7 +287,9 @@ def _patch_models_block(
     # Material change?
     changed = before_snap != after_snap
     if changed:
-        changes.append(PatchChange(scope=scope, model_id=model_id, before=before_snap, after=after_snap))
+        changes.append(
+            PatchChange(scope=scope, model_id=model_id, before=before_snap, after=after_snap)
+        )
 
     return changes
 

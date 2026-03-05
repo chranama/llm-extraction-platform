@@ -129,7 +129,10 @@ def _validate_models_config_or_raise(cfg: Any, *, mode: str) -> None:
     - Validates Option A assessed semantics (require_for_extract => per-model assessed boolean).
     """
     # Structural validation
-    r1 = validate_models_config(cfg, allow_generic_deployment_key=(os.getenv("ALLOW_GENERIC_DEPLOYMENT_KEY", "").strip() == "1"))
+    r1 = validate_models_config(
+        cfg,
+        allow_generic_deployment_key=(os.getenv("ALLOW_GENERIC_DEPLOYMENT_KEY", "").strip() == "1"),
+    )
     if not r1.ok:
         raise RuntimeError(f"models_config invalid: {r1.error}")
 
@@ -161,7 +164,9 @@ async def lifespan(app: FastAPI):
         )
     except Exception as e:
         app.state.policy_snapshot = None
-        logging.getLogger("uvicorn.error").exception("Policy snapshot init failed (continuing): %s", e)
+        logging.getLogger("uvicorn.error").exception(
+            "Policy snapshot init failed (continuing): %s", e
+        )
 
     mode = _effective_model_load_mode(s)
 
@@ -176,7 +181,9 @@ async def lifespan(app: FastAPI):
     )
 
     origins = _cors_origins(s)
-    logging.getLogger("uvicorn.error").info("CORS enabled=%s allow_origins=%s", bool(origins), origins)
+    logging.getLogger("uvicorn.error").info(
+        "CORS enabled=%s allow_origins=%s", bool(origins), origins
+    )
 
     # ---- redis ----
     try:
@@ -213,10 +220,14 @@ async def lifespan(app: FastAPI):
         app.state.model_error = repr(e)
 
         if mode in ("eager", "on"):
-            logging.getLogger("uvicorn.error").exception("LLM registry init failed; aborting startup: %s", e)
+            logging.getLogger("uvicorn.error").exception(
+                "LLM registry init failed; aborting startup: %s", e
+            )
             raise
 
-        logging.getLogger("uvicorn.error").exception("LLM registry init failed (lazy/off continues): %s", e)
+        logging.getLogger("uvicorn.error").exception(
+            "LLM registry init failed (lazy/off continues): %s", e
+        )
 
     # ---- runtime loader (the ONLY explicit weight-loading path) ----
     app.state.runtime_model_loader = RuntimeModelLoader(app.state)
@@ -240,12 +251,16 @@ async def lifespan(app: FastAPI):
                     warm_backend = llm
 
                 if warm_backend is not None:
-                    await _warmup_generate_offloop(warm_backend, prompt=prompt, max_new_tokens=max_new)
+                    await _warmup_generate_offloop(
+                        warm_backend, prompt=prompt, max_new_tokens=max_new
+                    )
 
         except Exception as e:
             app.state.model_error = repr(e)
             app.state.model_loaded = False
-            logging.getLogger("uvicorn.error").exception("LLM eager init failed; aborting startup: %s", e)
+            logging.getLogger("uvicorn.error").exception(
+                "LLM eager init failed; aborting startup: %s", e
+            )
             raise
 
     yield

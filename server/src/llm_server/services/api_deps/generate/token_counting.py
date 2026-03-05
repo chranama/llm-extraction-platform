@@ -75,7 +75,9 @@ def _get_tokenizer(tokenizer_id: str):
     return AutoTokenizer.from_pretrained(tokenizer_id, use_fast=True)
 
 
-def _token_count_hf(tokenizer_id: str, prompt: str, completion: str | None) -> tuple[int | None, int | None]:
+def _token_count_hf(
+    tokenizer_id: str, prompt: str, completion: str | None
+) -> tuple[int | None, int | None]:
     try:
         tok = _get_tokenizer(tokenizer_id)
         prompt_ids = tok(prompt, add_special_tokens=False).input_ids
@@ -135,7 +137,11 @@ def count_tokens_split(
         toks = _llamacpp_tokenize(model, texts)
         if toks is not None:
             pt = len(toks[0]) if len(toks) >= 1 else None
-            ct = len(toks[1]) if (completion is not None and len(toks) >= 2) else (0 if completion is not None else None)
+            ct = (
+                len(toks[1])
+                if (completion is not None and len(toks) >= 2)
+                else (0 if completion is not None else None)
+            )
             return pt, ct
 
         return None, None

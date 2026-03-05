@@ -129,7 +129,7 @@ class ModelStateStore:
 
     def set_model_error(self, err: Optional[str]) -> None:
         ms = self.get_mut()
-        ms.model_error = (err.strip() if isinstance(err, str) and err.strip() else None)
+        ms.model_error = err.strip() if isinstance(err, str) and err.strip() else None
         self._mirror_to_legacy(ms)
 
     def set_model_load_mode(self, mode: str) -> None:
@@ -145,10 +145,14 @@ class ModelStateStore:
 
     def set_loaded_model_id(self, model_id: Optional[str]) -> None:
         ms = self.get_mut()
-        ms.loaded_model_id = (model_id.strip() if isinstance(model_id, str) and model_id.strip() else None)
+        ms.loaded_model_id = (
+            model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+        )
         self._mirror_to_legacy(ms)
 
     def set_runtime_default_model_id(self, model_id: Optional[str]) -> None:
         ms = self.get_mut()
-        ms.runtime_default_model_id = (model_id.strip() if isinstance(model_id, str) and model_id.strip() else None)
+        ms.runtime_default_model_id = (
+            model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+        )
         self._mirror_to_legacy(ms)

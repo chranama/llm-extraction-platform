@@ -24,15 +24,11 @@ class _FakeModel:
 
 
 @pytest.mark.anyio
-async def test_extract_uses_default_for_capability_generate_uses_default(
-    client, auth_headers
-):
+async def test_extract_uses_default_for_capability_generate_uses_default(client, auth_headers):
     mm = MultiModelManager(
         models={
             "default_gen": _FakeModel("GEN_OK"),
-            "extractor": _FakeModel(
-                '{"company":"Store","date":"2026-01-01","total":"1.00"}'
-            ),
+            "extractor": _FakeModel('{"company":"Store","date":"2026-01-01","total":"1.00"}'),
         },
         default_id="default_gen",
         model_meta={

@@ -8,7 +8,13 @@ from llm_server.services.api_deps.admin import reload_ops as ro
 
 
 class _Loader:
-    def __init__(self, *, llm_obj=None, refresh_raises: Exception | None = None, rebuild_raises: Exception | None = None):
+    def __init__(
+        self,
+        *,
+        llm_obj=None,
+        refresh_raises: Exception | None = None,
+        rebuild_raises: Exception | None = None,
+    ):
         self.llm_obj = llm_obj if llm_obj is not None else SimpleNamespace(model_id="m-new")
         self.refresh_raises = refresh_raises
         self.rebuild_raises = rebuild_raises
@@ -43,14 +49,25 @@ def _request():
 async def test_reload_runtime_state_happy_path(monkeypatch):
     req = _request()
     loader = _Loader(llm_obj=SimpleNamespace(model_id="m-final"))
-    snap = SimpleNamespace(ok=True, model_id="m-final", enable_extract=True, source_path="/tmp/p.json", error=None)
+    snap = SimpleNamespace(
+        ok=True, model_id="m-final", enable_extract=True, source_path="/tmp/p.json", error=None
+    )
 
-    monkeypatch.setattr(ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True)
+    monkeypatch.setattr(
+        ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True
+    )
     monkeypatch.setattr(ro, "clear_models_config_cache", lambda: None, raising=True)
     monkeypatch.setattr(ro, "reload_policy_snapshot", lambda request: snap, raising=True)
-    monkeypatch.setattr(ro, "effective_capabilities", lambda mid, request=None: {"extract": True}, raising=True)
+    monkeypatch.setattr(
+        ro, "effective_capabilities", lambda mid, request=None: {"extract": True}, raising=True
+    )
     monkeypatch.setattr(ro, "snapshot_generate_cap", lambda s: 123, raising=True)
-    monkeypatch.setattr(ro, "summarize_registry", lambda llm, fallback_default: ("m-final", ["m-final"]), raising=True)
+    monkeypatch.setattr(
+        ro,
+        "summarize_registry",
+        lambda llm, fallback_default: ("m-final", ["m-final"]),
+        raising=True,
+    )
 
     out, snap_out = await ro.reload_runtime_state(request=req, loader=loader)
     assert snap_out is snap
@@ -68,17 +85,28 @@ async def test_reload_runtime_state_happy_path(monkeypatch):
 async def test_reload_runtime_state_continues_when_cache_or_refresh_fail(monkeypatch):
     req = _request()
     loader = _Loader(refresh_raises=RuntimeError("refresh fail"))
-    snap = SimpleNamespace(ok=False, model_id=None, enable_extract=False, source_path=None, error="bad")
+    snap = SimpleNamespace(
+        ok=False, model_id=None, enable_extract=False, source_path=None, error="bad"
+    )
 
     def _cache_clear():
         raise RuntimeError("cache fail")
 
-    monkeypatch.setattr(ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True)
+    monkeypatch.setattr(
+        ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True
+    )
     monkeypatch.setattr(ro, "clear_models_config_cache", _cache_clear, raising=True)
     monkeypatch.setattr(ro, "reload_policy_snapshot", lambda request: snap, raising=True)
-    monkeypatch.setattr(ro, "effective_capabilities", lambda mid, request=None: {"extract": False}, raising=True)
+    monkeypatch.setattr(
+        ro, "effective_capabilities", lambda mid, request=None: {"extract": False}, raising=True
+    )
     monkeypatch.setattr(ro, "snapshot_generate_cap", lambda s: None, raising=True)
-    monkeypatch.setattr(ro, "summarize_registry", lambda llm, fallback_default: ("fallback", ["fallback"]), raising=True)
+    monkeypatch.setattr(
+        ro,
+        "summarize_registry",
+        lambda llm, fallback_default: ("fallback", ["fallback"]),
+        raising=True,
+    )
 
     out, _ = await ro.reload_runtime_state(request=req, loader=loader)
     assert loader.rebuilt is True
@@ -91,7 +119,9 @@ async def test_reload_runtime_state_rebuild_failure_sets_model_error(monkeypatch
     boom = RuntimeError("rebuild fail")
     loader = _Loader(rebuild_raises=boom)
 
-    monkeypatch.setattr(ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True)
+    monkeypatch.setattr(
+        ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True
+    )
     monkeypatch.setattr(ro, "clear_models_config_cache", lambda: None, raising=True)
 
     with pytest.raises(RuntimeError):
@@ -103,13 +133,19 @@ async def test_reload_runtime_state_rebuild_failure_sets_model_error(monkeypatch
 async def test_reload_runtime_state_effective_capabilities_error_defaults_false(monkeypatch):
     req = _request()
     loader = _Loader()
-    snap = SimpleNamespace(ok=True, model_id="m1", enable_extract=True, source_path=None, error=None)
+    snap = SimpleNamespace(
+        ok=True, model_id="m1", enable_extract=True, source_path=None, error=None
+    )
 
-    monkeypatch.setattr(ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True)
+    monkeypatch.setattr(
+        ro, "get_settings", lambda: SimpleNamespace(model_id="fallback"), raising=True
+    )
     monkeypatch.setattr(ro, "clear_models_config_cache", lambda: None, raising=True)
     monkeypatch.setattr(ro, "reload_policy_snapshot", lambda request: snap, raising=True)
     monkeypatch.setattr(ro, "snapshot_generate_cap", lambda s: None, raising=True)
-    monkeypatch.setattr(ro, "summarize_registry", lambda llm, fallback_default: ("m1", ["m1"]), raising=True)
+    monkeypatch.setattr(
+        ro, "summarize_registry", lambda llm, fallback_default: ("m1", ["m1"]), raising=True
+    )
 
     def _caps(*args, **kwargs):
         raise RuntimeError("caps failed")

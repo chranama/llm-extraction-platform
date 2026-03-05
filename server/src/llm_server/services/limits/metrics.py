@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 
-
 # Current number of requests waiting to enter execution
 GENERATE_QUEUE_DEPTH = Gauge(
     "llm_generate_queue_depth",

@@ -93,9 +93,13 @@ async def readyz(
     mode = effective_model_load_mode_from_request(request)
     llm_status = "disabled" if mode == "off" else _llm_state(llm)
 
-    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(request)
+    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(
+        request
+    )
 
-    runtime_loader_present = bool(getattr(request.app.state, "runtime_model_loader", None) is not None)
+    runtime_loader_present = bool(
+        getattr(request.app.state, "runtime_model_loader", None) is not None
+    )
     models_config_present = bool(getattr(request.app.state, "models_config", None) is not None)
     registry_present = bool(getattr(request.app.state, "llm", None) is not None)
 
@@ -172,7 +176,9 @@ async def modelz(request: Request):
     mode = effective_model_load_mode_from_request(request)
     llm_status = "disabled" if mode == "off" else _llm_state(llm)
 
-    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(request)
+    model_loaded, model_error, loaded_model_id, runtime_default = model_flags_from_app_state(
+        request
+    )
 
     default_model_id, default_backend, _ = resolve_default_model_id_and_backend_obj(request)
     readiness_mode = per_model_readiness_mode(request, model_id=default_model_id)

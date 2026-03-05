@@ -102,7 +102,9 @@ def test_ensure_loaded_requires_hf_id(monkeypatch):
 
 def test_ensure_loaded_and_model_info(monkeypatch):
     _install_fake_deps(monkeypatch, cuda_available=False, mps_available=False)
-    b = mod.TransformersBackend(model_id="m1", cfg=mod.TransformersBackendConfig(hf_id="hf/test", device="auto"))
+    b = mod.TransformersBackend(
+        model_id="m1", cfg=mod.TransformersBackendConfig(hf_id="hf/test", device="auto")
+    )
     b.ensure_loaded()
     assert b.is_loaded() is True
 

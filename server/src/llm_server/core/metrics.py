@@ -48,7 +48,9 @@ def _get_or_create_counter(name: str, documentation: str, labelnames: list[str])
     existing = _existing_collector(name)
     if existing is not None:
         if not isinstance(existing, Counter):
-            raise RuntimeError(f"Metric '{name}' exists but is not a Counter (got {type(existing)!r}).")
+            raise RuntimeError(
+                f"Metric '{name}' exists but is not a Counter (got {type(existing)!r})."
+            )
         _assert_labelnames_match(existing, labelnames)
         return cast(Counter, existing)
     return Counter(name, documentation, labelnames)
@@ -58,17 +60,23 @@ def _get_or_create_histogram(name: str, documentation: str, labelnames: list[str
     existing = _existing_collector(name)
     if existing is not None:
         if not isinstance(existing, Histogram):
-            raise RuntimeError(f"Metric '{name}' exists but is not a Histogram (got {type(existing)!r}).")
+            raise RuntimeError(
+                f"Metric '{name}' exists but is not a Histogram (got {type(existing)!r})."
+            )
         _assert_labelnames_match(existing, labelnames)
         return cast(Histogram, existing)
     return Histogram(name, documentation, labelnames)
 
 
-def _get_or_create_gauge(name: str, documentation: str, labelnames: list[str] | None = None) -> Gauge:
+def _get_or_create_gauge(
+    name: str, documentation: str, labelnames: list[str] | None = None
+) -> Gauge:
     existing = _existing_collector(name)
     if existing is not None:
         if not isinstance(existing, Gauge):
-            raise RuntimeError(f"Metric '{name}' exists but is not a Gauge (got {type(existing)!r}).")
+            raise RuntimeError(
+                f"Metric '{name}' exists but is not a Gauge (got {type(existing)!r})."
+            )
         _assert_labelnames_match(existing, labelnames or [])
         return cast(Gauge, existing)
     return Gauge(name, documentation, labelnames or [])

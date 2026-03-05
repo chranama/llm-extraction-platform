@@ -21,6 +21,7 @@ logger = logging.getLogger("llm.errors")
 # AppError
 # ---------------------------------------------------------------------------
 
+
 class AppError(FastAPIHTTPException):
     """
     Canonical application error.
@@ -51,6 +52,7 @@ class AppError(FastAPIHTTPException):
 # ---------------------------------------------------------------------------
 # Best-effort request metadata helpers
 # ---------------------------------------------------------------------------
+
 
 def _request_id(request: Request) -> Optional[str]:
     rid = getattr(getattr(request, "state", None), "request_id", None)
@@ -94,6 +96,7 @@ def _best_api_key_value(request: Request) -> str:
 # Failure logging (hard rules: never raise, never block)
 # ---------------------------------------------------------------------------
 
+
 async def _best_effort_log_failure(
     request: Request,
     *,
@@ -114,7 +117,11 @@ async def _best_effort_log_failure(
                 latency_ms=request_latency_ms(request),
                 status_code=int(status_code),
                 error_code=str(error_code),
-                error_stage=error_stage.strip() if isinstance(error_stage, str) and error_stage.strip() else None,
+                error_stage=(
+                    error_stage.strip()
+                    if isinstance(error_stage, str) and error_stage.strip()
+                    else None
+                ),
                 cached=_best_cached(request),
                 commit=True,
             )
@@ -125,6 +132,7 @@ async def _best_effort_log_failure(
 # ---------------------------------------------------------------------------
 # Canonical JSON error response
 # ---------------------------------------------------------------------------
+
 
 def _to_json_error(
     request: Request,
@@ -153,6 +161,7 @@ def _to_json_error(
 # ---------------------------------------------------------------------------
 # Exception handlers
 # ---------------------------------------------------------------------------
+
 
 async def handle_fastapi_http_exception(request: Request, exc: FastAPIHTTPException):
     detail: Union[str, Dict[str, Any]] = exc.detail

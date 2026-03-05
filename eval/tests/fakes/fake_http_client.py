@@ -16,6 +16,7 @@ class FakeHttpClient:
     - Push canned ExtractOk/ExtractErr objects into extract_queue
     - If a queue is empty, we return a sane default error.
     """
+
     generate_queue: List[GenerateOk | GenerateErr] = field(default_factory=list)
     extract_queue: List[ExtractOk | ExtractErr] = field(default_factory=list)
 

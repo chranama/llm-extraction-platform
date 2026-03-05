@@ -16,4 +16,8 @@ async def ensure_admin(api_key: ApiKey, session: AsyncSession) -> None:
     db_key = await telem_q.reload_key_with_role(session, api_key_id=api_key.id)
     role_name = db_key.role.name if db_key and db_key.role else None
     if role_name != "admin":
-        raise AppError(code="forbidden", message="Admin privileges required", status_code=status.HTTP_403_FORBIDDEN)
+        raise AppError(
+            code="forbidden",
+            message="Admin privileges required",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )

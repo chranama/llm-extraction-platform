@@ -53,7 +53,11 @@ async def require_inprocess_loaded_if_needed(
 
     loaded_flag = bool(getattr(request.app.state, "model_loaded", False))
     loaded_model_id = getattr(request.app.state, "loaded_model_id", None)
-    loaded_model_id = loaded_model_id.strip() if isinstance(loaded_model_id, str) and loaded_model_id.strip() else None
+    loaded_model_id = (
+        loaded_model_id.strip()
+        if isinstance(loaded_model_id, str) and loaded_model_id.strip()
+        else None
+    )
 
     # Strict "off": must be explicitly loaded (admin) and match selected model
     if mode == "off":
@@ -85,5 +89,10 @@ async def require_inprocess_loaded_if_needed(
             code="model_load_failed",
             message="Failed to load model",
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            extra={"model_id": model_id, "backend": backend, "model_load_mode": mode, "error": repr(e)},
+            extra={
+                "model_id": model_id,
+                "backend": backend,
+                "model_load_mode": mode,
+                "error": repr(e),
+            },
         ) from e

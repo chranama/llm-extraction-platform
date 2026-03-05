@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional, Protocol, TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     # Type-only imports so importing llm_eval.runners.* stays light.
     from llm_eval.client.http_client import ExtractErr, ExtractOk, GenerateErr, GenerateOk
@@ -20,6 +19,7 @@ class EvalConfig:
     - max_examples: optional cap on number of examples to evaluate
     - model_override: optional model name to pass through to the server
     """
+
     max_examples: Optional[int] = None
     model_override: Optional[str] = None
 
@@ -44,8 +44,7 @@ class HttpClient(Protocol):
         temperature: float = 0.0,
         model: Optional[str] = None,
         cache: Optional[bool] = None,
-    ) -> "GenerateOk | GenerateErr":
-        ...
+    ) -> "GenerateOk | GenerateErr": ...
 
     async def extract(
         self,
@@ -57,8 +56,7 @@ class HttpClient(Protocol):
         temperature: float = 0.0,
         cache: bool = True,
         repair: bool = True,
-    ) -> "ExtractOk | ExtractErr":
-        ...
+    ) -> "ExtractOk | ExtractErr": ...
 
     # NEW: /modelz probe (best-effort preflight)
     async def modelz(self) -> Any:
@@ -84,6 +82,7 @@ def _default_run_id() -> str:
 
 def _default_ensure_dir(path: str) -> None:
     import os
+
     os.makedirs(path, exist_ok=True)
 
 
@@ -99,6 +98,7 @@ class RunnerDeps:
       - A dict of callables keyed by dataset name (runner-defined keys).
       - Lets tests inject small fixture iterators without monkeypatching imports.
     """
+
     client_factory: ClientFactory
     run_id_factory: RunIdFactory = _default_run_id
     ensure_dir: EnsureDirFn = _default_ensure_dir

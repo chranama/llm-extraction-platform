@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from typing import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import declarative_base
 
 from llm_server.core.config import get_settings
@@ -43,7 +48,9 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return _SESSIONMAKER
 
 
-def set_engine_for_tests(engine: AsyncEngine, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+def set_engine_for_tests(
+    engine: AsyncEngine, sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
     global _ENGINE, _SESSIONMAKER, _ENGINE_OWNED
     _ENGINE = engine
     _SESSIONMAKER = sessionmaker

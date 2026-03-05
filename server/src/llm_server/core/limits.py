@@ -23,6 +23,7 @@ HEAVY_PREFIXES: Final = ("/v1/generate", "/v1/extract")
 # Concurrency guard (Phase 0)
 # ----------------------------
 
+
 def _read_max_concurrency() -> int:
     """
     Read max concurrency from settings once at startup.
@@ -42,6 +43,7 @@ def _read_max_concurrency() -> int:
 # ----------------------------
 # Memory guard (Phase 0)
 # ----------------------------
+
 
 def _read_container_limit_bytes(settings) -> Optional[int]:
     """

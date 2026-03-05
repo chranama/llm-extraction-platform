@@ -46,7 +46,13 @@ async def test_cli_writes_report_artifacts(tmp_path: Path, monkeypatch: pytest.M
         },
         "results": [
             {"ok": True, "status_code": 200, "latency_ms": 12.3, "id": "a"},
-            {"ok": False, "status_code": 422, "error_code": "schema_validation_failed", "latency_ms": 34.0, "id": "b"},
+            {
+                "ok": False,
+                "status_code": 422,
+                "error_code": "schema_validation_failed",
+                "latency_ms": 34.0,
+                "id": "b",
+            },
         ],
         "report_text": None,
         "config": {"foo": "bar"},

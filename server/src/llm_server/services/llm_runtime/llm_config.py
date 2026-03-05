@@ -40,6 +40,7 @@ _DEFAULT_PROFILE = "host-transformers"
 # Normalized config objects
 # -----------------------------
 
+
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
@@ -86,6 +87,7 @@ class ModelsConfig:
 # Helpers
 # -----------------------------
 
+
 def _app_root() -> Path:
     v = (os.environ.get("APP_ROOT") or "").strip()
     return Path(v).expanduser().resolve() if v else Path.cwd().resolve()
@@ -129,7 +131,7 @@ def _expand_env_in_str(s: str) -> str:
         default = m.group(2)
         val = os.environ.get(key)
         if val is None or not str(val).strip():
-            return (default or "")
+            return default or ""
         return str(val)
 
     prev = None
@@ -157,6 +159,7 @@ def _expand_env(obj: Any) -> Any:
 # -----------------------------
 # Merge logic (models-aware)
 # -----------------------------
+
 
 def _deep_merge_dicts(base: Any, overlay: Any) -> Any:
     if not isinstance(base, dict) or not isinstance(overlay, dict):
@@ -308,7 +311,11 @@ def _select_profile(raw: Dict[str, Any]) -> Dict[str, Any]:
     overlay = profiles.get(used)
 
     if overlay is None:
-        fallback = _DEFAULT_PROFILE if _DEFAULT_PROFILE in profiles else (next(iter(profiles.keys()), "") or "")
+        fallback = (
+            _DEFAULT_PROFILE
+            if _DEFAULT_PROFILE in profiles
+            else (next(iter(profiles.keys()), "") or "")
+        )
         if fallback:
             logger.warning(
                 "models: requested profile missing; falling back: requested=%r source=%s fallback=%r available=%s",
@@ -341,6 +348,7 @@ def _select_profile(raw: Dict[str, Any]) -> Dict[str, Any]:
 # -----------------------------
 # Validation helpers
 # -----------------------------
+
 
 def _as_str(x: Any, *, field: str, path: str) -> str:
     if not isinstance(x, str) or not x.strip():
@@ -455,7 +463,10 @@ def _normalize_meta_block(raw_block: Any, *, path: str, field: str) -> Optional[
 # Capabilities: preserve raw + compute bool clamps
 # -----------------------------
 
-def _validate_capabilities_mapping(raw_caps: Any, *, path: str, field: str) -> Optional[Dict[str, Any]]:
+
+def _validate_capabilities_mapping(
+    raw_caps: Any, *, path: str, field: str
+) -> Optional[Dict[str, Any]]:
     """
     Returns a shallow dict copy if valid, else raises.
     Allows values to be:
@@ -487,7 +498,12 @@ def _validate_capabilities_mapping(raw_caps: Any, *, path: str, field: str) -> O
                 code="models_yaml_invalid",
                 message=f"models.yaml {field} has invalid capability key",
                 status_code=500,
-                extra={"path": path, "field": field, "key": kk, "allowed": sorted(list(_ALLOWED_CAP_KEYS))},
+                extra={
+                    "path": path,
+                    "field": field,
+                    "key": kk,
+                    "allowed": sorted(list(_ALLOWED_CAP_KEYS)),
+                },
             )
         # Value validation happens in clamp conversion; keep raw as-is.
         out[kk] = v
@@ -575,14 +591,21 @@ def _capabilities_raw_to_boolmap(
 # Model normalization
 # -----------------------------
 
+
 def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> ModelSpec:
     if isinstance(raw, str):
         mid = _as_str(raw, field="models[]", path=path)
 
-        defaults_caps_raw = _validate_capabilities_mapping(defaults.get("capabilities"), path=path, field="defaults.capabilities")
+        defaults_caps_raw = _validate_capabilities_mapping(
+            defaults.get("capabilities"), path=path, field="defaults.capabilities"
+        )
 
-        effective_caps_raw = _merge_capabilities_raw(defaults_caps=defaults_caps_raw, declared_caps=None)
-        effective_caps_bool = _capabilities_raw_to_boolmap(effective_caps_raw, path=path, field="models[].capabilities")
+        effective_caps_raw = _merge_capabilities_raw(
+            defaults_caps=defaults_caps_raw, declared_caps=None
+        )
+        effective_caps_bool = _capabilities_raw_to_boolmap(
+            effective_caps_raw, path=path, field="models[].capabilities"
+        )
 
         return ModelSpec(
             id=mid,
@@ -632,28 +655,52 @@ def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> 
     )
 
     # --- Capabilities (fix: preserve raw + compute bool clamps without losing "assessed") ---
-    defaults_caps_raw = _validate_capabilities_mapping(defaults.get("capabilities"), path=path, field="defaults.capabilities")
-    declared_caps_raw = _validate_capabilities_mapping(raw.get("capabilities", None), path=path, field="models[].capabilities")
+    defaults_caps_raw = _validate_capabilities_mapping(
+        defaults.get("capabilities"), path=path, field="defaults.capabilities"
+    )
+    declared_caps_raw = _validate_capabilities_mapping(
+        raw.get("capabilities", None), path=path, field="models[].capabilities"
+    )
 
-    effective_caps_raw = _merge_capabilities_raw(defaults_caps=defaults_caps_raw, declared_caps=declared_caps_raw)
-    effective_caps_bool = _capabilities_raw_to_boolmap(effective_caps_raw, path=path, field="models[].capabilities")
+    effective_caps_raw = _merge_capabilities_raw(
+        defaults_caps=defaults_caps_raw, declared_caps=declared_caps_raw
+    )
+    effective_caps_bool = _capabilities_raw_to_boolmap(
+        effective_caps_raw, path=path, field="models[].capabilities"
+    )
 
     deployment_key_raw = raw.get("deployment_key", defaults.get("deployment_key"))
-    deployment_key = _normalize_deployment_key(deployment_key_raw, path=path, field="models[].deployment_key")
+    deployment_key = _normalize_deployment_key(
+        deployment_key_raw, path=path, field="models[].deployment_key"
+    )
 
     readiness_raw = raw.get("readiness_mode", defaults.get("readiness_mode"))
-    readiness_mode = _normalize_readiness_mode(readiness_raw, path=path, field="models[].readiness_mode")
+    readiness_mode = _normalize_readiness_mode(
+        readiness_raw, path=path, field="models[].readiness_mode"
+    )
 
-    deployment_blk = _normalize_meta_block(raw.get("deployment", None), path=path, field="models[].deployment")
-    assessment_blk = _normalize_meta_block(raw.get("assessment", None), path=path, field="models[].assessment")
-    constraints_blk = _normalize_meta_block(raw.get("backend_constraints", None), path=path, field="models[].backend_constraints")
+    deployment_blk = _normalize_meta_block(
+        raw.get("deployment", None), path=path, field="models[].deployment"
+    )
+    assessment_blk = _normalize_meta_block(
+        raw.get("assessment", None), path=path, field="models[].assessment"
+    )
+    constraints_blk = _normalize_meta_block(
+        raw.get("backend_constraints", None), path=path, field="models[].backend_constraints"
+    )
 
     deployment_blk = _deep_merge_dicts(defaults.get("deployment") or {}, deployment_blk or {})
     assessment_blk = _deep_merge_dicts(defaults.get("assessment") or {}, assessment_blk or {})
-    constraints_blk = _deep_merge_dicts(defaults.get("backend_constraints") or {}, constraints_blk or {})
+    constraints_blk = _deep_merge_dicts(
+        defaults.get("backend_constraints") or {}, constraints_blk or {}
+    )
 
-    transformers = _normalize_backend_block(raw.get("transformers", None), path=path, field="models[].transformers")
-    llamacpp = _normalize_backend_block(raw.get("llamacpp", None), path=path, field="models[].llamacpp")
+    transformers = _normalize_backend_block(
+        raw.get("transformers", None), path=path, field="models[].transformers"
+    )
+    llamacpp = _normalize_backend_block(
+        raw.get("llamacpp", None), path=path, field="models[].llamacpp"
+    )
     remote = _normalize_backend_block(raw.get("remote", None), path=path, field="models[].remote")
 
     transformers = _deep_merge_dicts(defaults.get("transformers") or {}, transformers or {})
@@ -690,6 +737,7 @@ def _normalize_model_entry(raw: Any, *, path: str, defaults: Dict[str, Any]) -> 
 # -----------------------------
 # Model-driven service capability clamp
 # -----------------------------
+
 
 def _cap_bool(caps: Optional[CapabilitiesMap], key: str, default: bool) -> bool:
     if not caps:
@@ -748,7 +796,9 @@ def _should_enforce_deployment_keys(*, selected_profile: Optional[str]) -> bool:
     return True
 
 
-def _validate_deployment_keys_or_raise(*, specs: List[ModelSpec], path: str, selected_profile: Optional[str]) -> None:
+def _validate_deployment_keys_or_raise(
+    *, specs: List[ModelSpec], path: str, selected_profile: Optional[str]
+) -> None:
     if not _should_enforce_deployment_keys(selected_profile=selected_profile):
         return
 
@@ -782,6 +832,7 @@ def _validate_deployment_keys_or_raise(*, specs: List[ModelSpec], path: str, sel
 # -----------------------------
 # Main loader
 # -----------------------------
+
 
 def load_models_config() -> ModelsConfig:
     s = get_settings()
@@ -823,20 +874,55 @@ def load_models_config() -> ModelsConfig:
             )
 
         # Defaults: keep BOTH raw (for merging) and bool clamps (for service clamp defaults)
-        defaults_caps_raw = _validate_capabilities_mapping(defaults.get("capabilities", None), path=path, field="defaults.capabilities")
-        defaults_caps_bool = _capabilities_raw_to_boolmap(defaults_caps_raw, path=path, field="defaults.capabilities")
+        defaults_caps_raw = _validate_capabilities_mapping(
+            defaults.get("capabilities", None), path=path, field="defaults.capabilities"
+        )
+        defaults_caps_bool = _capabilities_raw_to_boolmap(
+            defaults_caps_raw, path=path, field="defaults.capabilities"
+        )
 
-        readiness_defaults = _normalize_readiness_mode(defaults.get("readiness_mode", None), path=path, field="defaults.readiness_mode")
-        deployment_key_defaults = _normalize_deployment_key(defaults.get("deployment_key", None), path=path, field="defaults.deployment_key")
+        readiness_defaults = _normalize_readiness_mode(
+            defaults.get("readiness_mode", None), path=path, field="defaults.readiness_mode"
+        )
+        deployment_key_defaults = _normalize_deployment_key(
+            defaults.get("deployment_key", None), path=path, field="defaults.deployment_key"
+        )
 
-        deployment_defaults = _normalize_meta_block(defaults.get("deployment", None), path=path, field="defaults.deployment") or {}
-        assessment_defaults = _normalize_meta_block(defaults.get("assessment", None), path=path, field="defaults.assessment") or {}
-        backend_constraints_defaults = _normalize_meta_block(defaults.get("backend_constraints", None), path=path, field="defaults.backend_constraints") or {}
+        deployment_defaults = (
+            _normalize_meta_block(
+                defaults.get("deployment", None), path=path, field="defaults.deployment"
+            )
+            or {}
+        )
+        assessment_defaults = (
+            _normalize_meta_block(
+                defaults.get("assessment", None), path=path, field="defaults.assessment"
+            )
+            or {}
+        )
+        backend_constraints_defaults = (
+            _normalize_meta_block(
+                defaults.get("backend_constraints", None),
+                path=path,
+                field="defaults.backend_constraints",
+            )
+            or {}
+        )
 
         norm_defaults: Dict[str, Any] = {
-            "backend": _validate_enum(defaults.get("backend", "transformers"), field="defaults.backend", path=path, allowed=_ALLOWED_BACKENDS)
+            "backend": _validate_enum(
+                defaults.get("backend", "transformers"),
+                field="defaults.backend",
+                path=path,
+                allowed=_ALLOWED_BACKENDS,
+            )
             or "transformers",
-            "load_mode": _validate_enum(defaults.get("load_mode", "lazy"), field="defaults.load_mode", path=path, allowed=_ALLOWED_LOAD_MODES)
+            "load_mode": _validate_enum(
+                defaults.get("load_mode", "lazy"),
+                field="defaults.load_mode",
+                path=path,
+                allowed=_ALLOWED_LOAD_MODES,
+            )
             or "lazy",
             # NOTE: keep raw for merge; ModelSpec.capabilities will be the bool clamp map
             "capabilities": defaults_caps_raw,
@@ -845,9 +931,19 @@ def load_models_config() -> ModelsConfig:
             "deployment": deployment_defaults,
             "assessment": assessment_defaults,
             "backend_constraints": backend_constraints_defaults,
-            "transformers": defaults.get("transformers", {}) if isinstance(defaults.get("transformers", {}), dict) else {},
-            "llamacpp": defaults.get("llamacpp", {}) if isinstance(defaults.get("llamacpp", {}), dict) else {},
-            "remote": defaults.get("remote", {}) if isinstance(defaults.get("remote", {}), dict) else {},
+            "transformers": (
+                defaults.get("transformers", {})
+                if isinstance(defaults.get("transformers", {}), dict)
+                else {}
+            ),
+            "llamacpp": (
+                defaults.get("llamacpp", {})
+                if isinstance(defaults.get("llamacpp", {}), dict)
+                else {}
+            ),
+            "remote": (
+                defaults.get("remote", {}) if isinstance(defaults.get("remote", {}), dict) else {}
+            ),
         }
 
         specs: List[ModelSpec] = []
@@ -879,7 +975,10 @@ def load_models_config() -> ModelsConfig:
                 specs.insert(
                     0,
                     _normalize_model_entry(
-                        {"id": primary_id, "notes": "(auto-added because default_model was not listed)"},
+                        {
+                            "id": primary_id,
+                            "notes": "(auto-added because default_model was not listed)",
+                        },
                         path=path,
                         defaults=norm_defaults,
                     ),
@@ -895,7 +994,9 @@ def load_models_config() -> ModelsConfig:
 
         selected_profile = data.get("_selected_profile_used", None)
 
-        _validate_deployment_keys_or_raise(specs=ordered_specs, path=path, selected_profile=selected_profile)
+        _validate_deployment_keys_or_raise(
+            specs=ordered_specs, path=path, selected_profile=selected_profile
+        )
 
         # legacy wiring support
         try:
@@ -909,7 +1010,9 @@ def load_models_config() -> ModelsConfig:
         try:
             primary_spec = next((m for m in ordered_specs if m.id == primary_id), None)
             if primary_spec is not None:
-                _apply_effective_service_caps_from_primary(s=s, primary=primary_spec, defaults_caps_bool=defaults_caps_bool)
+                _apply_effective_service_caps_from_primary(
+                    s=s, primary=primary_spec, defaults_caps_bool=defaults_caps_bool
+                )
         except Exception:
             pass
 
@@ -989,4 +1092,9 @@ def load_models_config() -> ModelsConfig:
         for mid in model_ids
     ]
 
-    return ModelsConfig(primary_id=str(primary_id), model_ids=[str(x) for x in model_ids], models=specs, defaults={"path": None})
+    return ModelsConfig(
+        primary_id=str(primary_id),
+        model_ids=[str(x) for x in model_ids],
+        models=specs,
+        defaults={"path": None},
+    )

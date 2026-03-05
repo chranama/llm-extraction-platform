@@ -113,7 +113,11 @@ def _best_effort_parse_v2_json(p: Path) -> Optional[PolicyDecisionSnapshot]:
 
     # Minimal field extraction with defensive typing
     ok = bool(obj.get("ok", False))
-    model_id = obj.get("policy", {}).get("model_id") if isinstance(obj.get("policy"), dict) else obj.get("model_id")
+    model_id = (
+        obj.get("policy", {}).get("model_id")
+        if isinstance(obj.get("policy"), dict)
+        else obj.get("model_id")
+    )
     if model_id is not None and not isinstance(model_id, str):
         model_id = None
 

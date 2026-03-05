@@ -3,6 +3,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+
 @pytest.mark.anyio
 async def test_schema_index(monkeypatch, tmp_path, client, auth_headers):
     schema = {
@@ -17,6 +18,7 @@ async def test_schema_index(monkeypatch, tmp_path, client, auth_headers):
 
     # IMPORTANT: schema_registry caches across process
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
     r = await client.get("/v1/schemas", headers=auth_headers)

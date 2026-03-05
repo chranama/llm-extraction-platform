@@ -42,9 +42,7 @@ class FakeModelSpec:
         # Preserve your tests' "kind" param but map it.
         self.kind = kind
         self.backend = (
-            backend
-            if backend is not None
-            else ("remote" if kind == "remote" else "local")
+            backend if backend is not None else ("remote" if kind == "remote" else "local")
         )
 
         self.llm_service_url = llm_service_url
@@ -109,9 +107,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch):
 
 def _patch_builder_deps(monkeypatch, cfg: FakeModelsConfig, settings_obj):
     monkeypatch.setattr(llm_mod, "load_models_config", lambda: cfg, raising=True)
-    monkeypatch.setattr(
-        llm_mod, "TransformersBackend", FakeTransformersBackend, raising=True
-    )
+    monkeypatch.setattr(llm_mod, "TransformersBackend", FakeTransformersBackend, raising=True)
     monkeypatch.setattr(llm_mod, "RemoteBackend", FakeRemoteBackend, raising=True)
     monkeypatch.setattr(llm_mod, "get_settings", lambda: settings_obj, raising=True)
 
@@ -122,9 +118,7 @@ def test_enable_multi_models_0_returns_single_backend(monkeypatch):
         defaults={},
         models=[FakeModelSpec(id="primary", kind="local")],
     )
-    _patch_builder_deps(
-        monkeypatch, cfg, _settings(enable_multi_models=False, model_id="primary")
-    )
+    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=False, model_id="primary"))
 
     # build_llm_from_settings currently gates multi-model via env
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "0")
@@ -144,9 +138,7 @@ def test_enable_multi_models_1_returns_multimodelmanager(monkeypatch):
             FakeModelSpec(id="other", kind="local"),
         ],
     )
-    _patch_builder_deps(
-        monkeypatch, cfg, _settings(enable_multi_models=True, model_id="primary")
-    )
+    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, model_id="primary"))
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
 
@@ -194,9 +186,7 @@ def test_remote_models_require_llm_service_url(monkeypatch):
         defaults={},
         models=[FakeModelSpec(id="primary", kind="remote", llm_service_url=None)],
     )
-    _patch_builder_deps(
-        monkeypatch, cfg, _settings(enable_multi_models=True, llm_service_url=None)
-    )
+    _patch_builder_deps(monkeypatch, cfg, _settings(enable_multi_models=True, llm_service_url=None))
 
     monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
 

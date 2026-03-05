@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # -------------------------
 # Contract / issues
 # -------------------------
@@ -138,11 +137,19 @@ class EvalSummary(BaseModel):
 
         if not isinstance(self.task, str) or not self.task.strip():
             issues.append(
-                ContractIssue(severity=IssueSeverity.error, code="missing_task", message="summary.task is missing/empty")
+                ContractIssue(
+                    severity=IssueSeverity.error,
+                    code="missing_task",
+                    message="summary.task is missing/empty",
+                )
             )
         if not isinstance(self.run_id, str) or not self.run_id.strip():
             issues.append(
-                ContractIssue(severity=IssueSeverity.error, code="missing_run_id", message="summary.run_id is missing/empty")
+                ContractIssue(
+                    severity=IssueSeverity.error,
+                    code="missing_run_id",
+                    message="summary.run_id is missing/empty",
+                )
             )
 
         if self.n_ok > self.n_total:
@@ -308,12 +315,17 @@ class EvalArtifact:
     """
     io/eval_runs.py uses `results=...` so keep this field name as `results`.
     """
+
     summary: EvalSummary
     results: Optional[List[EvalRow]] = None
 
     def contract_issues(self) -> List[ContractIssue]:
         issues = self.summary.contract_issues()
-        if self.results is not None and self.summary.n_total and len(self.results) != self.summary.n_total:
+        if (
+            self.results is not None
+            and self.summary.n_total
+            and len(self.results) != self.summary.n_total
+        ):
             issues.append(
                 ContractIssue(
                     severity=IssueSeverity.info,

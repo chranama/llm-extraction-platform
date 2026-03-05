@@ -20,12 +20,7 @@ POLICY_DECISION_SCHEMA = "policy_decision_v2.schema.json"
 
 
 def _utc_now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _status_value(x: Any) -> str:
@@ -94,23 +89,18 @@ def _decision_to_payload(decision: Decision) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "schema_version": "policy_decision_v2",
         "generated_at": _utc_now_iso(),
-
         # Identity
         "policy": str(getattr(decision, "policy", "") or "").strip() or "unknown_policy",
         "pipeline": pipeline,
-
         # Outcome
         "status": status,
         "ok": ok,
-
         # Actions / shaping
         "enable_extract": enable_extract,
         "generate_max_new_tokens_cap": getattr(decision, "generate_max_new_tokens_cap", None),
-
         # Contract health
         "contract_errors": int(getattr(decision, "contract_errors", 0) or 0),
         "contract_warnings": int(getattr(decision, "contract_warnings", 0) or 0),
-
         # Provenance
         "thresholds_profile": getattr(decision, "thresholds_profile", None),
         "thresholds_version": getattr(decision, "thresholds_version", None),
@@ -119,11 +109,9 @@ def _decision_to_payload(decision: Decision) -> Dict[str, Any]:
         "eval_task": getattr(decision, "eval_task", None),
         "eval_run_id": getattr(decision, "eval_run_id", None),
         "model_id": getattr(decision, "model_id", None),
-
         # Human diagnostics
         "reasons": [_issue_to_dict(x) for x in (getattr(decision, "reasons", None) or [])],
         "warnings": [_issue_to_dict(x) for x in (getattr(decision, "warnings", None) or [])],
-
         # Arbitrary metrics
         "metrics": dict(getattr(decision, "metrics", None) or {}),
     }

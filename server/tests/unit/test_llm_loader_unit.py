@@ -103,10 +103,17 @@ async def test_load_model_transformers_loads(monkeypatch):
     ldr, state = _mk_loader()
     b = _Backend(model_id="m1", backend_name="transformers", loaded=False)
     monkeypatch.setattr(mod, "build_llm_from_settings", lambda: b, raising=True)
-    monkeypatch.setattr(ldr, "_ensure_loaded_async", lambda backend: mod.anyio.sleep(0), raising=True)
+    monkeypatch.setattr(
+        ldr, "_ensure_loaded_async", lambda backend: mod.anyio.sleep(0), raising=True
+    )
 
     # ensure_loaded_async above does not mutate backend; set force path via sync helper
-    monkeypatch.setattr(ldr, "_ensure_loaded_async", lambda backend: mod.anyio.to_thread.run_sync(backend.ensure_loaded), raising=True)
+    monkeypatch.setattr(
+        ldr,
+        "_ensure_loaded_async",
+        lambda backend: mod.anyio.to_thread.run_sync(backend.ensure_loaded),
+        raising=True,
+    )
     res = await ldr.load_model("m1")
     assert res.loaded is True
     assert res.detail["status"] == "loaded_in_process"

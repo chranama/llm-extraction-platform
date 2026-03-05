@@ -95,7 +95,7 @@ def parse_json_strict(text: str) -> Any:
             raise StrictJSONError(
                 code="invalid_json",
                 message="Top-level JSON must be an object",
-                hint="Return a JSON object like {\"field\": \"value\"}, not an array or scalar.",
+                hint='Return a JSON object like {"field": "value"}, not an array or scalar.',
             )
 
         return obj

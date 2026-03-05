@@ -8,12 +8,8 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.anyio
-async def test_deployment_disable_extract_returns_501(
-    monkeypatch, client, auth_headers
-):
-    monkeypatch.setattr(
-        client.app.state.settings, "enable_extract", False, raising=False
-    )
+async def test_deployment_disable_extract_returns_501(monkeypatch, client, auth_headers):
+    monkeypatch.setattr(client.app.state.settings, "enable_extract", False, raising=False)
 
     r = await client.post(
         "/v1/extract",
@@ -28,9 +24,7 @@ async def test_deployment_disable_extract_returns_501(
 
 @pytest.mark.anyio
 async def test_model_lacks_extract_returns_400(monkeypatch, client, auth_headers):
-    monkeypatch.setattr(
-        client.app.state.settings, "enable_extract", True, raising=False
-    )
+    monkeypatch.setattr(client.app.state.settings, "enable_extract", True, raising=False)
     monkeypatch.setattr(
         capabilities,
         "model_capabilities",

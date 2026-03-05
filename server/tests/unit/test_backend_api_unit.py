@@ -113,7 +113,16 @@ def test_completions_and_chat_payload_shape(monkeypatch):
     c, fake = _make(monkeypatch)
     fake.req_resp = _Resp(data={"choices": [{"text": "ok"}]})
 
-    c.completions(prompt="p", max_tokens=7, temperature=0.2, top_p=0.8, top_k=10, stop=["."], model="m", extra={"x": 1})
+    c.completions(
+        prompt="p",
+        max_tokens=7,
+        temperature=0.2,
+        top_p=0.8,
+        top_k=10,
+        stop=["."],
+        model="m",
+        extra={"x": 1},
+    )
     method, _, _, content, _ = fake.last_request
     payload = json.loads(content)
     assert method == "POST"

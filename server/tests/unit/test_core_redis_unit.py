@@ -44,11 +44,21 @@ def _patch_metrics(monkeypatch):
 
 @pytest.mark.anyio
 async def test_init_redis_disabled_and_enabled(monkeypatch):
-    monkeypatch.setattr(rmod, "get_settings", lambda: SimpleNamespace(redis_enabled=False, redis_url="redis://x"), raising=True)
+    monkeypatch.setattr(
+        rmod,
+        "get_settings",
+        lambda: SimpleNamespace(redis_enabled=False, redis_url="redis://x"),
+        raising=True,
+    )
     assert await rmod.init_redis() is None
 
     client = _FakeRedis()
-    monkeypatch.setattr(rmod, "get_settings", lambda: SimpleNamespace(redis_enabled=True, redis_url="redis://x"), raising=True)
+    monkeypatch.setattr(
+        rmod,
+        "get_settings",
+        lambda: SimpleNamespace(redis_enabled=True, redis_url="redis://x"),
+        raising=True,
+    )
     monkeypatch.setattr(rmod, "from_url", lambda url, decode_responses=True: client, raising=True)
     out = await rmod.init_redis()
     assert out is client

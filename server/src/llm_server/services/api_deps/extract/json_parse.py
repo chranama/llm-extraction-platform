@@ -8,7 +8,11 @@ from typing import Any, Optional
 from fastapi import status
 
 from llm_server.core.errors import AppError
-from llm_server.core.validation import DependencyMissingError, JSONSchemaValidationError, validate_jsonschema
+from llm_server.core.validation import (
+    DependencyMissingError,
+    JSONSchemaValidationError,
+    validate_jsonschema,
+)
 from llm_server.services.api_deps.extract.constants import _JSON_BEGIN, _JSON_END
 
 
@@ -99,7 +103,10 @@ def validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str
         except Exception:
             continue
 
-    extra: dict[str, Any] = {"raw_preview": (raw_output or "")[:500], "candidates_found": len(candidates)}
+    extra: dict[str, Any] = {
+        "raw_preview": (raw_output or "")[:500],
+        "candidates_found": len(candidates),
+    }
     if last_validation_error is not None:
         extra["errors"] = last_validation_error.errors
 

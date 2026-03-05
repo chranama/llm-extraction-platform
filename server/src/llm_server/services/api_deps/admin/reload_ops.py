@@ -12,7 +12,10 @@ from llm_server.services.api_deps.core.models_config import clear_models_config_
 from llm_server.services.api_deps.enforcement.capabilities import effective_capabilities
 from llm_server.services.llm_runtime.llm_loader import RuntimeModelLoader
 
-from llm_server.services.api_deps.admin.models_ops import summarize_registry, runtime_default_model_id_from_app
+from llm_server.services.api_deps.admin.models_ops import (
+    summarize_registry,
+    runtime_default_model_id_from_app,
+)
 from llm_server.services.api_deps.core.policy_snapshot import snapshot_generate_cap
 
 logger = logging.getLogger("llm_server.api_deps.admin.reload_ops")
@@ -92,7 +95,11 @@ async def reload_runtime_state(
             "default_model": default_model,
             "models": model_ids,
             "runtime_default_model": runtime_default_model_id_from_app(request),
-            "registry_kind": type(getattr(app.state, "llm", None)).__name__ if getattr(app.state, "llm", None) is not None else None,
+            "registry_kind": (
+                type(getattr(app.state, "llm", None)).__name__
+                if getattr(app.state, "llm", None) is not None
+                else None
+            ),
         },
         "policy": {
             "snapshot_ok": bool(getattr(snap, "ok", False)),

@@ -50,7 +50,11 @@ Use:
 scripts/ci_smoke_matrix.sh
 ```
 
-The script should run docs checks plus core package tests/lint in a deterministic order.
+The script runs docs checks plus core lint/format/unit lanes in deterministic order.
+To include slower integration lanes:
+```bash
+RUN_INTEGRATION=1 scripts/ci_smoke_matrix.sh
+```
 
 ## Related docs
 

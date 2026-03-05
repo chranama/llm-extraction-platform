@@ -103,9 +103,7 @@ def _assert_test_config_file_exists():
 # Per-test env isolation
 # ============================================================
 @pytest.fixture(autouse=True)
-def _integration_env_defaults(
-    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
-):
+def _integration_env_defaults(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
     # Ensure config + profile selection for every test
     monkeypatch.setenv("APP_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("APP_CONFIG_PATH", APP_YAML)
@@ -144,9 +142,7 @@ def _assert_test_config_loaded_per_test():
     s = get_settings()
 
     assert s.env == "test", f"Expected env=test, got {s.env}"
-    assert (
-        "test" in s.service_name.lower()
-    ), f"service_name not test-like: {s.service_name}"
+    assert "test" in s.service_name.lower(), f"service_name not test-like: {s.service_name}"
 
 
 # ============================================================
@@ -182,9 +178,7 @@ async def test_engine():
 
 @pytest.fixture
 def test_sessionmaker(test_engine):
-    return async_sessionmaker(
-        bind=test_engine, expire_on_commit=False, class_=AsyncSession
-    )
+    return async_sessionmaker(bind=test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
 # ============================================================
@@ -366,9 +360,7 @@ def app_client(monkeypatch, llm_outputs, llm_sleep_s, test_engine, test_sessionm
         fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
 
         monkeypatch.setattr(main, "build_llm_from_settings", lambda: fake, raising=True)
-        monkeypatch.setattr(
-            llm_svc, "build_llm_from_settings", lambda: fake, raising=True
-        )
+        monkeypatch.setattr(llm_svc, "build_llm_from_settings", lambda: fake, raising=True)
         clear_rate_limit_state()
 
         app = main.create_app()
@@ -381,9 +373,7 @@ def app_client(monkeypatch, llm_outputs, llm_sleep_s, test_engine, test_sessionm
         async def _ctx():
             async with LifespanManager(app):
                 transport = httpx.ASGITransport(app=app)
-                async with httpx.AsyncClient(
-                    transport=transport, base_url="http://test"
-                ) as c:
+                async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
                     setattr(c, "app", app)
                     yield c
 

@@ -16,7 +16,11 @@ def sync_llamacpp_dependency_check(backend_obj: Any) -> Tuple[bool, str, Dict[st
         if callable(fn):
             ok, details = fn()
             okb = bool(ok)
-            return okb, ("ok" if okb else "not ready"), (details if isinstance(details, dict) else {"details": details})
+            return (
+                okb,
+                ("ok" if okb else "not ready"),
+                (details if isinstance(details, dict) else {"details": details}),
+            )
 
         client = getattr(backend_obj, "_client", None)
         health_fn = getattr(client, "health", None) if client is not None else None
@@ -25,7 +29,11 @@ def sync_llamacpp_dependency_check(backend_obj: Any) -> Tuple[bool, str, Dict[st
             okb = bool(isinstance(data, dict) and data.get("status") == "ok")
             return okb, ("ok" if okb else "not ready"), {"health": data}
 
-        return False, "missing health check", {"reason": "llamacpp backend lacks is_ready() / client.health()"}
+        return (
+            False,
+            "missing health check",
+            {"reason": "llamacpp backend lacks is_ready() / client.health()"},
+        )
     except Exception as e:
         return False, "error", {"error": repr(e)}
 
@@ -40,17 +48,30 @@ def sync_external_backend_generate_check(backend_obj: Any) -> Tuple[bool, str, D
         if callable(fn):
             ok, details = fn()
             okb = bool(ok)
-            return okb, ("ok" if okb else "not ready"), (details if isinstance(details, dict) else {"details": details})
+            return (
+                okb,
+                ("ok" if okb else "not ready"),
+                (details if isinstance(details, dict) else {"details": details}),
+            )
 
         fn2 = getattr(backend_obj, "is_ready", None)
         if callable(fn2):
             ok, details = fn2()
             okb = bool(ok)
-            return okb, ("ok" if okb else "not ready"), (
-                (details if isinstance(details, dict) else {"details": details}) | {"note": "can_generate missing; used is_ready"}
+            return (
+                okb,
+                ("ok" if okb else "not ready"),
+                (
+                    (details if isinstance(details, dict) else {"details": details})
+                    | {"note": "can_generate missing; used is_ready"}
+                ),
             )
 
-        return False, "missing readiness probe", {"reason": "backend missing can_generate() and is_ready()"}
+        return (
+            False,
+            "missing readiness probe",
+            {"reason": "backend missing can_generate() and is_ready()"},
+        )
     except Exception as e:
         return False, "error", {"error": repr(e)}
 
@@ -65,7 +86,11 @@ def sync_remote_probe(backend_obj: Any) -> Tuple[bool, str, Dict[str, Any]]:
         if callable(fn):
             ok, details = fn()
             okb = bool(ok)
-            return okb, ("ok" if okb else "not ready"), (details if isinstance(details, dict) else {"details": details})
+            return (
+                okb,
+                ("ok" if okb else "not ready"),
+                (details if isinstance(details, dict) else {"details": details}),
+            )
 
         client = getattr(backend_obj, "_client", None)
         health_fn = getattr(client, "health", None) if client is not None else None
@@ -81,7 +106,11 @@ def sync_remote_probe(backend_obj: Any) -> Tuple[bool, str, Dict[str, Any]]:
             )
             return okb, ("ok" if okb else "not ready"), {"health": data}
 
-        return False, "missing remote probe", {"reason": "remote backend lacks is_ready() and client.health()"}
+        return (
+            False,
+            "missing remote probe",
+            {"reason": "remote backend lacks is_ready() and client.health()"},
+        )
     except Exception as e:
         return False, "error", {"error": repr(e)}
 
@@ -90,7 +119,9 @@ async def llamacpp_dependency_check_async(backend_obj: Any) -> Tuple[bool, str, 
     return await anyio.to_thread.run_sync(sync_llamacpp_dependency_check, backend_obj)
 
 
-async def external_backend_generate_check_async(backend_obj: Any) -> Tuple[bool, str, Dict[str, Any]]:
+async def external_backend_generate_check_async(
+    backend_obj: Any,
+) -> Tuple[bool, str, Dict[str, Any]]:
     return await anyio.to_thread.run_sync(sync_external_backend_generate_check, backend_obj)
 
 

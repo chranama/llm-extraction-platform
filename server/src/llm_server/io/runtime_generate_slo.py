@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from llm_contracts.runtime.generate_slo import parse_generate_slo
 from llm_server.telemetry.queries import compute_window_generate_slo_contracts_payload
 
-
 # -----------------------------
 # Public API
 # -----------------------------

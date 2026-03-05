@@ -45,7 +45,10 @@ from llm_server.services.api_deps.generate.generate_runner import run_generate_r
 from llm_server.services.api_deps.generate.token_counting import count_tokens_split
 from llm_server.services.api_deps.routing.models import resolve_model
 from llm_server.services.api_deps.extract.constants import REDIS_TTL_SECONDS
-from llm_server.services.api_deps.extract.prompts import build_extraction_prompt, build_repair_prompt
+from llm_server.services.api_deps.extract.prompts import (
+    build_extraction_prompt,
+    build_repair_prompt,
+)
 from llm_server.services.api_deps.extract.json_parse import validate_first_matching
 from llm_server.services.api_deps.extract.truncation import maybe_raise_truncation_error
 from llm_server.services.api_deps.extract.stage import failure_stage_for_app_error, set_stage
@@ -67,7 +70,9 @@ class ExtractRequest(BaseModel):
     schema_id: str = Field(..., description="Schema id (e.g. ticket_v1, invoice_v1, receipt_v1)")
     text: str = Field(..., description="Raw text or OCR text to extract from")
 
-    model: str | None = Field(default=None, description="Optional model id override for multi-model routing")
+    model: str | None = Field(
+        default=None, description="Optional model id override for multi-model routing"
+    )
 
     max_new_tokens: int | None = 512
     temperature: float | None = 0.0
@@ -86,7 +91,10 @@ class ExtractResponse(BaseModel):
 
 @router.get("/v1/schemas")
 async def schemas_index(api_key=Depends(get_api_key)):
-    return [{"schema_id": s.schema_id, "title": s.title, "description": s.description} for s in list_schemas()]
+    return [
+        {"schema_id": s.schema_id, "title": s.title, "description": s.description}
+        for s in list_schemas()
+    ]
 
 
 @router.get("/v1/schemas/{schema_id}", response_model=dict)
@@ -140,7 +148,9 @@ async def extract(
         # Enforcement boundary (MODEL_LOAD_MODE semantics)
         stage = "enforcement"
         set_stage(request, stage)
-        await require_inprocess_loaded_if_needed(request=request, model_id=model_id, backend_obj=model)
+        await require_inprocess_loaded_if_needed(
+            request=request, model_id=model_id, backend_obj=model
+        )
 
         set_request_meta(request, route="/v1/extract", model_id=model_id, cached=False)
         EXTRACTION_REQUESTS.labels(schema_id=body.schema_id, model_id=model_id).inc()
@@ -219,7 +229,9 @@ async def extract(
                     validate_jsonschema(schema, data_obj)
                     data = data_obj
                 except DependencyMissingError as e:
-                    raise AppError(code=e.code, message=e.message, status_code=500, extra={"stage": stage}) from e
+                    raise AppError(
+                        code=e.code, message=e.message, status_code=500, extra={"stage": stage}
+                    ) from e
                 except (JSONSchemaValidationError, Exception):
                     data = None
 
@@ -317,7 +329,9 @@ async def extract(
             except AppError as e:
                 st = failure_stage_for_app_error(e, is_repair=False)
                 if st is not None:
-                    EXTRACTION_VALIDATION_FAILURES.labels(schema_id=body.schema_id, model_id=model_id, stage=st).inc()
+                    EXTRACTION_VALIDATION_FAILURES.labels(
+                        schema_id=body.schema_id, model_id=model_id, stage=st
+                    ).inc()
 
                 if not body.repair:
                     if isinstance(e.extra, dict):
@@ -327,7 +341,9 @@ async def extract(
                     raise
 
                 repair_attempted = True
-                EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="attempted").inc()
+                EXTRACTION_REPAIR.labels(
+                    schema_id=body.schema_id, model_id=model_id, outcome="attempted"
+                ).inc()
 
                 stage = "repair_prompt"
                 set_stage(request, stage)
@@ -362,10 +378,18 @@ async def extract(
                 )
 
                 if isinstance(repair_result, tuple) and len(repair_result) == 2:
-                    repaired = repair_result[0] if isinstance(repair_result[0], str) else str(repair_result[0])
-                    repair_usage_from_backend = repair_result[1] if isinstance(repair_result[1], dict) else None
+                    repaired = (
+                        repair_result[0]
+                        if isinstance(repair_result[0], str)
+                        else str(repair_result[0])
+                    )
+                    repair_usage_from_backend = (
+                        repair_result[1] if isinstance(repair_result[1], dict) else None
+                    )
                 else:
-                    repaired = repair_result if isinstance(repair_result, str) else str(repair_result)
+                    repaired = (
+                        repair_result if isinstance(repair_result, str) else str(repair_result)
+                    )
                     repair_usage_from_backend = None
 
                 stage = "repair_truncation_check"
@@ -381,12 +405,18 @@ async def extract(
                 set_stage(request, stage)
                 try:
                     data = validate_first_matching(schema, repaired)
-                    EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="success").inc()
+                    EXTRACTION_REPAIR.labels(
+                        schema_id=body.schema_id, model_id=model_id, outcome="success"
+                    ).inc()
                 except AppError as e2:
                     st2 = failure_stage_for_app_error(e2, is_repair=True)
                     if st2 is not None:
-                        EXTRACTION_VALIDATION_FAILURES.labels(schema_id=body.schema_id, model_id=model_id, stage=st2).inc()
-                    EXTRACTION_REPAIR.labels(schema_id=body.schema_id, model_id=model_id, outcome="failure").inc()
+                        EXTRACTION_VALIDATION_FAILURES.labels(
+                            schema_id=body.schema_id, model_id=model_id, stage=st2
+                        ).inc()
+                    EXTRACTION_REPAIR.labels(
+                        schema_id=body.schema_id, model_id=model_id, outcome="failure"
+                    ).inc()
 
                     if isinstance(e2.extra, dict):
                         e2.extra.setdefault("stage", st2 or "repair_validate")

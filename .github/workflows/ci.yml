@@ -378,6 +378,30 @@ jobs:
           uv pip list
           git status --porcelain || true
 
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=policy_integration"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-integration-failure-bundle
+          path: policy/_ci_failure
+          if-no-files-found: ignore
+
 
   # -------------------------
   # UI: vitest
@@ -426,6 +450,30 @@ jobs:
           node -v
           npm -v
           cat package.json
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=ui_test"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "node=$(node -v)"
+            echo "npm=$(npm -v)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          npm ls --depth=0 > _ci_failure/npm_ls.txt || true
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-failure-bundle
+          path: ui/_ci_failure
+          if-no-files-found: ignore
 
 
   # -------------------------
@@ -484,6 +532,30 @@ jobs:
           node -v
           npm -v
           cat package.json
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=ui_e2e"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "node=$(node -v)"
+            echo "npm=$(npm -v)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          npm ls --depth=0 > _ci_failure/npm_ls.txt || true
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-failure-bundle
+          path: ui/_ci_failure
+          if-no-files-found: ignore
 
 
   # -------------------------
@@ -626,6 +698,30 @@ jobs:
           uv pip list
           git status --porcelain || true
 
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=eval_integration_contract"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-integration-contract-failure-bundle
+          path: eval/_ci_failure
+          if-no-files-found: ignore
+
   # -------------------------
   # Integrations: repo-level job lanes (non-live, split)
   # -------------------------
@@ -711,6 +807,32 @@ jobs:
           uv pip list
           git status --porcelain || true
 
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=integrations_job_lane"
+            echo "lane=${{ matrix.lane.name }}"
+            echo "path=${{ matrix.lane.path }}"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrations-lane-failure-bundle-${{ matrix.lane.name }}
+          path: integrations/_ci_failure
+          if-no-files-found: ignore
+
 
   # -------------------------
   # Integrations: live server lane (optional)
@@ -790,6 +912,31 @@ jobs:
           uv pip list
           git status --porcelain || true
 
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=integrations_server_live"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+            echo "base_url=${{ steps.live_inputs.outputs.base_url }}"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrations-live-failure-bundle
+          path: integrations/_ci_failure
+          if-no-files-found: ignore
+
 
   # -------------------------
   # Repo-level auxiliary test suites
@@ -856,3 +1003,29 @@ jobs:
           python -V
           uv pip list
           git status --porcelain || true
+
+      - name: Collect failure bundle
+        if: failure()
+        run: |
+          set -euxo pipefail
+          mkdir -p _ci_failure
+          {
+            echo "job=repo_aux_tests"
+            echo "suite=${{ matrix.suite.name }}"
+            echo "path=${{ matrix.suite.path }}"
+            echo "ts_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pwd=$(pwd)"
+            echo "python=$(python -V 2>&1)"
+            echo "uv=$(uv --version 2>&1)"
+          } > _ci_failure/context.env
+          env | sort > _ci_failure/env.txt
+          uv pip list > _ci_failure/pip_list.txt
+          git status --porcelain > _ci_failure/git_status.txt || true
+
+      - name: Upload failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-aux-failure-bundle-${{ matrix.suite.name }}
+          path: _ci_failure
+          if-no-files-found: ignore

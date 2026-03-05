@@ -40,6 +40,7 @@ def with_dataset_overrides() -> Callable[[RunnerDeps, dict[str, Any]], RunnerDep
     """
     Helper: RunnerDeps is frozen; return a copy with dataset_overrides swapped.
     """
+
     def _mk(base: RunnerDeps, overrides: dict[str, Any]) -> RunnerDeps:
         return RunnerDeps(
             client_factory=base.client_factory,

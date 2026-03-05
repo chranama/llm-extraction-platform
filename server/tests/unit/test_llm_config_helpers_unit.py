@@ -85,7 +85,10 @@ def test_capability_validation_and_bool_conversion():
         cfg._cap_value_to_bool({"enabled": "yes"}, path="p", field="caps", key="generate")
 
     assert cfg._cap_value_to_bool(True, path="p", field="caps", key="generate") is True
-    assert cfg._capabilities_raw_to_boolmap(raw, path="p", field="caps") == {"generate": True, "extract": False}
+    assert cfg._capabilities_raw_to_boolmap(raw, path="p", field="caps") == {
+        "generate": True,
+        "extract": False,
+    }
 
 
 def test_merge_capabilities_raw_and_deep_merge():
@@ -143,7 +146,9 @@ def test_apply_effective_service_caps_and_deployment_key_validation(monkeypatch)
 
     s = SimpleNamespace(enable_generate=True, enable_extract=True)
     primary = cfg.ModelSpec(id="m1", capabilities={"generate": True, "extract": False})
-    gen, ext = cfg._apply_effective_service_caps_from_primary(s=s, primary=primary, defaults_caps_bool={"extract": True})
+    gen, ext = cfg._apply_effective_service_caps_from_primary(
+        s=s, primary=primary, defaults_caps_bool={"extract": True}
+    )
     assert (gen, ext) == (True, False)
     assert s.enable_extract is False
 
@@ -154,7 +159,10 @@ def test_apply_effective_service_caps_and_deployment_key_validation(monkeypatch)
     monkeypatch.delenv("ALLOW_GENERIC_DEPLOYMENT_KEY", raising=False)
     with pytest.raises(AppError):
         cfg._validate_deployment_keys_or_raise(
-            specs=[cfg.ModelSpec(id="m1", deployment_key="default"), cfg.ModelSpec(id="m2", deployment_key=None)],
+            specs=[
+                cfg.ModelSpec(id="m1", deployment_key="default"),
+                cfg.ModelSpec(id="m2", deployment_key=None),
+            ],
             path="models.yaml",
             selected_profile="prod",
         )

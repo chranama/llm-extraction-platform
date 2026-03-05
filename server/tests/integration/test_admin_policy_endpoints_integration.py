@@ -182,9 +182,7 @@ async def test_admin_policy_valid_file_round_trip(client, admin_headers, tmp_pat
 
 
 @pytest.mark.anyio
-async def test_admin_policy_contract_errors_fail_closed(
-    client, admin_headers, tmp_path
-):
+async def test_admin_policy_contract_errors_fail_closed(client, admin_headers, tmp_path):
     import os
 
     p = tmp_path / "policy_bad.json"
@@ -210,9 +208,7 @@ async def test_admin_policy_contract_errors_fail_closed(
 
 
 @pytest.mark.anyio
-async def test_admin_policy_deny_fail_closed_even_if_enable_true(
-    client, admin_headers, tmp_path
-):
+async def test_admin_policy_deny_fail_closed_even_if_enable_true(client, admin_headers, tmp_path):
     """
     If status is deny/unknown, ok=False and enable_extract should be fail-closed.
     Your loader forces enable_extract=False if decision not ok, even if omitted.
@@ -244,9 +240,7 @@ async def test_admin_policy_deny_fail_closed_even_if_enable_true(
 
 
 @pytest.mark.anyio
-async def test_admin_policy_reload_picks_up_file_changes(
-    client, admin_headers, tmp_path
-):
+async def test_admin_policy_reload_picks_up_file_changes(client, admin_headers, tmp_path):
     import os
 
     p = tmp_path / "policy_reload.json"

@@ -35,6 +35,7 @@ class ModelsStatusResponse(BaseModel):
     Minimal runtime status for non-admin clients.
     Keep this intentionally small and stable (no deep registry internals).
     """
+
     status: str  # "ok" | "degraded"
     model_load_mode: str
     model_loaded: bool

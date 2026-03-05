@@ -6,13 +6,18 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from llm_server.core.errors import AppError
-from llm_server.services.backends.base import GenerateResult, GenerateTimings, GenerateUsage, LLMBackend
+from llm_server.services.backends.base import (
+    GenerateResult,
+    GenerateTimings,
+    GenerateUsage,
+    LLMBackend,
+)
 
 
 @dataclass(frozen=True)
 class TransformersBackendConfig:
     hf_id: str
-    device: str = "auto"         # "auto"|"cpu"|"cuda"|"mps"
+    device: str = "auto"  # "auto"|"cpu"|"cuda"|"mps"
     dtype: Optional[str] = None  # "float16"|"bfloat16"|"float32"|None
     trust_remote_code: bool = False
 
@@ -204,26 +209,41 @@ class TransformersBackend(LLMBackend):
         **kwargs: Any,
     ) -> GenerateResult:
         if not isinstance(prompt, str) or not prompt.strip():
-            raise AppError(code="invalid_request", message="prompt must be a non-empty string", status_code=400)
+            raise AppError(
+                code="invalid_request", message="prompt must be a non-empty string", status_code=400
+            )
 
         # NOTE:
         # Lazy loading is now controlled by deps.py + RuntimeModelLoader.
         # If we get here and weights are not loaded, treat as not ready.
         if not self.is_loaded():
-            raise AppError(code="backend_not_ready", message="Transformers backend not loaded", status_code=503)
+            raise AppError(
+                code="backend_not_ready", message="Transformers backend not loaded", status_code=503
+            )
 
         tok = self._tok
         model = self._model
         if tok is None or model is None:
-            raise AppError(code="backend_not_ready", message="Transformers backend not loaded", status_code=503)
+            raise AppError(
+                code="backend_not_ready", message="Transformers backend not loaded", status_code=503
+            )
 
         try:
             import torch
         except Exception as e:
-            raise AppError(code="backend_missing_deps", message="torch missing", status_code=500, extra={"error": repr(e)}) from e
+            raise AppError(
+                code="backend_missing_deps",
+                message="torch missing",
+                status_code=500,
+                extra={"error": repr(e)},
+            ) from e
 
         # defaults
-        temp = float(temperature) if isinstance(temperature, (int, float)) else float(self._cfg.default_temperature)
+        temp = (
+            float(temperature)
+            if isinstance(temperature, (int, float))
+            else float(self._cfg.default_temperature)
+        )
         tp = float(top_p) if isinstance(top_p, (int, float)) else float(self._cfg.default_top_p)
         mnt = int(max_new_tokens) if isinstance(max_new_tokens, int) and max_new_tokens > 0 else 256
 

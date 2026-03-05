@@ -25,6 +25,7 @@ async def test_schema_detail_returns_full_schema(monkeypatch, tmp_path, auth_hea
     monkeypatch.setenv("SCHEMAS_DIR", str(tmp_path))
 
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
     r = await client.get(f"/v1/schemas/{schema_id}", headers=auth_headers)
@@ -39,8 +40,9 @@ async def test_schema_detail_missing_is_404(monkeypatch, tmp_path, auth_headers,
     monkeypatch.setenv("SCHEMAS_DIR", str(tmp_path))
 
     import llm_server.core.schema_registry as reg
+
     reg._SCHEMA_CACHE.clear()
 
-    async with (await app_client()) as client:
+    async with await app_client() as client:
         r = await client.get("/v1/schemas/does_not_exist", headers=auth_headers)
         assert r.status_code == 404, r.text

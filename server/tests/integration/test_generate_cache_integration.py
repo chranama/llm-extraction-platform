@@ -50,7 +50,5 @@ async def test_generate_db_cache_hit(client, auth_headers, test_sessionmaker):
     from llm_server.db.models import CompletionCache
 
     async with test_sessionmaker() as session:
-        n = (
-            await session.execute(select(func.count()).select_from(CompletionCache))
-        ).scalar_one()
+        n = (await session.execute(select(func.count()).select_from(CompletionCache))).scalar_one()
         assert n >= 1

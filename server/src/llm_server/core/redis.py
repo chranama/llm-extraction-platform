@@ -46,7 +46,9 @@ async def redis_get(
         val = await redis.get(key)
     finally:
         try:
-            LLM_REDIS_LATENCY.labels(model_id=model_id, kind=kind).observe(time.perf_counter() - start)
+            LLM_REDIS_LATENCY.labels(model_id=model_id, kind=kind).observe(
+                time.perf_counter() - start
+            )
         except Exception:
             pass
 

@@ -86,6 +86,7 @@ class AdminLogEntry(BaseModel):
     Admin log row. Keep this stable: UI depends on it.
     New fields are optional for back-compat with older DBs/tests.
     """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -145,6 +146,7 @@ class AdminLoadModelRequest(BaseModel):
     For transformers, this will usually allocate weights.
     For external backends (e.g., llama-server), ensure_loaded() is typically a cheap probe/no-op.
     """
+
     model_id: Optional[str] = None
 
 
@@ -337,10 +339,16 @@ async def list_inference_logs(
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
     model_id: Optional[str] = Query(default=None, description="Filter by model_id"),
-    key: Optional[str] = Query(default=None, alias="api_key", description="Filter by API key value"),
+    key: Optional[str] = Query(
+        default=None, alias="api_key", description="Filter by API key value"
+    ),
     route: Optional[str] = Query(default=None, description="Filter by route, e.g. /v1/generate"),
-    from_ts: Optional[datetime] = Query(default=None, description="Filter logs created_at >= this timestamp (ISO8601)"),
-    to_ts: Optional[datetime] = Query(default=None, description="Filter logs created_at <= this timestamp (ISO8601)"),
+    from_ts: Optional[datetime] = Query(
+        default=None, description="Filter logs created_at >= this timestamp (ISO8601)"
+    ),
+    to_ts: Optional[datetime] = Query(
+        default=None, description="Filter logs created_at <= this timestamp (ISO8601)"
+    ),
     limit: int = Query(default=50, ge=1, le=200, description="Max number of rows to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ):
@@ -436,7 +444,9 @@ async def admin_report_summary(
         for m in stats.per_model
     ]
 
-    return report_w.render_admin_summary(stats_payload=stats_payload, per_model=per_model, fmt=format)
+    return report_w.render_admin_summary(
+        stats_payload=stats_payload, per_model=per_model, fmt=format
+    )
 
 
 # -------------------------------------------------------------------
@@ -527,7 +537,9 @@ async def admin_models_clear_default(
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
 ):
-    set_request_meta(request, route="/v1/admin/models/default/clear", model_id="admin", cached=False)
+    set_request_meta(
+        request, route="/v1/admin/models/default/clear", model_id="admin", cached=False
+    )
     await ensure_admin(api_key, session)
 
     loader = get_loader(request)
@@ -551,7 +563,9 @@ async def admin_load_model(
     body: AdminLoadModelRequest,
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
-    force: bool = Query(False, description="Force reload (transformers only); external backends remain no-op"),
+    force: bool = Query(
+        False, description="Force reload (transformers only); external backends remain no-op"
+    ),
 ):
     """
     Explicit weight-load boundary.
@@ -653,7 +667,9 @@ async def admin_write_generate_slo(
     api_key: ApiKey = Depends(get_api_key),
     session: AsyncSession = Depends(get_session),
     window_seconds: int = Query(300, ge=30, le=86400),
-    route: Optional[str] = Query(default=None, description="Optional single route override (default: /v1/generate)"),
+    route: Optional[str] = Query(
+        default=None, description="Optional single route override (default: /v1/generate)"
+    ),
     model_id: Optional[str] = Query(default=None, description="Optional filter by model_id"),
     out_path: Optional[str] = Query(default=None, description="Optional artifact path override"),
 ):
@@ -665,7 +681,11 @@ async def admin_write_generate_slo(
     set_request_meta(request, route="/v1/admin/slo/generate/write", model_id="admin", cached=False)
     await ensure_admin(api_key, session)
 
-    routes = [route] if isinstance(route, str) and route.strip() else ["/v1/generate", "/v1/generate/batch"]
+    routes = (
+        [route]
+        if isinstance(route, str) and route.strip()
+        else ["/v1/generate", "/v1/generate/batch"]
+    )
 
     res = await write_generate_slo_artifact(
         session,
@@ -675,7 +695,9 @@ async def admin_write_generate_slo(
         out_path=out_path,
     )
 
-    return AdminWriteGenerateSloResponse(ok=bool(res.ok), out_path=res.out_path, payload=res.payload)
+    return AdminWriteGenerateSloResponse(
+        ok=bool(res.ok), out_path=res.out_path, payload=res.payload
+    )
 
 
 # -------------------------------------------------------------------

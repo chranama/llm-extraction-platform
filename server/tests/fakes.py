@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+
 @dataclass
 class FakeLLM:
     outputs: list[str]
