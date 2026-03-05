@@ -18,6 +18,7 @@ Recommended review flow (5-10 minutes):
 3. Open the docs index for deeper technical references.
 
 Deep index: [`docs/README.md`](docs/README.md)
+Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 
 ## Demo Proof Cards
 

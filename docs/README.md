@@ -3,6 +3,7 @@
 ## Start Here (Canonical)
 
 - [Root README](../README.md): recruiter-first project overview and skill map
+- [Portfolio One Pager](../PORTFOLIO_ONE_PAGER.md): fastest recruiter skim path
 - [00) Testing and CI](00-testing.md)
 - [01) Extraction Contract](01-extraction-contract.md)
 - [02) Project Demos](02-project-demos.md)
