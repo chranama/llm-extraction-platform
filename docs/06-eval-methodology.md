@@ -49,6 +49,11 @@ Threshold changes should be paired with:
 - failure-case replay,
 - updated policy/eval documentation.
 
+Concrete Phase-3 example:
+- control manifest (no clamp expected): `traffic_out/phase3_generate_20260304/evidence_manifest_control.json`
+- clamp manifest (clamp expected): `traffic_out/phase3_generate_20260304/evidence_manifest_clamp.json`
+- adversarial mismatch (intentional failure): `traffic_out/phase3_generate_20260304/evidence_manifest_adversarial_mismatch.json`
+
 ## Quality axes
 
 Evaluate completeness on these axes:

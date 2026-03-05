@@ -13,11 +13,18 @@ def _load_json(path: Path) -> Any:
 
 
 def _status_for_extract(payload: dict[str, Any], expected: str) -> tuple[bool, str]:
-    observed = str(payload.get("status", "")).lower()
+    probe = payload.get("extract_probe") or {}
+    code = str(probe.get("code") or "").lower()
+    status = probe.get("status")
+    ok_flag = bool(payload.get("ok"))
+
     if expected == "allow":
-        ok = observed in {"allow", "pass", "ok"}
+        blocked_codes = {"capability_disabled", "capability_not_supported"}
+        ok = ok_flag and code not in blocked_codes and int(status or 0) not in {400, 501}
     else:
-        ok = observed in {"block", "blocked", "deny"}
+        blocked_codes = {"capability_disabled", "capability_not_supported"}
+        ok = ok_flag and (code in blocked_codes or int(status or 0) in {400, 501})
+    observed = f"status={status},code={code or 'none'},ok={ok_flag}"
     return ok, observed
 
 
@@ -47,6 +54,7 @@ def main() -> int:
             "ok": False,
             "error": f"missing required evidence files: {', '.join(missing)}",
         }
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return 1
 
@@ -58,8 +66,8 @@ def main() -> int:
     pass_ok, pass_observed = _status_for_extract(host_pass_ex, "allow")
     fail_ok, fail_observed = _status_for_extract(host_fail_ex, "block")
 
-    pass_cap = bool(host_pass_rt.get("model_extract_capability"))
-    fail_cap = bool(host_fail_rt.get("model_extract_capability"))
+    pass_cap = bool((host_pass_rt.get("runtime") or {}).get("model_extract_capability"))
+    fail_cap = bool((host_fail_rt.get("runtime") or {}).get("model_extract_capability"))
 
     verdict_ok = pass_ok and fail_ok and pass_cap and (not fail_cap)
 
@@ -86,6 +94,7 @@ def main() -> int:
         "evidence_files": {k: str(v) for k, v in required.items()},
     }
 
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return 0 if verdict_ok else 1
 

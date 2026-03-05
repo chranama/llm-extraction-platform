@@ -1,23 +1,50 @@
 {
   "schema_version": "portfolio_quality_summary_v1",
-  "generated_at": "2026-03-04T00:00:00Z",
+  "generated_at": "2026-03-04T18:00:00Z",
   "summary": {
-    "flagship_demos": ["generate_clamp", "extract_gate"],
+    "flagship_demos": [
+      "generate_clamp",
+      "extract_gate"
+    ],
     "ci_quality": {
       "docs_gate_present": true,
       "python_lint_gate_present": true,
       "python_format_gate_present": true,
       "ui_unit_gate_present": true,
-      "ui_e2e_gate_present": true
+      "ui_e2e_gate_present": true,
+      "failure_bundle_artifacts_enabled": true
     },
     "evidence_contract": {
       "demo_manifest_path_pattern": "traffic_out/<run>/evidence_manifest.json",
       "extract_gate_manifest_generated": true,
       "generate_clamp_manifest_generation_supported": true
+    },
+    "phase3_evidence": {
+      "extract_gate": {
+        "run_id": "phase41_20260304T230327Z",
+        "manifest_path": "traffic_out/phase41_20260304T230327Z/evidence_manifest.json",
+        "ok": true,
+        "host_pass_model_extract_capability": true,
+        "host_fail_model_extract_capability": false,
+        "host_fail_extract_probe_code": "capability_disabled"
+      },
+      "generate_clamp": {
+        "run_id": "phase3_generate_20260304",
+        "control_manifest_path": "traffic_out/phase3_generate_20260304/evidence_manifest_control.json",
+        "clamp_manifest_path": "traffic_out/phase3_generate_20260304/evidence_manifest_clamp.json",
+        "adversarial_manifest_path": "traffic_out/phase3_generate_20260304/evidence_manifest_adversarial_mismatch.json",
+        "control_ok": true,
+        "clamp_ok": true,
+        "adversarial_ok": false,
+        "clamp_policy_cap": 128,
+        "latency_p95_ms": 2196.9146728515625,
+        "error_rate": 0.0,
+        "total_requests": 16
+      }
     }
   },
   "notes": [
-    "This artifact is a portfolio-level summary and should be regenerated when demo or CI contracts change.",
-    "For numeric benchmark snapshots, attach run-specific evidence manifests under traffic_out/."
+    "This artifact is portfolio-level and should be regenerated when demos or CI contracts change.",
+    "Adversarial manifest intentionally records a mismatch case (ok=false) to prove failure-detection behavior."
   ]
 }

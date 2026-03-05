@@ -1,49 +1,56 @@
-# 10) Model Decision Memo (Example)
+# 10) Model Decision Memo (Example with Concrete Evidence)
 
-This memo template captures the decision rationale for accepting or rejecting a model/profile for extract workloads.
+This memo captures a concrete decision for extract capability assignment using current repo artifacts.
 
 ## Context
 
-- Candidate model: `sshleifer/tiny-gpt2` (example profile case)
-- Use case: schema-constrained extraction
+- Candidate model: `sshleifer/tiny-gpt2`
+- Use case: schema-constrained extraction in `host-transformers` profile
 - Decision scope: onboarding capability assignment (`extract` true/false)
 
 ## Inputs reviewed
 
-- eval artifacts for pass/fail scenarios
-- threshold profile and criteria
-- runtime extract-gate proof outputs
+- Eval pass artifact: `results/extract/demo_extract_host_transformers_pass/`
+- Eval fail artifact: `results/extract/demo_extract_host_transformers_fail/`
+- Runtime proof run: `traffic_out/phase41_20260304T230327Z/`
+- Evidence manifest: `traffic_out/phase41_20260304T230327Z/evidence_manifest.json`
 
 ## Decision
 
-Example decision:
-- Set `extract=false` for this candidate in FAIL onboarding path.
+- PASS onboarding artifact keeps `extract=true`.
+- FAIL onboarding artifact sets `extract=false`.
+
+This is a reliability-first decision: block extract on fail artifact rather than allow unstable behavior.
 
 ## Rationale
 
-- The model failed reliability criteria for structured extract behavior under required constraints.
-- Allowing extract would increase invalid-output risk and operational support burden.
+- Runtime manifest confirms capability flip is enforced:
+  - host pass capability: `true`
+  - host fail capability: `false`
+- Fail path probe returns `capability_disabled`, which is the intended guardrail contract.
+- Pass path is not capability-blocked; observed failure there is model runtime (`model_load_failed`), not capability gating.
 
 ## Consequences
 
 Positive:
-- Lower probability of invalid extract behavior in production-like paths.
 - Clear capability contract at runtime.
+- Reduced risk of unsupported extraction behavior.
 
 Negative:
-- Reduced model availability for extract workloads.
-- Need stronger model or tuned profile for extract enablement.
+- Lower extract availability for weaker models.
+- Additional onboarding/eval burden to enable more models safely.
 
 ## Evidence pointers
 
-- Eval outputs: `results/extract/<run>/...`
-- Onboarding artifacts: `config/models.patched.*.yaml`
-- Runtime proof: `traffic_out/<run>/...`
-- Evidence manifest: `traffic_out/<run>/evidence_manifest.json`
+- Manifest (extract gate): `traffic_out/phase41_20260304T230327Z/evidence_manifest.json`
+- PASS runtime: `traffic_out/phase41_20260304T230327Z/host_pass_runtime.json`
+- FAIL runtime: `traffic_out/phase41_20260304T230327Z/host_fail_runtime.json`
+- PASS extract probe: `traffic_out/phase41_20260304T230327Z/host_pass_extract.json`
+- FAIL extract probe: `traffic_out/phase41_20260304T230327Z/host_fail_extract.json`
 
 ## Follow-up
 
-Before revisiting this decision:
+Before changing this decision:
 - rerun eval with updated model/profile,
-- compare against prior artifact metrics,
-- replay extract-gate runtime checks.
+- compare against prior manifests,
+- rerun runtime proof to ensure capability semantics remain deterministic.

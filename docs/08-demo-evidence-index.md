@@ -33,3 +33,9 @@ Expected evidence:
 - Can you trace cause -> artifact -> runtime behavior?
 - Do PASS/FAIL runs differ only by intended control input?
 - Is each claim backed by concrete file/log/API evidence?
+
+## Adversarial proof reference
+
+- Generate clamp mismatch case:
+  - `traffic_out/phase3_generate_20260304/evidence_manifest_adversarial_mismatch.json`
+  - Expected result: `ok=false` (intentional mismatch to demonstrate failure detection path)

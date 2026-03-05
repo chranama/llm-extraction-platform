@@ -388,6 +388,15 @@ Each demo should emit `traffic_out/<run>/evidence_manifest.json` with:
 
 This is used as the recruiter/hiring-manager quick proof artifact.
 
+### Current Phase-3 Evidence Runs
+
+- Extract gate concrete manifest:
+  - `traffic_out/phase41_20260304T230327Z/evidence_manifest.json`
+- Generate clamp control/clamp/adversarial manifests:
+  - `traffic_out/phase3_generate_20260304/evidence_manifest_control.json`
+  - `traffic_out/phase3_generate_20260304/evidence_manifest_clamp.json`
+  - `traffic_out/phase3_generate_20260304/evidence_manifest_adversarial_mismatch.json`
+
 ## Adversarial / Failure-Case Proof (Required)
 
 ### Generate Clamp
