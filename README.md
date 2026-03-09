@@ -89,6 +89,9 @@ scripts/demo_extract_gate/run_host_transformers.sh
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 - [`docs/00-testing.md`](docs/00-testing.md)
 
+5. Review interview packet (architecture, tradeoffs, failure modes):
+- [`docs/11-interview-packet.md`](docs/11-interview-packet.md)
+
 ## Testing And CI Signals
 
 - Service-level unit and integration suites in `server/`, `policy/`, `eval/`, `ui/`.
