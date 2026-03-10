@@ -62,6 +62,8 @@ Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 
 ## Architecture At A Glance
 
+![LLM Extraction Platform architecture: runtime flow, eval-to-policy control, and evidence pipeline](docs/assets/architecture-system.svg)
+
 - `server/`: runtime API for generate/extract/admin health and readiness.
 - `policy/`: policy decision engine and onboarding logic.
 - `eval/`: evaluation jobs and reporting pipeline.
