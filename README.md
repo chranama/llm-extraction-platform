@@ -20,23 +20,6 @@ Recommended review flow (5-10 minutes):
 Deep index: [`docs/README.md`](docs/README.md)
 Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 
-## Visual Proof
-
-![LLM Extraction Platform: system architecture for eval, policy, runtime, and evidence outputs](media/architecture-system.png)
-
-Claim: extraction reliability comes from explicit policy and runtime evidence layers.  
-Evidence sources: [`docs/04-architecture-deep-dive.md`](docs/04-architecture-deep-dive.md), [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
-
-![LLM Extraction Platform: PASS vs FAIL extract gate capability divergence](media/extract-gate-pass-fail.png)
-
-Claim: PASS/FAIL runtime paths produce deterministic extract capability divergence.  
-Evidence sources: [`traffic_out/phase41_20260304T230327Z/host_pass_runtime.json`](traffic_out/phase41_20260304T230327Z/host_pass_runtime.json), [`traffic_out/phase41_20260304T230327Z/host_fail_runtime.json`](traffic_out/phase41_20260304T230327Z/host_fail_runtime.json)
-
-![LLM Extraction Platform: proof contract from claim to command to artifact to signal](media/proof-contract.png)
-
-Claim: reviewer trust is built by claim -> command -> artifact -> signal mapping.  
-Evidence sources: [`proof/proof_points.latest.md`](proof/proof_points.latest.md), [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
-
 ## Demo Proof Cards
 
 ### Demo 1: Generate Clamp
