@@ -98,6 +98,16 @@ scripts/demo_extract_gate/run_host_transformers.sh
 - Repo-level integration suites in `integrations/`.
 - CI matrix in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
+## Canonical Proof Bundle (Latest)
+
+- Contract: [`proof/evidence_contract.schema.json`](proof/evidence_contract.schema.json)
+- Manifest: [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
+- Proof points: [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
+- Validation command:
+```bash
+python proof/validate_evidence_manifest.py
+```
+
 ## Repository Map
 
 - [`cli/README.md`](cli/README.md)

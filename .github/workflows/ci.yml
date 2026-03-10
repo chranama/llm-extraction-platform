@@ -1029,3 +1029,32 @@ jobs:
           name: repo-aux-failure-bundle-${{ matrix.suite.name }}
           path: _ci_failure
           if-no-files-found: ignore
+
+  proof_validate:
+    name: proof-validate
+    runs-on: ubuntu-latest
+    needs:
+      - docs_quality
+      - server_unit
+      - server_integration
+      - policy_unit
+      - policy_integration
+      - ui_test
+      - ui_e2e
+      - eval_unit
+      - eval_integration_contract
+      - integrations_job_lane
+      - integrations_server_live
+      - repo_aux_tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate canonical proof manifest
+        run: |
+          set -euxo pipefail
+          python proof/validate_evidence_manifest.py

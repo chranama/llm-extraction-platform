@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Portfolio Evidence Manifest",
+  "type": "object",
+  "required": [
+    "proof_id",
+    "run_id",
+    "generated_at",
+    "repo_commit",
+    "status",
+    "claims",
+    "diagnostics"
+  ],
+  "properties": {
+    "proof_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "minLength": 1},
+    "repo_commit": {"type": "string", "minLength": 7},
+    "status": {"type": "string", "enum": ["pass", "fail"]},
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["claim_text", "verification_command", "artifact_paths", "expected_signal"],
+        "properties": {
+          "claim_text": {"type": "string", "minLength": 1},
+          "verification_command": {"type": "string", "minLength": 1},
+          "artifact_paths": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "expected_signal": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "notes": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
