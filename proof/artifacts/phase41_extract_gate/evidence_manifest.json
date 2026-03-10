@@ -1,0 +1,27 @@
+{
+  "schema_version": "demo_evidence_manifest_v1",
+  "demo": "extract_gate",
+  "generated_at": "2026-03-05T00:23:35.348328+00:00",
+  "run_dir": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase41_20260304T230327Z",
+  "ok": true,
+  "control": {
+    "pass_artifact": "extract capability expected true",
+    "fail_artifact": "extract capability expected false"
+  },
+  "observed": {
+    "host_pass": {
+      "extract_status": "status=500,code=model_load_failed,ok=True",
+      "model_extract_capability": true
+    },
+    "host_fail": {
+      "extract_status": "status=501,code=capability_disabled,ok=True",
+      "model_extract_capability": false
+    }
+  },
+  "evidence_files": {
+    "host_pass_runtime": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase41_20260304T230327Z/host_pass_runtime.json",
+    "host_fail_runtime": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase41_20260304T230327Z/host_fail_runtime.json",
+    "host_pass_extract": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase41_20260304T230327Z/host_pass_extract.json",
+    "host_fail_extract": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase41_20260304T230327Z/host_fail_extract.json"
+  }
+}

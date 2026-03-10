@@ -1,0 +1,21 @@
+{
+  "schema_version": "demo_evidence_manifest_v1",
+  "demo": "generate_clamp",
+  "generated_at": "2026-03-05T00:23:16.579917+00:00",
+  "ok": true,
+  "control": {
+    "expected_clamp": true,
+    "threshold_profile": "generate/portable"
+  },
+  "observed": {
+    "policy_cap": 128,
+    "policy_status": "allow",
+    "latency_p95_ms": 2196.9146728515625,
+    "error_rate": 0.0,
+    "total_requests": 16
+  },
+  "evidence_files": {
+    "slo": "/Users/chranama/portfolio/llm-extraction-platform/slo_out/generate/latest.json",
+    "policy": "/Users/chranama/portfolio/llm-extraction-platform/traffic_out/phase3_generate_20260304/policy_clamp.json"
+  }
+}

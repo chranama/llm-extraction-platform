@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "base_url": "http://127.0.0.1:18010",
+  "model_id": "sshleifer/tiny-gpt2",
+  "runtime": {
+    "modelz_status": 503,
+    "models_status": 200,
+    "models_profile_selected": "host-transformers",
+    "policy_source_path": null,
+    "policy_enable_extract": null,
+    "deployment_key": "host-transformers--tiny-gpt2",
+    "assessed_selected_deployment_key": "host-transformers--tiny-gpt2",
+    "model_extract_capability": true
+  },
+  "artifact_expectation": null,
+  "expectations": {
+    "expect_policy_source": "none",
+    "expect_policy_enable_extract": "none",
+    "expect_model_extract": "true"
+  },
+  "failures": []
+}

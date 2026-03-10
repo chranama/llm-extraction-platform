@@ -1,16 +1,16 @@
 {
   "proof_id": "llm-extract-canonical",
   "run_id": "canonical_latest",
-  "generated_at": "2026-03-10T17:34:50.674901+00:00",
-  "repo_commit": "bb36d6a",
+  "generated_at": "2026-03-10T21:11:49.170794+00:00",
+  "repo_commit": "08b3ebf",
   "status": "pass",
   "claims": [
     {
       "claim_text": "Generate clamp policy behavior is demonstrated with manifest evidence.",
       "verification_command": "python proof/generate_canonical_manifest.py",
       "artifact_paths": [
-        "traffic_out/phase3_generate_20260304/evidence_manifest_control.json",
-        "traffic_out/phase3_generate_20260304/evidence_manifest_clamp.json"
+        "proof/artifacts/phase3_generate/evidence_manifest_control.json",
+        "proof/artifacts/phase3_generate/evidence_manifest_clamp.json"
       ],
       "expected_signal": "Control and clamp manifests both exist and encode divergent clamp outcomes."
     },
@@ -18,9 +18,9 @@
       "claim_text": "Extract PASS/FAIL gating behavior is evidenced via canonical run outputs.",
       "verification_command": "python proof/generate_canonical_manifest.py",
       "artifact_paths": [
-        "traffic_out/phase41_20260304T230327Z/evidence_manifest.json",
-        "traffic_out/phase41_20260304T230327Z/host_pass_runtime.json",
-        "traffic_out/phase41_20260304T230327Z/host_fail_runtime.json"
+        "proof/artifacts/phase41_extract_gate/evidence_manifest.json",
+        "proof/artifacts/phase41_extract_gate/host_pass_runtime.json",
+        "proof/artifacts/phase41_extract_gate/host_fail_runtime.json"
       ],
       "expected_signal": "PASS runtime permits extract-capable behavior while FAIL runtime is capability-blocked."
     }

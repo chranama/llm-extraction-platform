@@ -6,6 +6,7 @@ This directory contains the canonical, latest-only proof bundle for recruiter an
 - `evidence_contract.schema.json`: shared evidence contract
 - `evidence_manifest.latest.json`: machine-readable latest manifest
 - `proof_points.latest.md`: human-readable proof summary
+- `artifacts/`: tracked canonical latest-only proof bundle used by CI validation
 - `generate_canonical_manifest.py`: refreshes canonical manifest metadata
 - `validate_evidence_manifest.py`: strict validator (schema-lite + artifact checks)
 
