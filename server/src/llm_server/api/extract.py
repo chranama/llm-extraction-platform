@@ -129,7 +129,11 @@ async def extract(
         )
 
 
-@router.post("/v1/extract/jobs", response_model=ExtractJobSubmitResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/v1/extract/jobs",
+    response_model=ExtractJobSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def submit_extract_job(
     request: Request,
     body: ExtractJobBody,

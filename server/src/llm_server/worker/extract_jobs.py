@@ -7,7 +7,6 @@ import logging
 from llm_server.main import create_app
 from llm_server.services.extract_jobs import process_extract_job_once, queue_from_app
 
-
 logger = logging.getLogger("llm_server.worker.extract_jobs")
 
 
@@ -48,7 +47,9 @@ def main() -> None:
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(run_worker(once=bool(args.once), poll_timeout_seconds=int(args.poll_timeout_seconds)))
+    asyncio.run(
+        run_worker(once=bool(args.once), poll_timeout_seconds=int(args.poll_timeout_seconds))
+    )
 
 
 if __name__ == "__main__":

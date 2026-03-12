@@ -55,7 +55,9 @@ from llm_server.services.limits.generate_gating import get_generate_gate
 
 
 class InternalRequestContext:
-    def __init__(self, *, app: Any, route: str, request_id: str | None, client_host: str | None = None):
+    def __init__(
+        self, *, app: Any, route: str, request_id: str | None, client_host: str | None = None
+    ):
         self.app = app
         self.state = SimpleNamespace(
             route=route,

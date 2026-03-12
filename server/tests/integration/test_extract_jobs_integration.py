@@ -164,7 +164,14 @@ async def test_submission_fails_when_policy_blocks_extract(
 
 @pytest.mark.anyio
 async def test_worker_fails_job_when_policy_drifts_after_submission(
-    client, app, auth_headers, extract_job_queue, test_sessionmaker, monkeypatch, tmp_path: Path, schema_dir
+    client,
+    app,
+    auth_headers,
+    extract_job_queue,
+    test_sessionmaker,
+    monkeypatch,
+    tmp_path: Path,
+    schema_dir,
 ):
     app.state.extract_job_queue = extract_job_queue
 

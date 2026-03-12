@@ -681,11 +681,7 @@ async def admin_write_generate_slo(
     set_request_meta(request, route="/v1/admin/slo/generate/write", model_id="admin", cached=False)
     await ensure_admin(api_key, session)
 
-    routes = (
-        [route]
-        if isinstance(route, str) and route.strip()
-        else ["/v1/generate"]
-    )
+    routes = [route] if isinstance(route, str) and route.strip() else ["/v1/generate"]
 
     res = await write_generate_slo_artifact(
         session,
