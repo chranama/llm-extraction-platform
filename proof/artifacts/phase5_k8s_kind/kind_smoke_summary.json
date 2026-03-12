@@ -3,7 +3,7 @@
   "cluster_name": "llm",
   "namespace": "llm",
   "overlay": "local-generate-only",
-  "generated_at": "2026-03-12T16:48:08.204034+00:00",
+  "generated_at": "2026-03-12T17:36:23.258977+00:00",
   "status": "pass",
   "checks": {
     "rollout_status": "pass",

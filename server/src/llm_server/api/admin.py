@@ -684,7 +684,7 @@ async def admin_write_generate_slo(
     routes = (
         [route]
         if isinstance(route, str) and route.strip()
-        else ["/v1/generate", "/v1/generate/batch"]
+        else ["/v1/generate"]
     )
 
     res = await write_generate_slo_artifact(

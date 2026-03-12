@@ -1,15 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
   <title id="title">LLM Extraction Platform Architecture</title>
-  <desc id="desc">Runtime request flow, control plane policy loop, and evidence pipeline for the LLM Extraction Platform.</desc>
+  <desc id="desc">Runtime serving, deployment topology, control plane policy loop, and evidence pipeline for the LLM Extraction Platform.</desc>
 
   <defs>
     <style>
-      .title { font: 700 34px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
-      .subtitle { font: 500 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #334155; }
-      .laneLabel { font: 700 16px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #1e293b; }
-      .nodeText { font: 600 18px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
-      .nodeSub { font: 500 14px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #334155; }
-      .legend { font: 600 13px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #334155; }
+      .title { font: 700 32px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 17px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #334155; }
+      .laneLabel { font: 700 15px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #1e293b; }
+      .nodeText { font: 700 16px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; text-anchor: middle; }
+      .legend { font: 600 12px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #334155; }
       .callout { font: 700 14px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; fill: #1d4ed8; }
     </style>
 
@@ -27,87 +26,124 @@
     </marker>
   </defs>
 
-  <rect x="0" y="0" width="1600" height="900" fill="#ffffff"/>
-  <rect x="36" y="120" width="1528" height="262" rx="16" fill="#eff6ff" stroke="#bfdbfe"/>
-  <rect x="36" y="406" width="1528" height="152" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/>
-  <rect x="36" y="582" width="1528" height="232" rx="16" fill="#f0fdfa" stroke="#99f6e4"/>
+  <rect x="0" y="0" width="1600" height="980" fill="#ffffff"/>
+  <rect x="178" y="120" width="1386" height="196" rx="16" fill="#eff6ff" stroke="#bfdbfe"/>
+  <rect x="178" y="340" width="1386" height="208" rx="16" fill="#fff7ed" stroke="#fdba74"/>
+  <rect x="178" y="572" width="1386" height="148" rx="16" fill="#f5f3ff" stroke="#ddd6fe"/>
+  <rect x="178" y="744" width="1386" height="170" rx="16" fill="#f0fdfa" stroke="#99f6e4"/>
 
-  <text x="52" y="66" class="title">LLM Extraction Platform: Runtime, Control, and Evidence Architecture</text>
-  <text x="52" y="95" class="subtitle">Runtime, control, and evidence architecture</text>
+  <text x="52" y="66" class="title">LLM Extraction Platform: Runtime, Deployment, Control, and Evidence</text>
+  <text x="52" y="95" class="subtitle">Sync serving plus async extract jobs, packaged for host and Kubernetes deployment</text>
 
-  <text x="58" y="148" class="laneLabel">Runtime Plane</text>
-  <text x="58" y="434" class="laneLabel">Control Plane</text>
-  <text x="58" y="610" class="laneLabel">Evidence Plane</text>
+  <text x="200" y="148" class="laneLabel">Runtime Plane</text>
+  <text x="200" y="368" class="laneLabel">Deployment Plane</text>
+  <text x="200" y="600" class="laneLabel">Control Plane</text>
+  <text x="200" y="772" class="laneLabel">Evidence Plane</text>
 
-  <rect x="78" y="220" width="180" height="92" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="106" y="258" class="nodeText">Client /</text>
-  <text x="100" y="282" class="nodeText">Reviewer</text>
+  <rect x="38" y="450" width="110" height="78" rx="12" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="93" y="495" class="nodeText">User</text>
 
-  <rect x="308" y="220" width="220" height="92" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="343" y="258" class="nodeText">FastAPI Service</text>
-  <text x="336" y="281" class="nodeSub">Generate / Extract</text>
+  <rect x="230" y="180" width="222" height="94" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="341" y="214" class="nodeText">FastAPI Service</text>
+  <text x="341" y="238" class="nodeText">Generate / Extract / Jobs</text>
 
-  <rect x="578" y="220" width="250" height="92" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="615" y="258" class="nodeText">API Contracts</text>
-  <text x="615" y="281" class="nodeSub">Schemas and validation</text>
+  <rect x="498" y="180" width="234" height="94" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="615" y="214" class="nodeText">API Contracts</text>
+  <text x="615" y="238" class="nodeText">Schemas / Auth / Validation</text>
 
-  <rect x="878" y="220" width="220" height="92" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="913" y="258" class="nodeText">Capability Gate</text>
-  <text x="918" y="281" class="nodeSub">Allow / deny extract</text>
+  <rect x="778" y="180" width="238" height="94" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="897" y="206" class="nodeText">Extract Runtime</text>
+  <text x="897" y="228" class="nodeText">Gate / Cache</text>
+  <text x="897" y="250" class="nodeText">Repair / Validate</text>
 
-  <rect x="1148" y="220" width="190" height="92" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="1192" y="258" class="nodeText">Model Router</text>
-  <text x="1180" y="281" class="nodeSub">Runtime selection</text>
+  <rect x="1062" y="142" width="172" height="70" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="1148" y="183" class="nodeText">Transformers</text>
 
-  <rect x="1368" y="176" width="170" height="78" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="1392" y="217" class="nodeText">Transformers</text>
+  <rect x="1062" y="236" width="172" height="70" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="1148" y="277" class="nodeText">llama.cpp</text>
 
-  <rect x="1368" y="266" width="170" height="78" rx="12" fill="#ffffff" stroke="#93c5fd"/>
-  <text x="1410" y="307" class="nodeText">llama.cpp</text>
+  <rect x="1280" y="180" width="190" height="94" rx="12" fill="#ffffff" stroke="#93c5fd"/>
+  <text x="1375" y="214" class="nodeText">Async Job API</text>
+  <text x="1375" y="238" class="nodeText">Submit + Poll Jobs</text>
 
-  <rect x="330" y="446" width="250" height="92" rx="12" fill="#ffffff" stroke="#c4b5fd"/>
-  <text x="356" y="484" class="nodeText">Evaluation Harness</text>
-  <text x="356" y="507" class="nodeSub">Offline benchmark jobs</text>
+  <rect x="220" y="404" width="190" height="92" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="315" y="441" class="nodeText">API Process</text>
+  <text x="315" y="463" class="nodeText">Request Runtime</text>
 
-  <rect x="640" y="446" width="260" height="92" rx="12" fill="#ffffff" stroke="#c4b5fd"/>
-  <text x="674" y="484" class="nodeText">Policy Config Store</text>
-  <text x="676" y="507" class="nodeSub">Model onboarding states</text>
+  <rect x="455" y="404" width="190" height="92" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="550" y="441" class="nodeText">Worker Process</text>
+  <text x="550" y="463" class="nodeText">Async Extract Executor</text>
 
-  <rect x="842" y="640" width="290" height="102" rx="12" fill="#ffffff" stroke="#5eead4"/>
-  <text x="875" y="682" class="nodeText">Observability</text>
-  <text x="873" y="705" class="nodeSub">Logs, metrics, diagnostics</text>
+  <rect x="690" y="404" width="158" height="92" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="769" y="441" class="nodeText">Redis</text>
+  <text x="769" y="463" class="nodeText">Queue Transport</text>
 
-  <rect x="1182" y="640" width="330" height="102" rx="12" fill="#ffffff" stroke="#5eead4"/>
-  <text x="1216" y="682" class="nodeText">Proof Artifacts</text>
-  <text x="1216" y="705" class="nodeSub">Manifest + PASS/FAIL outputs</text>
+  <rect x="900" y="404" width="188" height="92" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="994" y="441" class="nodeText">Postgres</text>
+  <text x="994" y="463" class="nodeText">Job State + Logs</text>
 
-  <path d="M258 266 L308 266" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M528 266 L578 266" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M828 266 L878 266" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1098 266 L1148 266" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1338 243 L1368 214" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1338 289 L1368 305" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1368 214 C1290 166 1170 162 1060 190" stroke="#0f4fa8" stroke-width="2.5" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1368 305 C1290 360 1175 355 1060 320" stroke="#0f4fa8" stroke-width="2.5" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M1060 320 C890 380 610 380 430 330" stroke="#0f4fa8" stroke-width="2.5" fill="none" marker-end="url(#arrowSolid)"/>
-  <path d="M330 330 C230 355 165 340 140 312" stroke="#0f4fa8" stroke-width="2.5" fill="none" marker-end="url(#arrowSolid)"/>
+  <rect x="1165" y="390" width="280" height="58" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="1305" y="425" class="nodeText">Host + Compose</text>
 
-  <path d="M580 492 L640 492" stroke="#7c3aed" stroke-width="3" stroke-dasharray="10 7" fill="none" marker-end="url(#arrowDashed)"/>
-  <path d="M770 446 C860 392 910 352 960 312" stroke="#7c3aed" stroke-width="3" stroke-dasharray="10 7" fill="none" marker-end="url(#arrowDashed)"/>
-  <path d="M420 446 C460 390 500 346 600 312" stroke="#7c3aed" stroke-width="3" stroke-dasharray="10 7" fill="none" marker-end="url(#arrowDashed)"/>
+  <rect x="1165" y="462" width="280" height="58" rx="12" fill="#ffffff" stroke="#fdba74"/>
+  <text x="1305" y="497" class="nodeText">Kind + Prod Scaffold</text>
 
-  <path d="M430 312 C520 470 740 620 842 680" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
-  <path d="M988 312 C980 460 985 580 987 640" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
-  <path d="M770 538 C815 590 860 625 900 650" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
-  <path d="M1132 691 L1182 691" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+  <rect x="314" y="600" width="252" height="86" rx="12" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="440" y="632" class="nodeText">Evaluation Harness</text>
+  <text x="440" y="656" class="nodeText">Offline Benchmarks</text>
 
-  <path d="M170 312 C48 640 780 812 1182 724" stroke="#b45309" stroke-width="3.5" stroke-dasharray="14 8" fill="none" marker-end="url(#arrowAccent)"/>
+  <rect x="626" y="600" width="270" height="86" rx="12" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="761" y="632" class="nodeText">Policy Config Store</text>
+  <text x="761" y="656" class="nodeText">Onboarding + Extract State</text>
 
-  <rect x="52" y="836" width="860" height="42" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
-  <line x1="74" y1="858" x2="128" y2="858" stroke="#0f4fa8" stroke-width="3" marker-end="url(#arrowSolid)"/>
-  <text x="140" y="863" class="legend">Runtime request flow</text>
-  <line x1="324" y1="858" x2="378" y2="858" stroke="#7c3aed" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#arrowDashed)"/>
-  <text x="390" y="863" class="legend">Control updates (eval/policy)</text>
-  <line x1="626" y1="858" x2="680" y2="858" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" marker-end="url(#arrowDotted)"/>
-  <text x="692" y="863" class="legend">Evidence emission</text>
+  <rect x="956" y="600" width="274" height="86" rx="12" fill="#ffffff" stroke="#c4b5fd"/>
+  <text x="1093" y="632" class="nodeText">Deployment Scaffolding</text>
+  <text x="1093" y="656" class="nodeText">Compose / Overlays / Migration</text>
+
+  <rect x="830" y="790" width="286" height="88" rx="12" fill="#ffffff" stroke="#5eead4"/>
+  <text x="973" y="822" class="nodeText">Observability</text>
+  <text x="973" y="846" class="nodeText">Logs / Metrics / Diagnostics</text>
+
+  <rect x="1162" y="790" width="328" height="88" rx="12" fill="#ffffff" stroke="#5eead4"/>
+  <text x="1326" y="822" class="nodeText">Proof Artifacts</text>
+  <text x="1326" y="846" class="nodeText">K8s + PASS/FAIL + Async</text>
+
+  <path d="M93 450 C118 366 176 276 230 227" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M452 227 L498 227" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M732 227 L778 227" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1016 207 L1062 177" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1016 245 L1062 263" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1016 227 L1280 227" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+
+  <path d="M341 274 C341 338 315 372 315 404" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1375 274 C1368 330 1330 378 1276 390" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1375 274 C1382 344 1372 420 1340 462" stroke="#0f4fa8" stroke-width="2.5" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M410 450 L455 450" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M645 450 L690 450" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M848 450 L900 450" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1088 450 L1165 419" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+  <path d="M1088 466 L1165 491" stroke="#0f4fa8" stroke-width="3" fill="none" marker-end="url(#arrowSolid)"/>
+
+  <path d="M566 643 L626 643" stroke="#7c3aed" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDashed)"/>
+  <path d="M440 600 C470 500 530 360 560 260" stroke="#7c3aed" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDashed)"/>
+  <path d="M761 600 C814 504 852 360 870 274" stroke="#7c3aed" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDashed)"/>
+  <path d="M896 643 L956 643" stroke="#7c3aed" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDashed)"/>
+
+  <path d="M315 496 C430 688 742 792 830 827" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+  <path d="M550 496 C626 646 796 776 888 810" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+  <path d="M994 496 C992 638 982 742 972 790" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+  <path d="M1340 520 C1372 632 1362 736 1334 790" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+  <path d="M1116 834 L1162 834" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" fill="none" marker-end="url(#arrowDotted)"/>
+
+  <path d="M93 528 C96 742 700 944 1162 864" stroke="#b45309" stroke-width="3.5" stroke-dasharray="14 8" fill="none" marker-end="url(#arrowAccent)"/>
+
+  <rect x="52" y="934" width="1240" height="32" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <line x1="74" y1="950" x2="126" y2="950" stroke="#0f4fa8" stroke-width="3" marker-end="url(#arrowSolid)"/>
+  <text x="138" y="955" class="legend">Runtime and deployment flow</text>
+  <line x1="388" y1="950" x2="440" y2="950" stroke="#7c3aed" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#arrowDashed)"/>
+  <text x="452" y="955" class="legend">Control updates</text>
+  <line x1="660" y1="950" x2="712" y2="950" stroke="#0f766e" stroke-width="3" stroke-dasharray="2 10" marker-end="url(#arrowDotted)"/>
+  <text x="724" y="955" class="legend">Evidence emission</text>
+  <line x1="948" y1="950" x2="1000" y2="950" stroke="#b45309" stroke-width="3" stroke-dasharray="14 8" marker-end="url(#arrowAccent)"/>
+  <text x="1012" y="955" class="legend">Reviewer proof path</text>
 </svg>

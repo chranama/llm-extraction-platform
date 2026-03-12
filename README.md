@@ -60,6 +60,10 @@ Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 - Host, container, and Kubernetes deployment modes with reproducible scripts and diagnostics capture.
 - Evidence: [`deploy/README.md`](deploy/README.md), [`scripts/README.md`](scripts/README.md), [`docs/03-deployment-modes.md`](docs/03-deployment-modes.md)
 
+### 6) Async Workflow and Queueing
+- Extraction can run through a durable async job path backed by Postgres job state and a separate Redis-driven worker process.
+- Evidence: [`proof/README.md`](proof/README.md), [`docs/03-deployment-modes.md`](docs/03-deployment-modes.md)
+
 ## Architecture At A Glance
 
 ![LLM Extraction Platform architecture: runtime flow, eval-to-policy control, and evidence pipeline](docs/assets/architecture-system.svg)
@@ -101,6 +105,10 @@ python proof/generate_canonical_manifest.py
 - `proof/artifacts/phase5_k8s_kind/`
 - `proof/proof_points.latest.md`
 
+7. Review async extraction proof artifacts:
+- `proof/artifacts/phase6_extract_async/`
+- `proof/proof_points.latest.md`
+
 ## Testing And CI Signals
 
 - Service-level unit and integration suites in `server/`, `policy/`, `eval/`, `ui/`.
@@ -113,6 +121,7 @@ python proof/generate_canonical_manifest.py
 - Manifest: [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
 - Proof points: [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
 - Kubernetes artifacts: `proof/artifacts/phase5_k8s_kind/`
+- Async extraction artifacts: `proof/artifacts/phase6_extract_async/`
 - Validation command:
 ```bash
 python proof/validate_evidence_manifest.py
@@ -123,6 +132,11 @@ python proof/validate_evidence_manifest.py
 - Local `kind` proof demonstrates a runnable Kubernetes deployment for the generate-only service.
 - Production overlay render demonstrates scaffold readiness only.
 - This proof does not claim real GPU scheduling, autoscaling, or production-scale operation.
+
+## Async Extraction Proof
+
+- Canonical async proof demonstrates durable extract job submission, separate worker execution, and status polling with reproducible artifacts.
+- This proof is local and deterministic by design; it demonstrates queue/workflow behavior rather than model-quality benchmarking.
 
 ## Repository Map
 

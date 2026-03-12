@@ -106,6 +106,30 @@ def test_validate_models_config_or_raise(monkeypatch, mmod):
         mmod._validate_models_config_or_raise({"x": 1}, mode="lazy")
 
 
+def test_validate_models_config_or_raise_tolerates_fake_backend_mismatch(monkeypatch, mmod):
+    fake_issue = SimpleNamespace(
+        path="models[0].backend",
+        detail={"backend": "fake"},
+    )
+    monkeypatch.setattr(
+        mmod,
+        "validate_models_config",
+        lambda cfg, allow_generic_deployment_key=False: SimpleNamespace(
+            ok=False,
+            error="backend must be one of: transformers|llamacpp|remote",
+            issues=[fake_issue],
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mmod,
+        "validate_assessment_for_extract",
+        lambda cfg: SimpleNamespace(ok=True, error=None),
+        raising=True,
+    )
+    mmod._validate_models_config_or_raise({"x": 1}, mode="lazy")
+
+
 @pytest.mark.anyio
 async def test_request_context_middleware_sets_request_id_and_defaults(mmod):
     async def _app(scope, receive, send):

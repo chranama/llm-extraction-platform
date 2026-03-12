@@ -182,7 +182,7 @@ GENERATE_EARLY_REJECT_DEFAULTS = GenerateEarlyRejectConfig(
     enabled=True,
     reject_queue_depth_gte=0,  # 0 => disabled check
     reject_in_flight_gte=0,  # 0 => disabled check
-    routes=("/v1/generate", "/v1/generate/batch"),
+    routes=("/v1/generate",),
 )
 
 

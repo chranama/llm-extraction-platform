@@ -1,0 +1,13 @@
+{
+  "proof_phase": "phase6_extract_async",
+  "generated_at": "2026-03-12T17:36:27.117226+00:00",
+  "status": "pass",
+  "job_id": "d114d542208c482cb9852575fb221b80",
+  "submission_status": "queued",
+  "final_status": "succeeded",
+  "worker_claimed": true,
+  "result_valid": true,
+  "schema_id": "proof_async",
+  "resolved_model_id": "fake-extract",
+  "server_exit_code": 143
+}

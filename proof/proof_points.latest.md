@@ -29,3 +29,14 @@
   - `proof/artifacts/phase5_k8s_kind/kustomize_local_generate_only.yaml`
   - `proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml`
 - Validation signal: rollout passes, `/healthz` and generate smoke pass, `/v1/extract` is blocked, and both overlays render successfully.
+
+## Proof 4: Async extract jobs
+- Claim: extract requests can be queued and executed by a separate worker process with durable job state.
+- Command: `python proof/generate_canonical_manifest.py`
+- Artifacts:
+  - `proof/artifacts/phase6_extract_async/async_submit_response.json`
+  - `proof/artifacts/phase6_extract_async/async_job_initial.json`
+  - `proof/artifacts/phase6_extract_async/async_job_final.json`
+  - `proof/artifacts/phase6_extract_async/async_worker_log.txt`
+  - `proof/artifacts/phase6_extract_async/async_job_summary.json`
+- Validation signal: submit returns `202`, worker log includes the queued job id, and final status is `succeeded` with a valid result object.

@@ -364,7 +364,7 @@ async def compute_window_generate_slo_contracts_payload(
     ]
 
     ts = _utc_iso_z()
-    routes_out = list(routes or ["/v1/generate", "/v1/generate/batch"])
+    routes_out = list(routes or ["/v1/generate"])
 
     totals_obj = {
         "requests": {"total": int(n)},

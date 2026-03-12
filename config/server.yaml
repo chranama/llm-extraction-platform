@@ -68,7 +68,6 @@ base:
       reject_in_flight_gte: 0
       routes:
         - "/v1/generate"
-        - "/v1/generate/batch"
 
   cache:
     api_key_cache_ttl_seconds: 10
@@ -147,7 +146,6 @@ profiles:
         reject_in_flight_gte: 0
         routes:
           - "/v1/generate"
-          - "/v1/generate/batch"
 
     cache:
       api_key_cache_ttl_seconds: 1

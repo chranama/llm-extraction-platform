@@ -1,8 +1,8 @@
 {
   "proof_id": "llm-extract-canonical",
   "run_id": "canonical_latest",
-  "generated_at": "2026-03-12T16:48:08.204613+00:00",
-  "repo_commit": "b2811d7",
+  "generated_at": "2026-03-12T17:36:27.117535+00:00",
+  "repo_commit": "c9ab062",
   "status": "pass",
   "claims": [
     {
@@ -37,12 +37,24 @@
         "proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml"
       ],
       "expected_signal": "Local kind deployment becomes ready, generate-only capability is enforced at runtime, and both local/prod overlays render successfully."
+    },
+    {
+      "claim_text": "Async extraction requests are durably queued, executed by a separate worker process, and resolved through a job-status API with reproducible evidence artifacts.",
+      "verification_command": "python proof/generate_canonical_manifest.py",
+      "artifact_paths": [
+        "proof/artifacts/phase6_extract_async/async_submit_response.json",
+        "proof/artifacts/phase6_extract_async/async_job_initial.json",
+        "proof/artifacts/phase6_extract_async/async_job_final.json",
+        "proof/artifacts/phase6_extract_async/async_worker_log.txt",
+        "proof/artifacts/phase6_extract_async/async_job_summary.json"
+      ],
+      "expected_signal": "Async submit returns 202, worker logs prove separate-process execution, and final job state succeeds with a valid result payload."
     }
   ],
   "diagnostics": {
     "notes": [
       "Canonical manifest generated from latest curated demo artifacts.",
-      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes proof signals."
+      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes/async proof signals."
     ]
   }
 }

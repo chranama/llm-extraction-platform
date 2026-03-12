@@ -126,7 +126,7 @@ def good_generate_slo_payload(
     "Good" preset: low error, low latency, moderate completion tokens.
     """
     return build_generate_slo_payload(
-        routes=routes or ["/v1/generate", "/v1/generate/batch"],
+        routes=routes or ["/v1/generate"],
         window_seconds=window_seconds,
         model_id=model_id,
         total_requests=200,
@@ -156,7 +156,7 @@ def bad_generate_slo_payload(
     This is the kind of snapshot that should push the policy toward clamping.
     """
     return build_generate_slo_payload(
-        routes=routes or ["/v1/generate", "/v1/generate/batch"],
+        routes=routes or ["/v1/generate"],
         window_seconds=window_seconds,
         model_id=model_id,
         total_requests=200,

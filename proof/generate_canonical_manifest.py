@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from generate_async_extract_proof import generate_async_extract_proof
 from generate_k8s_kind_proof import generate_k8s_kind_proof
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,18 @@ CLAIMS = [
             "proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml",
         ],
         "expected_signal": "Local kind deployment becomes ready, generate-only capability is enforced at runtime, and both local/prod overlays render successfully.",
+    },
+    {
+        "claim_text": "Async extraction requests are durably queued, executed by a separate worker process, and resolved through a job-status API with reproducible evidence artifacts.",
+        "verification_command": "python proof/generate_canonical_manifest.py",
+        "artifact_paths": [
+            "proof/artifacts/phase6_extract_async/async_submit_response.json",
+            "proof/artifacts/phase6_extract_async/async_job_initial.json",
+            "proof/artifacts/phase6_extract_async/async_job_final.json",
+            "proof/artifacts/phase6_extract_async/async_worker_log.txt",
+            "proof/artifacts/phase6_extract_async/async_job_summary.json",
+        ],
+        "expected_signal": "Async submit returns 202, worker logs prove separate-process execution, and final job state succeeds with a valid result payload.",
     },
 ]
 
@@ -94,12 +107,24 @@ def write_proof_points() -> None:
         "  - `proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml`",
         "- Validation signal: rollout passes, `/healthz` and generate smoke pass, `/v1/extract` is blocked, and both overlays render successfully.",
         "",
+        "## Proof 4: Async extract jobs",
+        "- Claim: extract requests can be queued and executed by a separate worker process with durable job state.",
+        "- Command: `python proof/generate_canonical_manifest.py`",
+        "- Artifacts:",
+        "  - `proof/artifacts/phase6_extract_async/async_submit_response.json`",
+        "  - `proof/artifacts/phase6_extract_async/async_job_initial.json`",
+        "  - `proof/artifacts/phase6_extract_async/async_job_final.json`",
+        "  - `proof/artifacts/phase6_extract_async/async_worker_log.txt`",
+        "  - `proof/artifacts/phase6_extract_async/async_job_summary.json`",
+        "- Validation signal: submit returns `202`, worker log includes the queued job id, and final status is `succeeded` with a valid result object.",
+        "",
     ]
     PROOF_POINTS.write_text("\n".join(lines), encoding="utf-8")
 
 
 def main() -> None:
     generate_k8s_kind_proof()
+    generate_async_extract_proof()
     data = {
         "proof_id": "llm-extract-canonical",
         "run_id": "canonical_latest",
@@ -110,7 +135,7 @@ def main() -> None:
         "diagnostics": {
             "notes": [
                 "Canonical manifest generated from latest curated demo artifacts.",
-                "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes proof signals.",
+                "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes/async proof signals.",
             ]
         },
     }

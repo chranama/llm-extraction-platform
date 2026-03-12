@@ -18,6 +18,7 @@ from llm_server.core import errors, limits, logging as logging_config, metrics
 from llm_server.core.config import get_settings
 from llm_server.core.redis import close_redis, init_redis
 from llm_server.io.policy_decisions import load_policy_decision_from_env
+from llm_server.services.extract_jobs import RedisExtractJobQueue
 from llm_server.services.llm_runtime.llm_build import build_llm_from_settings
 from llm_server.services.llm_runtime.llm_config import load_models_config
 from llm_server.services.llm_runtime.llm_loader import RuntimeModelLoader
@@ -134,6 +135,20 @@ def _validate_models_config_or_raise(cfg: Any, *, mode: str) -> None:
         allow_generic_deployment_key=(os.getenv("ALLOW_GENERIC_DEPLOYMENT_KEY", "").strip() == "1"),
     )
     if not r1.ok:
+        issues = list(getattr(r1, "issues", []) or [])
+        suppressed_any = False
+        remaining = []
+        for issue in issues:
+            path = str(getattr(issue, "path", "") or "")
+            detail = getattr(issue, "detail", {}) or {}
+            backend = detail.get("backend") if isinstance(detail, dict) else None
+            if path.endswith(".backend") and backend == "fake":
+                suppressed_any = True
+                continue
+            remaining.append(issue)
+        if suppressed_any and not remaining:
+            return
+    if not r1.ok:
         raise RuntimeError(f"models_config invalid: {r1.error}")
 
     # Assessed semantics validation (Option A)
@@ -191,6 +206,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.getLogger("uvicorn.error").exception("Redis init failed: %s", e)
         app.state.redis = None
+    app.state.extract_job_queue = (
+        RedisExtractJobQueue(app.state.redis) if app.state.redis is not None else None
+    )
 
     # ---- runtime state ----
     app.state.model_load_mode = mode

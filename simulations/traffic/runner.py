@@ -57,7 +57,7 @@ def _extract_common_fields(resp_json: Any) -> Tuple[Optional[bool], Optional[int
             if cached is None and isinstance(meta.get("cached"), bool):
                 cached = bool(meta.get("cached"))
 
-        # clamp evidence from /v1/generate + /v1/generate/batch
+        # clamp evidence from /v1/generate
         for k in (
             "requested_max_new_tokens",
             "effective_max_new_tokens",

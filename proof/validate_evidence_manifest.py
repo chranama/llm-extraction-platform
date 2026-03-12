@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "proof" / "evidence_manifest.latest.json"
 K8S_SUMMARY = ROOT / "proof" / "artifacts" / "phase5_k8s_kind" / "kind_smoke_summary.json"
+ASYNC_SUMMARY = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_job_summary.json"
 
 REQUIRED_TOP = [
     "proof_id",
@@ -104,6 +105,59 @@ def validate_k8s_summary() -> None:
     )
 
 
+def validate_async_summary() -> None:
+    if not ASYNC_SUMMARY.exists():
+        fail(f"missing async summary artifact: {ASYNC_SUMMARY.relative_to(ROOT)}")
+
+    data = json.loads(ASYNC_SUMMARY.read_text(encoding="utf-8"))
+    for key in (
+        "proof_phase",
+        "generated_at",
+        "status",
+        "job_id",
+        "submission_status",
+        "final_status",
+        "worker_claimed",
+        "result_valid",
+        "schema_id",
+        "resolved_model_id",
+    ):
+        if key not in data:
+            fail(f"async summary missing key: {key}")
+
+    if data["proof_phase"] != "phase6_extract_async":
+        fail("async summary proof_phase must be phase6_extract_async")
+    if data["status"] != "pass":
+        fail("async summary status must be pass")
+    if data["submission_status"] != "queued":
+        fail("async summary submission_status must be queued")
+    if data["final_status"] != "succeeded":
+        fail("async summary final_status must be succeeded")
+    if data["worker_claimed"] is not True:
+        fail("async summary worker_claimed must be true")
+    if data["result_valid"] is not True:
+        fail("async summary result_valid must be true")
+
+    submit_path = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_submit_response.json"
+    final_path = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_job_final.json"
+    worker_log = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_worker_log.txt"
+    submit = json.loads(submit_path.read_text(encoding="utf-8"))
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    if submit.get("status_code") != 202:
+        fail("async submit response must record status_code 202")
+    final_body = final.get("body") or {}
+    if final.get("status_code") != 200:
+        fail("async final job response must record status_code 200")
+    if final_body.get("status") != "succeeded":
+        fail("async final job body must be succeeded")
+    result = final_body.get("result")
+    if not isinstance(result, dict) or not result:
+        fail("async final job body must include non-empty result object")
+    log_text = worker_log.read_text(encoding="utf-8")
+    if str(data["job_id"]) not in log_text:
+        fail("async worker log must include the job id")
+
+
 def main() -> None:
     if not MANIFEST.exists():
         fail(f"missing manifest: {MANIFEST}")
@@ -134,6 +188,8 @@ def main() -> None:
 
     if any("phase5_k8s_kind/kind_smoke_summary.json" in path for claim in claims for path in claim["artifact_paths"]):
         validate_k8s_summary()
+    if any("phase6_extract_async/async_job_summary.json" in path for claim in claims for path in claim["artifact_paths"]):
+        validate_async_summary()
 
     print("OK: evidence manifest contract and artifact paths validated")
 

@@ -402,6 +402,13 @@ async def auth_headers(api_key):
     return {"X-API-Key": api_key}
 
 
+@pytest.fixture
+def extract_job_queue():
+    from llm_server.services.extract_jobs import InMemoryExtractJobQueue
+
+    return InMemoryExtractJobQueue()
+
+
 @pytest.fixture(autouse=True)
 def _debug_settings_trace():
     from llm_server.core.config import get_settings

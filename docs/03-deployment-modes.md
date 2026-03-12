@@ -25,6 +25,12 @@ This document describes the deployment shapes actively used in this repository a
 - Canonical proof validates rollout, health, generate behavior, and extract disablement.
 - `deploy/k8s/overlays/prod-gpu-full` is render-validated scaffold only.
 
+### 5) Host async extraction proof
+- Server runs on the host Python environment.
+- Postgres and Redis run via compose `infra-host`.
+- A separate worker process consumes extract jobs from Redis and writes durable state to Postgres.
+- Canonical proof validates submission, status polling, worker execution, and final successful result.
+
 ## Configuration contract
 
 Core environment controls:
@@ -53,6 +59,11 @@ The canonical proof path is the extract-gate demo: [Project Demos](02-project-de
 Kubernetes adds a second canonical deployment proof:
 - live `kind` runtime proof for the generate-only service
 - render-only scaffold proof for `prod-gpu-full`
+
+Async extraction adds a workflow proof:
+- `POST /v1/extract/jobs` returns `202`
+- `GET /v1/extract/jobs/{job_id}` exposes durable job state
+- a separate worker process executes the job and writes the final result
 
 ## Canonical compose usage
 
@@ -96,6 +107,11 @@ For Kubernetes proof runs, also check:
 6. `kubectl -n llm get pods -o wide`
 7. `kubectl -n llm get svc`
 8. `proof/artifacts/phase5_k8s_kind/k8s_smoke.log`
+
+For async extraction proof runs, also check:
+9. `proof/artifacts/phase6_extract_async/async_submit_response.json`
+10. `proof/artifacts/phase6_extract_async/async_job_final.json`
+11. `proof/artifacts/phase6_extract_async/async_worker_log.txt`
 
 ## Demo-specific note
 

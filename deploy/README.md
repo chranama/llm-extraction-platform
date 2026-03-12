@@ -29,5 +29,11 @@ uv run llmctl --project-name llmep compose --env-override-file .env.docker ps
 - `prod-gpu-full` render demonstrates scaffold readiness only.
 - This surface does not claim real GPU scheduling or production-scale operation.
 
+## Async Extract Local Runtime
+- The async extraction proof runs outside Kubernetes in a local host-runtime layout.
+- API server and worker run as separate processes.
+- Redis carries queue delivery; Postgres remains the source of truth for job state.
+- Canonical artifacts land in `proof/artifacts/phase6_extract_async/`.
+
 ## Deep Links
 - [`/docs/03-deployment-modes.md`](../docs/03-deployment-modes.md)

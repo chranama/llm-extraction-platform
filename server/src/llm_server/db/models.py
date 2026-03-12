@@ -225,3 +225,56 @@ class CompletionCache(Base):
         ),
         Index("ix_cache_model_promptfp", "model_id", "params_fingerprint"),
     )
+
+
+class ExtractJob(Base):
+    __tablename__ = "extract_jobs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+
+    api_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+
+    schema_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_model_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    resolved_model_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+
+    max_new_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cache: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa.text("true")
+    )
+    repair: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sa.text("true")
+    )
+
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sa.text("0")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    result_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(_JSONType, nullable=True)
+    cached: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    repair_attempted: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    prompt_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_stage: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    __table_args__ = (
+        Index("ix_extract_jobs_api_key_created", "api_key", "created_at"),
+        Index("ix_extract_jobs_status_created", "status", "created_at"),
+    )

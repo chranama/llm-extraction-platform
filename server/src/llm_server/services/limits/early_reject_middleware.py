@@ -17,7 +17,7 @@ class EarlyRejectConfig:
     enabled: bool = True
     reject_queue_depth_gte: int = 0
     reject_in_flight_gte: int = 0
-    routes: tuple[str, ...] = ("/v1/generate", "/v1/generate/batch")
+    routes: tuple[str, ...] = ("/v1/generate",)
 
 
 def _truthy(x: Any) -> bool:
@@ -91,7 +91,7 @@ def _cfg_from_app(app: Any) -> EarlyRejectConfig:
     enabled_raw = er.get("enabled", True)
     rq_raw = er.get("reject_queue_depth_gte", 0)
     rf_raw = er.get("reject_in_flight_gte", 0)
-    routes_raw = er.get("routes", ["/v1/generate", "/v1/generate/batch"])
+    routes_raw = er.get("routes", ["/v1/generate"])
 
     enabled = _truthy(enabled_raw) if enabled_raw is not None else True
     rq = max(0, _as_int(rq_raw, 0))
@@ -109,7 +109,7 @@ def _cfg_from_app(app: Any) -> EarlyRejectConfig:
         enabled=bool(enabled),
         reject_queue_depth_gte=int(rq),
         reject_in_flight_gte=int(rf),
-        routes=tuple(routes) if routes else ("/v1/generate", "/v1/generate/batch"),
+        routes=tuple(routes) if routes else ("/v1/generate",),
     )
 
     try:
