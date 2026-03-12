@@ -13,30 +13,54 @@ I built this repository to demonstrate skills relevant to an entry-level AI Engi
 ## How To Review This Repo
 
 Recommended review flow (5-10 minutes):
-1. Read the two demo proof cards below.
-2. Run one demo command and inspect the produced evidence manifest.
-3. Open the docs index for deeper technical references.
+1. Read the proof system summary below.
+2. Run `python proof/generate_canonical_manifest.py`.
+3. Inspect `proof/evidence_manifest.latest.json` and `proof/proof_points.latest.md`.
+4. Open the docs index for deeper technical references.
 
 Deep index: [`docs/README.md`](docs/README.md)
 Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 
-## Demo Proof Cards
+## Proof System
 
-### Demo 1: Generate Clamp
-- Risk: tail-latency spikes can degrade UX/cost.
-- Control: policy runtime decision applies `generate_max_new_tokens_cap` when SLO threshold is exceeded.
-- One-command repro (scripted evidence writer):
-  - `scripts/demo_generate_clamp/write_evidence_manifest.py --slo slo_out/generate/latest.json --policy policy_out/latest.json --out traffic_out/generate_clamp_latest/evidence_manifest.json`
-- Evidence artifact:
-  - `traffic_out/<run>/evidence_manifest.json` with baseline/clamp status and cap proof.
+Canonical proof command:
+```bash
+python proof/generate_canonical_manifest.py
+```
 
-### Demo 2: Extract Gate
-- Risk: unsupported models silently producing invalid extraction behavior.
-- Control: offline onboarding artifacts toggle extract capability in `models.patched.*.yaml`; server enforces capability at runtime.
-- One-command repro:
-  - `scripts/demo_extract_gate/run_host_transformers.sh`
-- Evidence artifact:
-  - `traffic_out/<run>/evidence_manifest.json` with PASS/FAIL capability + endpoint behavior.
+Canonical proof bundle:
+- Contract: [`proof/evidence_contract.schema.json`](proof/evidence_contract.schema.json)
+- Manifest: [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
+- Summary: [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
+- Validation:
+```bash
+python proof/validate_evidence_manifest.py
+```
+
+Core proof points:
+1. `Generate Clamp`
+   - Claim: runtime policy applies a token cap when SLO conditions require it.
+   - Signal: control and clamp manifests encode divergent expected outcomes.
+2. `Extract Gate PASS/FAIL`
+   - Claim: onboarding artifacts drive runtime extract capability enforcement.
+   - Signal: PASS and FAIL runtime outputs diverge as expected.
+3. `Kubernetes kind Deployment`
+   - Claim: the generate-only service runs on local `kind`, and the production scaffold renders cleanly.
+   - Signal: rollout, health, and smoke checks pass; both overlays render.
+4. `Async Extract Jobs`
+   - Claim: extract requests can be queued, executed by a separate worker, and resolved through a job-status API.
+   - Signal: submit returns `202`, worker execution is logged separately, and final job state succeeds with a valid result.
+
+What this proof system is meant to show:
+- explicit API and policy contracts
+- runtime enforcement of model capabilities
+- reproducible deployment evidence
+- async workflow execution with durable state
+
+What it does not claim:
+- production-scale GPU scheduling
+- autoscaling under real traffic
+- large-scale distributed systems operation beyond the scoped proof paths
 
 ## Skills Demonstrated
 
@@ -81,62 +105,34 @@ Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 - [`docs/03-deployment-modes.md`](docs/03-deployment-modes.md)
 - [`docs/01-extraction-contract.md`](docs/01-extraction-contract.md)
 
-2. Run extract-gate demo validation (fast operational proof):
-```bash
-scripts/demo_extract_gate/run_host_transformers.sh
-```
-
-3. Inspect produced evidence:
-- `traffic_out/<latest run>/evidence_manifest.json`
-- `traffic_out/<latest run>/host_pass_runtime.json`
-- `traffic_out/<latest run>/host_fail_runtime.json`
-
-4. Review CI and tests:
-- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-- [`docs/00-testing.md`](docs/00-testing.md)
-
-5. Review interview packet (architecture, tradeoffs, failure modes):
-- [`docs/11-interview-packet.md`](docs/11-interview-packet.md)
-
-6. Review Kubernetes proof artifacts:
+2. Generate the canonical proof bundle:
 ```bash
 python proof/generate_canonical_manifest.py
 ```
-- `proof/artifacts/phase5_k8s_kind/`
-- `proof/proof_points.latest.md`
 
-7. Review async extraction proof artifacts:
+3. Validate the proof contract:
+```bash
+python proof/validate_evidence_manifest.py
+```
+
+4. Inspect the latest proof outputs:
+- [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
+- [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
+- `proof/artifacts/phase5_k8s_kind/`
 - `proof/artifacts/phase6_extract_async/`
-- `proof/proof_points.latest.md`
+
+5. Review CI and tests:
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- [`docs/00-testing.md`](docs/00-testing.md)
+
+6. Review interview packet (architecture, tradeoffs, failure modes):
+- [`docs/11-interview-packet.md`](docs/11-interview-packet.md)
 
 ## Testing And CI Signals
 
 - Service-level unit and integration suites in `server/`, `policy/`, `eval/`, `ui/`.
 - Repo-level integration suites in `integrations/`.
 - CI matrix in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
-
-## Canonical Proof Bundle (Latest)
-
-- Contract: [`proof/evidence_contract.schema.json`](proof/evidence_contract.schema.json)
-- Manifest: [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
-- Proof points: [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
-- Kubernetes artifacts: `proof/artifacts/phase5_k8s_kind/`
-- Async extraction artifacts: `proof/artifacts/phase6_extract_async/`
-- Validation command:
-```bash
-python proof/validate_evidence_manifest.py
-```
-
-## Kubernetes Proof
-
-- Local `kind` proof demonstrates a runnable Kubernetes deployment for the generate-only service.
-- Production overlay render demonstrates scaffold readiness only.
-- This proof does not claim real GPU scheduling, autoscaling, or production-scale operation.
-
-## Async Extraction Proof
-
-- Canonical async proof demonstrates durable extract job submission, separate worker execution, and status polling with reproducible artifacts.
-- This proof is local and deterministic by design; it demonstrates queue/workflow behavior rather than model-quality benchmarking.
 
 ## Repository Map
 
@@ -158,14 +154,13 @@ python proof/validate_evidence_manifest.py
 ## Future Improvements
 
 ### Near-term
-- Broaden integration smoke coverage for deployment/profile variants.
-- Keep docs CI checks strict for links and stale command patterns.
-- Expand reviewer quickstart with expected outputs/screenshots.
-- Improve architecture visual clarity.
+- Broaden integration smoke coverage for async worker and deployment/profile variants.
+- Add a compact operations runbook for common failure modes (`worker down`, `Redis unavailable`, rollout probe failures).
+- Expand the reviewer quickstart with expected outputs and artifact screenshots.
 
 ### Mid-term
-- Deepen evaluation rigor (error taxonomy, regressions, confidence reporting).
-- Calibrate policy thresholds from traffic/eval statistics.
+- Deepen evaluation rigor with clearer error taxonomy, regression summaries, and confidence reporting.
+- Calibrate policy thresholds from traffic/eval statistics and document the tuning loop.
 - Add SLO dashboards and incident-response walkthrough docs.
 - Formalize dataset/prompt versioning and lineage docs.
 
