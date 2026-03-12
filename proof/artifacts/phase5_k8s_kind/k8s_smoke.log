@@ -1,0 +1,11 @@
+Bootstrap local proof API key via postgres
+Port-forward svc/api 18080:8000 (ns=llm)
+1) /healthz
+OK
+2) /v1/models
+OK: generate-only verified via /v1/models
+3) POST /v1/generate (minimal)
+OK
+4) POST /v1/extract must NOT succeed
+OK: /v1/extract disabled (HTTP 501)
+✅ k8s smoke passed

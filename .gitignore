@@ -149,6 +149,7 @@ results/**/*.csv
 # =========================
 logs/
 *.log
+!proof/artifacts/phase5_k8s_kind/k8s_smoke.log
 
 # =========================
 # Streamlit / Gradio
