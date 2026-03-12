@@ -1,0 +1,5 @@
+NAME                        READY   STATUS      RESTARTS   AGE   IP            NODE                NOMINATED NODE   READINESS GATES
+api-66b8bbbd65-zz7m7        1/1     Running     0          14s   10.244.0.38   llm-control-plane   <none>           <none>
+db-migrate-fcq6z            0/1     Completed   0          14s   10.244.0.41   llm-control-plane   <none>           <none>
+postgres-84844cbb5f-hvbm6   1/1     Running     0          14s   10.244.0.39   llm-control-plane   <none>           <none>
+redis-858978d495-zsvsb      1/1     Running     0          14s   10.244.0.40   llm-control-plane   <none>           <none>

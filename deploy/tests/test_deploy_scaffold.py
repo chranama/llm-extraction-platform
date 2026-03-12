@@ -64,3 +64,12 @@ def test_k8s_overlays_reference_base_and_patches() -> None:
         overlay_dir = (REPO_ROOT / overlay).parent
         for patch in data.get("patchesStrategicMerge") or []:
             assert (overlay_dir / patch).exists(), f"{overlay}: {patch}"
+
+
+def test_k8s_overlay_model_config_sources_exist() -> None:
+    required = [
+        "deploy/k8s/overlays/local-generate-only/models.generate-only.yaml",
+        "deploy/k8s/overlays/prod-gpu-full/models.full.yaml",
+    ]
+    for rel in required:
+        assert (REPO_ROOT / rel).exists(), rel

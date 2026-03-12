@@ -17,7 +17,7 @@ spec:
 
       containers:
         - name: migrate
-          image: llm-backend:dev
+          image: llm-server:dev
           imagePullPolicy: IfNotPresent
 
           env:
@@ -53,33 +53,20 @@ spec:
 
               echo "Waiting for database readiness..."
               for i in $(seq 1 60); do
-                python - <<'PY'
-import asyncio, os
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text
-
-async def main():
-    url = os.environ["DATABASE_URL"]
-    eng = create_async_engine(url)
-    try:
-        async with eng.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-    finally:
-        await eng.dispose()
-
-asyncio.run(main())
-PY
-                echo "ok" && break || true
+                if python -c "import socket; s = socket.create_connection(('postgres', 5432), 5); s.close()"; then
+                  echo "ok"
+                  break
+                fi
                 sleep 2
               done
 
               echo "Running alembic migrations..."
-              python -m alembic upgrade head
+              python -m alembic -c /app/server/alembic.ini upgrade head
 
       volumes:
         - name: llm-config
           configMap:
             name: llm-config
             items:
-              - key: app.yaml
-                path: app.yaml
+              - key: server.yaml
+                path: server.yaml

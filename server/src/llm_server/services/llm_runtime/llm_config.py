@@ -27,7 +27,7 @@ CapabilitiesMap = Dict[Capability, bool]
 
 ReadinessMode = Literal["off", "probe", "generate"]
 
-_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote"}
+_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote", "fake"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
 _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 _ALLOWED_READINESS_MODES = {"off", "probe", "generate"}

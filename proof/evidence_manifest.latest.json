@@ -1,8 +1,8 @@
 {
   "proof_id": "llm-extract-canonical",
   "run_id": "canonical_latest",
-  "generated_at": "2026-03-10T21:11:49.170794+00:00",
-  "repo_commit": "08b3ebf",
+  "generated_at": "2026-03-12T16:48:08.204613+00:00",
+  "repo_commit": "b2811d7",
   "status": "pass",
   "claims": [
     {
@@ -23,12 +23,26 @@
         "proof/artifacts/phase41_extract_gate/host_fail_runtime.json"
       ],
       "expected_signal": "PASS runtime permits extract-capable behavior while FAIL runtime is capability-blocked."
+    },
+    {
+      "claim_text": "A local kind cluster can run the generate-only inference service with successful health and smoke checks, and the production Kubernetes scaffold renders cleanly with deployment primitives expected for a production-oriented ML service.",
+      "verification_command": "python proof/generate_canonical_manifest.py",
+      "artifact_paths": [
+        "proof/artifacts/phase5_k8s_kind/kind_smoke_summary.json",
+        "proof/artifacts/phase5_k8s_kind/kubectl_get_pods.txt",
+        "proof/artifacts/phase5_k8s_kind/kubectl_get_svc.txt",
+        "proof/artifacts/phase5_k8s_kind/server_rollout_status.txt",
+        "proof/artifacts/phase5_k8s_kind/k8s_smoke.log",
+        "proof/artifacts/phase5_k8s_kind/kustomize_local_generate_only.yaml",
+        "proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml"
+      ],
+      "expected_signal": "Local kind deployment becomes ready, generate-only capability is enforced at runtime, and both local/prod overlays render successfully."
     }
   ],
   "diagnostics": {
     "notes": [
       "Canonical manifest generated from latest curated demo artifacts.",
-      "Run proof/validate_evidence_manifest.py to enforce contract and file existence."
+      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes proof signals."
     ]
   }
 }

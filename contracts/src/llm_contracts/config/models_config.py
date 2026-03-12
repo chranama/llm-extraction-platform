@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 
-Backend = Literal["transformers", "llamacpp", "remote"]
+Backend = Literal["transformers", "llamacpp", "remote", "fake"]
 LoadMode = Literal["eager", "lazy", "off"]
 Capability = Literal["generate", "extract"]
 
-_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote"}
+_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote", "fake"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
 _ALLOWED_CAP_KEYS = {"generate", "extract"}
 
@@ -267,7 +267,7 @@ def validate_models_config(
             issues.append(
                 ValidationIssue(
                     path=f"{pfx}.backend",
-                    message="backend must be one of: transformers|llamacpp|remote",
+                    message="backend must be one of: transformers|llamacpp|remote|fake",
                     detail={"backend": backend, "allowed": sorted(_ALLOWED_BACKENDS)},
                 )
             )

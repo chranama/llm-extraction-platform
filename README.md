@@ -57,7 +57,7 @@ Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
 - Evidence: [`docs/00-testing.md`](docs/00-testing.md), [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ### 5) Deployment and Operability
-- Host and container deployment modes with reproducible scripts and diagnostics capture.
+- Host, container, and Kubernetes deployment modes with reproducible scripts and diagnostics capture.
 - Evidence: [`deploy/README.md`](deploy/README.md), [`scripts/README.md`](scripts/README.md), [`docs/03-deployment-modes.md`](docs/03-deployment-modes.md)
 
 ## Architecture At A Glance
@@ -94,6 +94,13 @@ scripts/demo_extract_gate/run_host_transformers.sh
 5. Review interview packet (architecture, tradeoffs, failure modes):
 - [`docs/11-interview-packet.md`](docs/11-interview-packet.md)
 
+6. Review Kubernetes proof artifacts:
+```bash
+python proof/generate_canonical_manifest.py
+```
+- `proof/artifacts/phase5_k8s_kind/`
+- `proof/proof_points.latest.md`
+
 ## Testing And CI Signals
 
 - Service-level unit and integration suites in `server/`, `policy/`, `eval/`, `ui/`.
@@ -105,10 +112,17 @@ scripts/demo_extract_gate/run_host_transformers.sh
 - Contract: [`proof/evidence_contract.schema.json`](proof/evidence_contract.schema.json)
 - Manifest: [`proof/evidence_manifest.latest.json`](proof/evidence_manifest.latest.json)
 - Proof points: [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
+- Kubernetes artifacts: `proof/artifacts/phase5_k8s_kind/`
 - Validation command:
 ```bash
 python proof/validate_evidence_manifest.py
 ```
+
+## Kubernetes Proof
+
+- Local `kind` proof demonstrates a runnable Kubernetes deployment for the generate-only service.
+- Production overlay render demonstrates scaffold readiness only.
+- This proof does not claim real GPU scheduling, autoscaling, or production-scale operation.
 
 ## Repository Map
 

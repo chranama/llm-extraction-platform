@@ -10,6 +10,7 @@ from llm_server.services.llm_runtime.llm_config import ModelSpec, load_models_co
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 from llm_server.services.backends.backend_api import OpenAICompatClient, OpenAICompatClientConfig
+from llm_server.services.backends.fake_backend import FakeBackend, FakeBackendConfig
 from llm_server.services.backends.llamacpp_backend import LlamaCppBackend, LlamaCppBackendConfig
 from llm_server.services.backends.transformers_backend import (
     TransformersBackend,
@@ -125,14 +126,14 @@ def _normalize_backend_name(raw: Any) -> str:
     Back-compat:
       - "local" => "transformers"
     New:
-      - "transformers" | "llamacpp" | "remote"
+      - "transformers" | "llamacpp" | "remote" | "fake"
     """
     s = (str(raw or "")).strip().lower()
     if not s:
         return "transformers"
     if s == "local":
         return "transformers"
-    if s in ("transformers", "llamacpp", "remote"):
+    if s in ("transformers", "llamacpp", "remote", "fake"):
         return s
     if s.startswith("llama"):
         return "llamacpp"
@@ -474,6 +475,26 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
         }
         return b, meta
 
+    # -------------------------
+    # fake (deterministic local proof backend)
+    # -------------------------
+    if backend_name == "fake":
+        b = FakeBackend(
+            model_id=sp.id,
+            cfg=FakeBackendConfig(
+                output_text=str(_get_nested(remote_cfg, "output_text") or "ping"),
+            ),
+        )
+        meta = {
+            "backend": "fake",
+            "load_scope": "external",
+            "capabilities": caps,
+            "load_mode": load_mode,
+            "readiness_mode": readiness_mode,
+            "deployment_key": deployment_key,
+        }
+        return b, meta
+
     raise AppError(
         code="backend_config_invalid",
         message="Unknown backend in model spec",
@@ -481,7 +502,7 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
         extra={
             "model_id": sp.id,
             "backend": backend_name,
-            "allowed": ["transformers", "llamacpp", "remote"],
+            "allowed": ["transformers", "llamacpp", "remote", "fake"],
         },
     )
 

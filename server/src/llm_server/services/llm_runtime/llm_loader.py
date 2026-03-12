@@ -212,7 +212,7 @@ class RuntimeModelLoader:
 
             try:
                 # External backends: do not flip model_loaded.
-                if backend_name in ("llamacpp", "remote"):
+                if backend_name in ("llamacpp", "remote", "fake"):
                     self._ms.set_loaded_model_id(resolved_id)
                     self._ms.set_model_loaded(False)
                     self._emit_state_gauges()

@@ -20,4 +20,3 @@ resources:
 
   - policy/rbac.yaml
   - policy/job.yaml
-  - models-configmap.yaml

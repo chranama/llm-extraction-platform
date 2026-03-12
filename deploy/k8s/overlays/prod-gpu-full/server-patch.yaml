@@ -2,16 +2,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: server
+  name: api
   namespace: llm
 spec:
   replicas: 1
   template:
     spec:
       containers:
-        - name: server
+        - name: api
           # GHCR (recommended default). Replace <github-username> and <repo-name>.
-          image: ghcr.io/<github-username>/<repo-name>/llm-backend:main
+          image: ghcr.io/<github-username>/<repo-name>/llm-server:main
           imagePullPolicy: IfNotPresent
 
           env:

@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: server
+  name: api
   namespace: llm
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: server
+      app: api
   template:
     metadata:
       labels:
-        app: server
+        app: api
     spec:
       containers:
-        - name: server
-          image: llm-backend:dev
+        - name: api
+          image: llm-server:dev
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

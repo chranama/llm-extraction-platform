@@ -19,6 +19,12 @@ This document describes the deployment shapes actively used in this repository a
 - `server-llama-host`: server container targets host llama-server (`host.docker.internal`).
 - Used by demo and integration scenarios that validate external LLM runtime wiring.
 
+### 4) Kubernetes kind generate-only proof
+- Server runs in a local `kind` cluster.
+- Uses `deploy/k8s/overlays/local-generate-only`.
+- Canonical proof validates rollout, health, generate behavior, and extract disablement.
+- `deploy/k8s/overlays/prod-gpu-full` is render-validated scaffold only.
+
 ## Configuration contract
 
 Core environment controls:
@@ -43,6 +49,10 @@ Extract is conditional and depends on:
 - policy/runtime switches.
 
 The canonical proof path is the extract-gate demo: [Project Demos](02-project-demos.md).
+
+Kubernetes adds a second canonical deployment proof:
+- live `kind` runtime proof for the generate-only service
+- render-only scaffold proof for `prod-gpu-full`
 
 ## Canonical compose usage
 
@@ -81,6 +91,11 @@ When behavior differs across modes, check in this order:
 3. active `MODELS_YAML` and `MODELS_PROFILE`
 4. policy overlay source (`POLICY_DECISION_PATH`)
 5. compose service logs for server + dependencies
+
+For Kubernetes proof runs, also check:
+6. `kubectl -n llm get pods -o wide`
+7. `kubectl -n llm get svc`
+8. `proof/artifacts/phase5_k8s_kind/k8s_smoke.log`
 
 ## Demo-specific note
 

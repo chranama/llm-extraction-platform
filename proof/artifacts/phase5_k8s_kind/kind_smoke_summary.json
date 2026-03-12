@@ -1,0 +1,26 @@
+{
+  "proof_phase": "phase5_k8s_kind",
+  "cluster_name": "llm",
+  "namespace": "llm",
+  "overlay": "local-generate-only",
+  "generated_at": "2026-03-12T16:48:08.204034+00:00",
+  "status": "pass",
+  "checks": {
+    "rollout_status": "pass",
+    "healthz": "pass",
+    "models_capabilities": "pass",
+    "generate_smoke": "pass",
+    "extract_disabled": "pass",
+    "local_overlay_render": "pass",
+    "prod_overlay_render": "pass"
+  },
+  "deployment_capabilities": {
+    "generate": true,
+    "extract": false
+  },
+  "http_status": {
+    "extract_disabled": 401
+  },
+  "service_name": "api",
+  "api_base": "http://127.0.0.1:18080"
+}

@@ -1,6 +1,7 @@
 # deploy/k8s/overlays/local-generate-only/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: llm
 
 resources:
   - ../../base
@@ -9,11 +10,11 @@ resources:
 configMapGenerator:
   - name: llm-models
     files:
-      # Source of truth lives in repo config/
-      - models.yaml=../../../config/models.generate-only.yaml
+      - models.yaml=models.generate-only.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
 
 patchesStrategicMerge:
   - server-patch.yaml
+  - policy-job-disable.yaml

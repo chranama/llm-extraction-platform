@@ -1,4 +1,4 @@
-# deploy/k8s/base/api/service.yaml
+# deploy/k8s/base/server/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
