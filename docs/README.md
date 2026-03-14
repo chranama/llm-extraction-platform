@@ -18,6 +18,7 @@
 - [08) Demo Evidence Index](08-demo-evidence-index.md)
 - [09) CI Hardening](09-ci-hardening.md)
 - [10) Model Decision Memo](10-model-decision-memo.md)
+- [Service Boundary: Future `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)
 
 ## Archive (Historical)
 

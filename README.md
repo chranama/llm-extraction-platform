@@ -168,6 +168,7 @@ python proof/validate_evidence_manifest.py
 - Calibrate policy thresholds from traffic/eval statistics and document the tuning loop.
 - Add SLO dashboards and incident-response walkthrough docs.
 - Formalize dataset/prompt versioning and lineage docs.
+- Prepare a future gateway-backed deployment mode by defining a stable boundary for a separate Go `inference-serving-gateway` service. See [`docs/service-boundary.inference-serving-gateway.md`](docs/service-boundary.inference-serving-gateway.md).
 
 ### Long-term
 - Add additional serving backends (for example vLLM/TGI) with benchmark docs.
