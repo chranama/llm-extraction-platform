@@ -1,8 +1,8 @@
 {
   "proof_id": "llm-extract-canonical",
   "run_id": "canonical_latest",
-  "generated_at": "2026-03-12T17:36:27.117535+00:00",
-  "repo_commit": "c9ab062",
+  "generated_at": "2026-03-14T15:56:40.078162+00:00",
+  "repo_commit": "f972c4d",
   "status": "pass",
   "claims": [
     {
@@ -49,12 +49,25 @@
         "proof/artifacts/phase6_extract_async/async_job_summary.json"
       ],
       "expected_signal": "Async submit returns 202, worker logs prove separate-process execution, and final job state succeeds with a valid result payload."
+    },
+    {
+      "claim_text": "Traceable request inspection reconstructs ordered sync and async extract timelines, including cross-process async lineage from submission through worker execution and status polling.",
+      "verification_command": "python proof/generate_canonical_manifest.py",
+      "artifact_paths": [
+        "proof/artifacts/phase7_trace_inspection/async_submit_response.json",
+        "proof/artifacts/phase7_trace_inspection/async_trace_detail.json",
+        "proof/artifacts/phase7_trace_inspection/async_trace_timeline.md",
+        "proof/artifacts/phase7_trace_inspection/sync_extract_response.json",
+        "proof/artifacts/phase7_trace_inspection/sync_trace_detail.json",
+        "proof/artifacts/phase7_trace_inspection/trace_summary.json"
+      ],
+      "expected_signal": "Sync and async trace artifacts both exist, the async trace includes worker and status-poll events, and the proof summary passes all trace checks."
     }
   ],
   "diagnostics": {
     "notes": [
       "Canonical manifest generated from latest curated demo artifacts.",
-      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes/async proof signals."
+      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes/async/trace proof signals."
     ]
   }
 }

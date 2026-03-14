@@ -21,6 +21,7 @@ LOCAL_PORT = 18080
 REMOTE_PORT = 8000
 API_BASE = f"http://127.0.0.1:{LOCAL_PORT}"
 SERVICE_NAME = "api"
+MIN_DOCKER_FREE_BYTES = 8 * 1024 * 1024 * 1024
 
 
 def fail(message: str) -> None:
@@ -30,6 +31,10 @@ def fail(message: str) -> None:
 def ensure_bin(name: str) -> None:
     if shutil.which(name) is None:
         fail(f"missing required binary: {name}")
+
+
+def log_step(message: str) -> None:
+    print(f"[phase5_k8s_kind] {message}", file=sys.stderr, flush=True)
 
 
 def run(
@@ -53,6 +58,37 @@ def run(
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def format_bytes(num_bytes: int) -> str:
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
+    value = float(num_bytes)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f}{unit}"
+        value /= 1024
+    return f"{num_bytes}B"
+
+
+def ensure_docker_storage_headroom() -> None:
+    root_result = run(["docker", "info", "--format", "{{.DockerRootDir}}"], check=False)
+    docker_root = root_result.stdout.strip()
+    if root_result.returncode != 0 or not docker_root:
+        fail("unable to determine DockerRootDir from docker info")
+
+    usage = shutil.disk_usage(docker_root)
+    if usage.free < MIN_DOCKER_FREE_BYTES:
+        fail(
+            "docker storage is too low for kind proof: "
+            f"{format_bytes(usage.free)} free under {docker_root}; "
+            f"need at least {format_bytes(MIN_DOCKER_FREE_BYTES)}. "
+            "Run docker cleanup before retrying."
+        )
+
+    log_step(
+        "docker storage preflight passed: "
+        f"{format_bytes(usage.free)} free under {docker_root}"
+    )
 
 
 def render_overlay(overlay: str, output_path: Path) -> None:
@@ -125,9 +161,11 @@ def generate_k8s_kind_proof() -> None:
     docker_info = run(["docker", "info"], check=False)
     if docker_info.returncode != 0:
         fail("docker daemon is not reachable; start Docker Desktop (or equivalent) before running the kind proof")
+    ensure_docker_storage_headroom()
 
     clusters = run(["kind", "get", "clusters"], check=False).stdout.splitlines()
     if KIND_CLUSTER not in clusters:
+        log_step(f"creating kind cluster {KIND_CLUSTER}")
         run(
             [
                 "kind",
@@ -137,7 +175,10 @@ def generate_k8s_kind_proof() -> None:
                 str(ROOT / "deploy" / "k8s" / "kind" / "kind-config.yaml"),
             ]
         )
+    else:
+        log_step(f"reusing existing kind cluster {KIND_CLUSTER}")
 
+    log_step("building llm-server:dev image")
     run(
         [
             "docker",
@@ -149,7 +190,9 @@ def generate_k8s_kind_proof() -> None:
             str(ROOT),
         ]
     )
+    log_step(f"loading llm-server:dev into kind cluster {KIND_CLUSTER}")
     run(["kind", "load", "docker-image", "llm-server:dev", "--name", KIND_CLUSTER])
+    log_step("resetting local-generate-only overlay resources")
     run(
         [
             "kubectl",
@@ -160,6 +203,7 @@ def generate_k8s_kind_proof() -> None:
         ],
         check=False,
     )
+    log_step("applying local-generate-only overlay")
     run(
         [
             "kubectl",
@@ -169,6 +213,7 @@ def generate_k8s_kind_proof() -> None:
         ]
     )
 
+    log_step("waiting for db-migrate job completion")
     migrate_wait = run(
         [
             "kubectl",
@@ -182,6 +227,7 @@ def generate_k8s_kind_proof() -> None:
     )
     write_text(ARTIFACT_DIR / "db_migrate_job_status.txt", migrate_wait.stdout)
 
+    log_step("waiting for api deployment rollout")
     rollout = run(
         [
             "kubectl",
@@ -203,6 +249,7 @@ def generate_k8s_kind_proof() -> None:
         run(["kubectl", "-n", NAMESPACE, "get", "svc"]).stdout,
     )
 
+    log_step("running Kubernetes smoke checks")
     smoke = run(
         [str(ROOT / "tools" / "k8s" / "k8s_smoke.sh")],
         env={
@@ -215,15 +262,18 @@ def generate_k8s_kind_proof() -> None:
     )
     write_text(ARTIFACT_DIR / "k8s_smoke.log", smoke.stdout)
 
+    log_step("rendering local overlay manifest")
     render_overlay(
         str(ROOT / "deploy" / "k8s" / "overlays" / "local-generate-only"),
         ARTIFACT_DIR / "kustomize_local_generate_only.yaml",
     )
+    log_step("rendering prod overlay manifest")
     render_overlay(
         str(ROOT / "deploy" / "k8s" / "overlays" / "prod-gpu-full"),
         ARTIFACT_DIR / "kustomize_prod_gpu_full.yaml",
     )
 
+    log_step("verifying live service via port-forward")
     with port_forward():
         health_code, _ = http_request("GET", "/healthz")
         models_code, models_body = http_request("GET", "/v1/models")
@@ -245,6 +295,7 @@ def generate_k8s_kind_proof() -> None:
     if extract_code == 200:
         fail("/v1/extract unexpectedly returned 200")
 
+    log_step("writing proof summary")
     summary = {
         "proof_phase": "phase5_k8s_kind",
         "cluster_name": KIND_CLUSTER,

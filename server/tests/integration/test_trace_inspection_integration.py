@@ -1,0 +1,197 @@
+from __future__ import annotations
+
+import json
+import uuid
+from pathlib import Path
+
+import pytest
+from sqlalchemy import select
+
+from llm_server.services.extract_jobs import process_extract_job_once
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _force_lazy_model_mode(app):
+    app.state.settings.model_load_mode = "lazy"
+    app.state.model_load_mode = "lazy"
+    app.state.model_loaded = True
+    yield
+
+
+async def _mk_role_and_key(test_sessionmaker, *, role_name: str) -> str:
+    from llm_server.db.models import ApiKey, RoleTable
+
+    key = f"test_{uuid.uuid4().hex}"
+    async with test_sessionmaker() as session:
+        role = (
+            await session.execute(select(RoleTable).where(RoleTable.name == role_name))
+        ).scalar_one_or_none()
+        if role is None:
+            role = RoleTable(name=role_name)
+            session.add(role)
+            await session.flush()
+        session.add(ApiKey(key=key, active=True, role_id=role.id, quota_monthly=None, quota_used=0))
+        await session.commit()
+    return key
+
+
+@pytest.fixture
+async def admin_headers(test_sessionmaker):
+    return {"X-API-Key": await _mk_role_and_key(test_sessionmaker, role_name="admin")}
+
+
+@pytest.fixture
+def llm_outputs():
+    return ['{"id":"1"}']
+
+
+@pytest.fixture
+def schema_dir(tmp_path: Path, monkeypatch):
+    schema = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "required": ["id"],
+        "additionalProperties": False,
+    }
+    (tmp_path / "a.json").write_text(json.dumps(schema), encoding="utf-8")
+    monkeypatch.setenv("SCHEMAS_DIR", str(tmp_path))
+
+    import llm_server.core.schema_registry as reg
+
+    reg._SCHEMA_CACHE.clear()
+    return tmp_path
+
+
+@pytest.mark.anyio
+async def test_sync_extract_trace_visible_via_admin(
+    client, auth_headers, admin_headers, schema_dir
+):
+    r = await client.post(
+        "/v1/extract",
+        headers=auth_headers,
+        json={"schema_id": "a", "text": "id 1", "cache": False, "repair": True},
+    )
+    assert r.status_code == 200, r.text
+    trace_id = r.headers["X-Request-ID"]
+
+    detail = await client.get(f"/v1/admin/traces/{trace_id}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["trace_id"] == trace_id
+    assert body["request_kind"] == "sync_extract"
+    names = [item["event_name"] for item in body["events"]]
+    assert "extract.accepted" in names
+    assert "extract.model_resolved" in names
+    assert "extract.validation_completed" in names
+    assert "extract.completed" in names
+
+    logs = await client.get(f"/v1/admin/logs?request_id={trace_id}", headers=admin_headers)
+    assert logs.status_code == 200, logs.text
+    logs_body = logs.json()
+    assert logs_body["total"] >= 1
+    assert all(item["request_id"] == trace_id for item in logs_body["items"])
+
+
+@pytest.mark.anyio
+async def test_async_extract_trace_spans_submit_worker_and_poll(
+    client,
+    app,
+    auth_headers,
+    admin_headers,
+    extract_job_queue,
+    test_sessionmaker,
+    schema_dir,
+):
+    app.state.extract_job_queue = extract_job_queue
+
+    submit = await client.post(
+        "/v1/extract/jobs",
+        headers=auth_headers,
+        json={"schema_id": "a", "text": "id 1", "cache": False, "repair": True},
+    )
+    assert submit.status_code == 202, submit.text
+    submit_body = submit.json()
+    trace_id = submit_body["trace_id"]
+    assert trace_id
+
+    result = await process_extract_job_once(
+        app=app,
+        sessionmaker=test_sessionmaker,
+        queue=extract_job_queue,
+        timeout_seconds=1,
+    )
+    assert result is not None
+    assert result.status == "succeeded"
+
+    status_r = await client.get(submit_body["poll_path"], headers=auth_headers)
+    assert status_r.status_code == 200, status_r.text
+    status_body = status_r.json()
+    assert status_body["trace_id"] == trace_id
+
+    detail = await client.get(f"/v1/admin/traces/{trace_id}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["request_kind"] == "async_extract"
+    assert body["status"] == "completed"
+    names = [item["event_name"] for item in body["events"]]
+    assert "extract_job.submitted" in names
+    assert "extract_job.persisted" in names
+    assert "extract_job.queued" in names
+    assert "extract_job.worker_claimed" in names
+    assert "extract_job.execution_started" in names
+    assert "extract_job.completed" in names
+    assert "extract_job.status_polled" in names
+
+
+@pytest.mark.anyio
+async def test_failed_sync_extract_trace_records_error_stage(
+    client, auth_headers, admin_headers, monkeypatch, tmp_path: Path, schema_dir
+):
+    p = tmp_path / "policy.json"
+    p.write_text(
+        json.dumps(
+            {
+                "schema_version": "policy_decision_v2",
+                "generated_at": "2026-01-01T00:00:00Z",
+                "policy": "extract_enablement",
+                "pipeline": "extract_only",
+                "status": "allow",
+                "ok": True,
+                "enable_extract": False,
+                "generate_max_new_tokens_cap": None,
+                "contract_errors": 0,
+                "thresholds_profile": "default",
+                "thresholds_version": "v1",
+                "eval_run_dir": "/tmp/eval",
+                "eval_task": "extract",
+                "eval_run_id": "run-1",
+                "model_id": None,
+                "reasons": [],
+                "warnings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("POLICY_DECISION_PATH", str(p))
+    try:
+        delattr(client.app.state, "policy_snapshot")
+    except Exception:
+        pass
+
+    r = await client.post(
+        "/v1/extract",
+        headers=auth_headers,
+        json={"schema_id": "a", "text": "id 1", "cache": False, "repair": True},
+    )
+    assert r.status_code == 400, r.text
+    trace_id = r.headers["X-Request-ID"]
+
+    detail = await client.get(f"/v1/admin/traces/{trace_id}", headers=admin_headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["status"] == "failed"
+    failed = [item for item in body["events"] if item["event_name"] == "extract.failed"]
+    assert failed
+    assert failed[-1]["details"]["error_code"] == "capability_not_supported"

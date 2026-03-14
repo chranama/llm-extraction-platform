@@ -41,6 +41,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if not (isinstance(rid, str) and rid.strip()):
             rid = secrets.token_hex(16)
         request.state.request_id = rid
+        request.state.trace_id = rid
+        request.state.trace_job_id = None
 
         if not isinstance(getattr(request.state, "route", None), str):
             request.state.route = request.url.path

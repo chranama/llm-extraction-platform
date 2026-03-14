@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "proof" / "evidence_manifest.latest.json"
 K8S_SUMMARY = ROOT / "proof" / "artifacts" / "phase5_k8s_kind" / "kind_smoke_summary.json"
 ASYNC_SUMMARY = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_job_summary.json"
+TRACE_SUMMARY = ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "trace_summary.json"
 
 REQUIRED_TOP = [
     "proof_id",
@@ -138,7 +139,9 @@ def validate_async_summary() -> None:
     if data["result_valid"] is not True:
         fail("async summary result_valid must be true")
 
-    submit_path = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_submit_response.json"
+    submit_path = (
+        ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_submit_response.json"
+    )
     final_path = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_job_final.json"
     worker_log = ROOT / "proof" / "artifacts" / "phase6_extract_async" / "async_worker_log.txt"
     submit = json.loads(submit_path.read_text(encoding="utf-8"))
@@ -156,6 +159,81 @@ def validate_async_summary() -> None:
     log_text = worker_log.read_text(encoding="utf-8")
     if str(data["job_id"]) not in log_text:
         fail("async worker log must include the job id")
+
+
+def validate_trace_summary() -> None:
+    if not TRACE_SUMMARY.exists():
+        fail(f"missing trace summary artifact: {TRACE_SUMMARY.relative_to(ROOT)}")
+
+    data = json.loads(TRACE_SUMMARY.read_text(encoding="utf-8"))
+    for key in (
+        "proof_phase",
+        "generated_at",
+        "status",
+        "sync_trace_complete",
+        "async_trace_complete",
+        "async_worker_claimed",
+        "async_status_polled",
+        "sync_contains_generate_or_cache_path",
+        "trace_ids_present",
+        "sync_trace_id",
+        "async_trace_id",
+    ):
+        if key not in data:
+            fail(f"trace summary missing key: {key}")
+
+    if data["proof_phase"] != "phase7_trace_inspection":
+        fail("trace summary proof_phase must be phase7_trace_inspection")
+    if data["status"] != "pass":
+        fail("trace summary status must be pass")
+
+    for key in (
+        "sync_trace_complete",
+        "async_trace_complete",
+        "async_worker_claimed",
+        "async_status_polled",
+        "sync_contains_generate_or_cache_path",
+        "trace_ids_present",
+    ):
+        if data[key] is not True:
+            fail(f"trace summary {key} must be true")
+
+    sync_trace = ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "sync_trace_detail.json"
+    async_trace = (
+        ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "async_trace_detail.json"
+    )
+    async_timeline = (
+        ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "async_trace_timeline.md"
+    )
+    sync_resp = (
+        ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "sync_extract_response.json"
+    )
+    async_submit = (
+        ROOT / "proof" / "artifacts" / "phase7_trace_inspection" / "async_submit_response.json"
+    )
+    for path in (sync_trace, async_trace, async_timeline, sync_resp, async_submit):
+        if not path.exists():
+            fail(f"missing trace artifact: {path.relative_to(ROOT)}")
+
+    sync_payload = json.loads(sync_trace.read_text(encoding="utf-8"))
+    async_payload = json.loads(async_trace.read_text(encoding="utf-8"))
+    if sync_payload.get("status_code") != 200:
+        fail("sync trace detail must record status_code 200")
+    if async_payload.get("status_code") != 200:
+        fail("async trace detail must record status_code 200")
+    sync_events = [x.get("event_name") for x in (sync_payload.get("body") or {}).get("events", [])]
+    async_events = [
+        x.get("event_name") for x in (async_payload.get("body") or {}).get("events", [])
+    ]
+    if "extract.completed" not in sync_events:
+        fail("sync trace detail must include extract.completed")
+    for name in (
+        "extract_job.worker_claimed",
+        "extract_job.completed",
+        "extract_job.status_polled",
+    ):
+        if name not in async_events:
+            fail(f"async trace detail must include {name}")
 
 
 def main() -> None:
@@ -186,10 +264,24 @@ def main() -> None:
             if not p.exists():
                 fail(f"claim[{idx}] missing artifact path: {raw}")
 
-    if any("phase5_k8s_kind/kind_smoke_summary.json" in path for claim in claims for path in claim["artifact_paths"]):
+    if any(
+        "phase5_k8s_kind/kind_smoke_summary.json" in path
+        for claim in claims
+        for path in claim["artifact_paths"]
+    ):
         validate_k8s_summary()
-    if any("phase6_extract_async/async_job_summary.json" in path for claim in claims for path in claim["artifact_paths"]):
+    if any(
+        "phase6_extract_async/async_job_summary.json" in path
+        for claim in claims
+        for path in claim["artifact_paths"]
+    ):
         validate_async_summary()
+    if any(
+        "phase7_trace_inspection/trace_summary.json" in path
+        for claim in claims
+        for path in claim["artifact_paths"]
+    ):
+        validate_trace_summary()
 
     print("OK: evidence manifest contract and artifact paths validated")
 

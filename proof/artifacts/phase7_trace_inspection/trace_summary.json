@@ -1,0 +1,15 @@
+{
+  "proof_phase": "phase7_trace_inspection",
+  "generated_at": "2026-03-14T15:53:41.021724+00:00",
+  "status": "pass",
+  "sync_trace_complete": true,
+  "async_trace_complete": true,
+  "async_worker_claimed": true,
+  "async_status_polled": true,
+  "sync_contains_generate_or_cache_path": true,
+  "trace_ids_present": true,
+  "sync_trace_id": "81af1dbe740044a5b3494d16084b2bbc",
+  "async_trace_id": "953598d1326201d2b4d54dbcaeb84fda",
+  "async_job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+  "server_exit_code": 143
+}

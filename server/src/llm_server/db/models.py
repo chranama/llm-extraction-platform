@@ -278,3 +278,33 @@ class ExtractJob(Base):
         Index("ix_extract_jobs_api_key_created", "api_key", "created_at"),
         Index("ix_extract_jobs_status_created", "status", "created_at"),
     )
+
+
+class RequestTraceEvent(Base):
+    __tablename__ = "request_trace_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    route: Mapped[str] = mapped_column(String(64), nullable=False)
+    stage: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+
+    request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    job_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    model_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True, index=True)
+
+    details_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(_JSONType, nullable=True)
+
+    __table_args__ = (
+        Index("ix_trace_event_trace_created", "trace_id", "created_at"),
+        Index("ix_trace_event_job_created", "job_id", "created_at"),
+    )

@@ -1,0 +1,263 @@
+{
+  "status_code": 200,
+  "body": {
+    "trace_id": "953598d1326201d2b4d54dbcaeb84fda",
+    "status": "completed",
+    "root_route": "/v1/extract/jobs",
+    "request_kind": "async_extract",
+    "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+    "model_id": "fake-extract",
+    "started_at": "2026-03-14T15:53:39.200305Z",
+    "finished_at": "2026-03-14T15:53:40.702385Z",
+    "events": [
+      {
+        "created_at": "2026-03-14T15:53:39.200305Z",
+        "event_name": "extract_job.submitted",
+        "route": "/v1/extract/jobs",
+        "stage": "submitted",
+        "status": "accepted",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": null,
+        "model_id": null,
+        "details": {
+          "cache": false,
+          "repair": true,
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.209842Z",
+        "event_name": "extract_job.persisted",
+        "route": "/v1/extract/jobs",
+        "stage": "persisted",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.213548Z",
+        "event_name": "extract_job.queued",
+        "route": "/v1/extract/jobs",
+        "stage": "queued",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.236731Z",
+        "event_name": "extract_job.status_polled",
+        "route": "/v1/extract/jobs/85c7dcbaadf547f5b2e53980a883f95f",
+        "stage": "status_poll",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async",
+          "job_status": "queued"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.758857Z",
+        "event_name": "extract_job.status_polled",
+        "route": "/v1/extract/jobs/85c7dcbaadf547f5b2e53980a883f95f",
+        "stage": "status_poll",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async",
+          "job_status": "queued"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.280251Z",
+        "event_name": "extract_job.status_polled",
+        "route": "/v1/extract/jobs/85c7dcbaadf547f5b2e53980a883f95f",
+        "stage": "status_poll",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async",
+          "job_status": "queued"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.551086Z",
+        "event_name": "extract_job.worker_claimed",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "claim_job",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.558719Z",
+        "event_name": "extract_job.execution_started",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "execution_started",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.561825Z",
+        "event_name": "extract.accepted",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "start",
+        "status": "accepted",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": null,
+        "details": {
+          "cache": false,
+          "repair": true,
+          "schema_id": "proof_async",
+          "requested_max_new_tokens": 512
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.565028Z",
+        "event_name": "extract.model_resolved",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "resolve_model",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.568195Z",
+        "event_name": "extract.cache_lookup",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "cache_read",
+        "status": "miss",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "hit": false,
+          "cache_enabled": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.571336Z",
+        "event_name": "extract.generate_completed",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "model_generate",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "clamped": false,
+          "effective_max_new_tokens": 512,
+          "requested_max_new_tokens": 512
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.574241Z",
+        "event_name": "extract.validation_completed",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "validate_output",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false,
+          "repair_attempted": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.668677Z",
+        "event_name": "extract.cache_written",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "cache_write",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "cache_enabled": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.682343Z",
+        "event_name": "extract.logged",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "log_uncached",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.691623Z",
+        "event_name": "extract.completed",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "complete",
+        "status": "completed",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false,
+          "repair_attempted": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.702385Z",
+        "event_name": "extract_job.completed",
+        "route": "/v1/extract/jobs/worker",
+        "stage": "complete_job",
+        "status": "completed",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:40.805697Z",
+        "event_name": "extract_job.status_polled",
+        "route": "/v1/extract/jobs/85c7dcbaadf547f5b2e53980a883f95f",
+        "stage": "status_poll",
+        "status": "ok",
+        "request_id": "953598d1326201d2b4d54dbcaeb84fda",
+        "job_id": "85c7dcbaadf547f5b2e53980a883f95f",
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async",
+          "job_status": "succeeded"
+        }
+      }
+    ]
+  }
+}

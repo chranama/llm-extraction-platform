@@ -140,6 +140,8 @@ async def test_request_context_middleware_sets_request_id_and_defaults(mmod):
 
     async def _call_next(request):
         assert request.state.request_id == "rid-abc"
+        assert request.state.trace_id == "rid-abc"
+        assert request.state.trace_job_id is None
         assert request.state.route == "/v1/generate"
         assert request.state.model_id == "unknown"
         assert request.state.cached is False

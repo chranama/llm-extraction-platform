@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from llm_contracts.runtime.generate_slo import RUNTIME_GENERATE_SLO_VERSION
-from llm_server.db.models import ApiKey, InferenceLog, RoleTable
+from llm_server.db.models import ApiKey, InferenceLog, RequestTraceEvent, RoleTable
 from llm_server.telemetry.types import (
     AdminStats,
     AdminUsageRow,
@@ -18,6 +18,8 @@ from llm_server.telemetry.types import (
     LogsPage,
     MeUsage,
     ModelStats,
+    TraceDetail,
+    TraceEventView,
 )
 
 # -----------------------------
@@ -186,6 +188,7 @@ async def list_inference_logs(
     *,
     model_id: Optional[str],
     api_key_value: Optional[str],
+    request_id: Optional[str],
     route: Optional[str],
     from_ts: Optional[datetime],
     to_ts: Optional[datetime],
@@ -203,6 +206,8 @@ async def list_inference_logs(
         filters.append(InferenceLog.model_id == model_id)
     if api_key_value:
         filters.append(InferenceLog.api_key == api_key_value)
+    if request_id:
+        filters.append(InferenceLog.request_id == request_id)
     if route:
         filters.append(InferenceLog.route == route)
     if from_ts:
@@ -239,6 +244,74 @@ async def list_inference_logs(
         limit=limit,
         offset=offset,
         items=list(rows),
+    )
+
+
+def _trace_request_kind(rows: list[RequestTraceEvent]) -> str:
+    for row in rows:
+        if row.event_name.startswith("extract_job.") or row.route.startswith("/v1/extract/jobs"):
+            return "async_extract"
+    return "sync_extract"
+
+
+def _trace_summary_status(rows: list[RequestTraceEvent]) -> tuple[str, datetime | None]:
+    if not rows:
+        return "in_progress", None
+    for row in reversed(rows):
+        if row.status == "failed" or row.event_name.endswith(".failed"):
+            return "failed", row.created_at
+        if row.status in {"completed", "succeeded"} or row.event_name.endswith(".completed"):
+            return "completed", row.created_at
+    return "in_progress", None
+
+
+async def list_trace_events(session: AsyncSession, *, trace_id: str) -> list[RequestTraceEvent]:
+    stmt = (
+        select(RequestTraceEvent)
+        .where(RequestTraceEvent.trace_id == trace_id)
+        .order_by(RequestTraceEvent.created_at.asc(), RequestTraceEvent.id.asc())
+    )
+    return (await session.execute(stmt)).scalars().all()
+
+
+async def summarize_trace(session: AsyncSession, *, trace_id: str) -> TraceDetail | None:
+    rows = await list_trace_events(session, trace_id=trace_id)
+    if not rows:
+        return None
+
+    summary_status, finished_at = _trace_summary_status(rows)
+    root_route = next(
+        (row.route for row in rows if isinstance(row.route, str) and row.route), "unknown"
+    )
+    job_id = next((row.job_id for row in rows if isinstance(row.job_id, str) and row.job_id), None)
+    model_id = next(
+        (row.model_id for row in reversed(rows) if isinstance(row.model_id, str) and row.model_id),
+        None,
+    )
+    events = [
+        TraceEventView(
+            created_at=row.created_at,
+            event_name=row.event_name,
+            route=row.route,
+            stage=row.stage,
+            status=row.status,
+            request_id=row.request_id,
+            job_id=row.job_id,
+            model_id=row.model_id,
+            details=row.details_json,
+        )
+        for row in rows
+    ]
+    return TraceDetail(
+        trace_id=trace_id,
+        status=summary_status,
+        root_route=root_route,
+        request_kind=_trace_request_kind(rows),
+        job_id=job_id,
+        model_id=model_id,
+        started_at=rows[0].created_at,
+        finished_at=finished_at,
+        events=events,
     )
 
 

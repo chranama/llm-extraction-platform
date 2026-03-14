@@ -50,12 +50,16 @@ Core proof points:
 4. `Async Extract Jobs`
    - Claim: extract requests can be queued, executed by a separate worker, and resolved through a job-status API.
    - Signal: submit returns `202`, worker execution is logged separately, and final job state succeeds with a valid result.
+5. `Traceable Request Inspection`
+   - Claim: sync and async extract flows can be inspected as ordered per-request timelines.
+   - Signal: sync and async trace detail artifacts exist, and the async timeline shows submission, worker, and status-poll lineage.
 
 What this proof system is meant to show:
 - explicit API and policy contracts
 - runtime enforcement of model capabilities
 - reproducible deployment evidence
 - async workflow execution with durable state
+- request-level inspection across sync and async extract paths
 
 What it does not claim:
 - production-scale GPU scheduling
@@ -120,6 +124,7 @@ python proof/validate_evidence_manifest.py
 - [`proof/proof_points.latest.md`](proof/proof_points.latest.md)
 - `proof/artifacts/phase5_k8s_kind/`
 - `proof/artifacts/phase6_extract_async/`
+- `proof/artifacts/phase7_trace_inspection/`
 
 5. Review CI and tests:
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml)

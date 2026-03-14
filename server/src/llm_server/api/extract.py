@@ -26,6 +26,11 @@ from llm_server.services.extract_jobs import (
     serialize_extract_job,
     validate_extract_submission,
 )
+from llm_server.telemetry.traces import (
+    record_trace_event_best_effort,
+    set_trace_meta,
+    trace_id_from_ctx,
+)
 
 router = APIRouter()
 
@@ -52,6 +57,7 @@ class ExtractResponse(BaseModel):
 
 class ExtractJobSubmitResponse(BaseModel):
     job_id: str
+    trace_id: str | None = None
     status: str
     schema_id: str
     model: str
@@ -61,6 +67,7 @@ class ExtractJobSubmitResponse(BaseModel):
 
 class ExtractJobStatusResponse(BaseModel):
     job_id: str
+    trace_id: str | None = None
     status: str
     schema_id: str
     model: str | None = None
@@ -110,6 +117,7 @@ async def extract(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
+    set_trace_meta(request)
     async with db_session.get_sessionmaker()() as session:
         result = await execute_extract(
             ctx=request,
@@ -140,6 +148,22 @@ async def submit_extract_job(
     api_key=Depends(get_api_key),
     llm: Any = Depends(get_llm),
 ):
+    set_trace_meta(request)
+    trace_id = trace_id_from_ctx(request)
+    await record_trace_event_best_effort(
+        trace_id=trace_id,
+        event_name="extract_job.submitted",
+        route="/v1/extract/jobs",
+        stage="submitted",
+        status="accepted",
+        request_id=getattr(getattr(request, "state", None), "request_id", None),
+        details={
+            "schema_id": body.schema_id,
+            "requested_model_id": body.model,
+            "cache": bool(body.cache),
+            "repair": bool(body.repair),
+        },
+    )
     queue = queue_from_request(request)
     if queue is None:
         raise AppError(
@@ -160,8 +184,32 @@ async def submit_extract_job(
             body=body,
             resolved_model_id=resolved_model_id,
         )
+        set_trace_meta(request, trace_id=trace_id, job_id=job.id)
+        await record_trace_event_best_effort(
+            trace_id=trace_id,
+            event_name="extract_job.persisted",
+            route="/v1/extract/jobs",
+            stage="persisted",
+            status="ok",
+            request_id=getattr(getattr(request, "state", None), "request_id", None),
+            job_id=job.id,
+            model_id=job.resolved_model_id,
+            details={"schema_id": job.schema_id},
+        )
+        await record_trace_event_best_effort(
+            trace_id=trace_id,
+            event_name="extract_job.queued",
+            route="/v1/extract/jobs",
+            stage="queued",
+            status="ok",
+            request_id=getattr(getattr(request, "state", None), "request_id", None),
+            job_id=job.id,
+            model_id=job.resolved_model_id,
+            details={"schema_id": job.schema_id},
+        )
         return ExtractJobSubmitResponse(
             job_id=job.id,
+            trace_id=job.request_id,
             status=job.status,
             schema_id=job.schema_id,
             model=job.resolved_model_id or job.requested_model_id or "unknown",
@@ -183,4 +231,15 @@ async def get_extract_job_status(
                 message="Job not found",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        await record_trace_event_best_effort(
+            trace_id=job.request_id,
+            event_name="extract_job.status_polled",
+            route=job_poll_path(job.id),
+            stage="status_poll",
+            status="ok",
+            request_id=job.request_id,
+            job_id=job.id,
+            model_id=job.resolved_model_id,
+            details={"job_status": job.status, "schema_id": job.schema_id},
+        )
         return ExtractJobStatusResponse(**serialize_extract_job(job))

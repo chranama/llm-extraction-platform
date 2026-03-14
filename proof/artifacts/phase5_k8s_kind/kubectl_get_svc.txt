@@ -1,4 +1,4 @@
-NAME       TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE
-api        ClusterIP   10.96.221.80   <none>        8000/TCP   12s
-postgres   ClusterIP   10.96.69.31    <none>        5432/TCP   12s
-redis      ClusterIP   10.96.11.45    <none>        6379/TCP   12s
+NAME       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+api        ClusterIP   10.96.47.224    <none>        8000/TCP   15s
+postgres   ClusterIP   10.96.160.252   <none>        5432/TCP   15s
+redis      ClusterIP   10.96.237.241   <none>        6379/TCP   15s

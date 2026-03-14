@@ -1,0 +1,127 @@
+{
+  "status_code": 200,
+  "body": {
+    "trace_id": "81af1dbe740044a5b3494d16084b2bbc",
+    "status": "completed",
+    "root_route": "/v1/extract",
+    "request_kind": "sync_extract",
+    "job_id": null,
+    "model_id": "fake-extract",
+    "started_at": "2026-03-14T15:53:39.038003Z",
+    "finished_at": "2026-03-14T15:53:39.176641Z",
+    "events": [
+      {
+        "created_at": "2026-03-14T15:53:39.038003Z",
+        "event_name": "extract.accepted",
+        "route": "/v1/extract",
+        "stage": "start",
+        "status": "accepted",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": null,
+        "details": {
+          "cache": false,
+          "repair": true,
+          "schema_id": "proof_async",
+          "requested_max_new_tokens": 512
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.046674Z",
+        "event_name": "extract.model_resolved",
+        "route": "/v1/extract",
+        "stage": "resolve_model",
+        "status": "ok",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "schema_id": "proof_async"
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.051466Z",
+        "event_name": "extract.cache_lookup",
+        "route": "/v1/extract",
+        "stage": "cache_read",
+        "status": "miss",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "hit": false,
+          "cache_enabled": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.055948Z",
+        "event_name": "extract.generate_completed",
+        "route": "/v1/extract",
+        "stage": "model_generate",
+        "status": "ok",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "clamped": false,
+          "effective_max_new_tokens": 512,
+          "requested_max_new_tokens": 512
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.059070Z",
+        "event_name": "extract.validation_completed",
+        "route": "/v1/extract",
+        "stage": "validate_output",
+        "status": "ok",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false,
+          "repair_attempted": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.155989Z",
+        "event_name": "extract.cache_written",
+        "route": "/v1/extract",
+        "stage": "cache_write",
+        "status": "ok",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "cache_enabled": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.171177Z",
+        "event_name": "extract.logged",
+        "route": "/v1/extract",
+        "stage": "log_uncached",
+        "status": "ok",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false
+        }
+      },
+      {
+        "created_at": "2026-03-14T15:53:39.176641Z",
+        "event_name": "extract.completed",
+        "route": "/v1/extract",
+        "stage": "complete",
+        "status": "completed",
+        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "job_id": null,
+        "model_id": "fake-extract",
+        "details": {
+          "cached": false,
+          "repair_attempted": false
+        }
+      }
+    ]
+  }
+}

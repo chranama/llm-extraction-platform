@@ -75,6 +75,32 @@ class AdminStats:
 
 
 @dataclass(frozen=True)
+class TraceEventView:
+    created_at: datetime
+    event_name: str
+    route: str
+    stage: str | None
+    status: str
+    request_id: str | None
+    job_id: str | None
+    model_id: str | None
+    details: Mapping[str, Any] | None
+
+
+@dataclass(frozen=True)
+class TraceDetail:
+    trace_id: str
+    status: str
+    root_route: str
+    request_kind: str
+    job_id: str | None
+    model_id: str | None
+    started_at: datetime
+    finished_at: datetime | None
+    events: list[TraceEventView]
+
+
+@dataclass(frozen=True)
 class ReportDoc:
     """
     A generic "report document" container used by writer.py.

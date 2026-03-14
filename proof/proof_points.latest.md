@@ -40,3 +40,15 @@
   - `proof/artifacts/phase6_extract_async/async_worker_log.txt`
   - `proof/artifacts/phase6_extract_async/async_job_summary.json`
 - Validation signal: submit returns `202`, worker log includes the queued job id, and final status is `succeeded` with a valid result object.
+
+## Proof 5: Traceable request inspection
+- Claim: sync and async extract flows can be inspected as ordered per-request timelines, including async cross-process lineage.
+- Command: `python proof/generate_canonical_manifest.py`
+- Artifacts:
+  - `proof/artifacts/phase7_trace_inspection/async_submit_response.json`
+  - `proof/artifacts/phase7_trace_inspection/async_trace_detail.json`
+  - `proof/artifacts/phase7_trace_inspection/async_trace_timeline.md`
+  - `proof/artifacts/phase7_trace_inspection/sync_extract_response.json`
+  - `proof/artifacts/phase7_trace_inspection/sync_trace_detail.json`
+  - `proof/artifacts/phase7_trace_inspection/trace_summary.json`
+- Validation signal: sync and async trace detail endpoints return coherent ordered events, and the async trace includes submission, worker, and status-poll lineage.

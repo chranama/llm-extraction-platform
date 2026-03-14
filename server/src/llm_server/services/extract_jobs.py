@@ -22,6 +22,7 @@ from llm_server.services.extract_execution import (
     execute_extract,
     validate_extract_submission,
 )
+from llm_server.telemetry.traces import record_trace_event_best_effort, set_trace_meta
 
 logger = logging.getLogger("llm_server.extract_jobs")
 
@@ -253,7 +254,10 @@ async def process_extract_job_once(
             route="/v1/extract/jobs/worker",
             request_id=job.request_id,
             client_host=None,
+            trace_id=job.request_id,
+            trace_job_id=job_id,
         )
+        set_trace_meta(ctx, trace_id=job.request_id, job_id=job_id)
         body = ExtractJobBody(
             schema_id=job.schema_id,
             text=job.text,
@@ -266,7 +270,29 @@ async def process_extract_job_once(
         llm = get_llm(ctx)
 
         try:
+            await record_trace_event_best_effort(
+                trace_id=job.request_id,
+                event_name="extract_job.worker_claimed",
+                route="/v1/extract/jobs/worker",
+                stage="claim_job",
+                status="ok",
+                request_id=job.request_id,
+                job_id=job_id,
+                model_id=job.resolved_model_id,
+                details={"schema_id": job.schema_id},
+            )
             validate_extract_submission(ctx=ctx, body=body, llm=llm)
+            await record_trace_event_best_effort(
+                trace_id=job.request_id,
+                event_name="extract_job.execution_started",
+                route="/v1/extract/jobs/worker",
+                stage="execution_started",
+                status="ok",
+                request_id=job.request_id,
+                job_id=job_id,
+                model_id=job.resolved_model_id,
+                details={"schema_id": job.schema_id},
+            )
             result = await execute_extract(
                 ctx=ctx,
                 body=body,
@@ -277,6 +303,21 @@ async def process_extract_job_once(
                 route_label="/v1/extract/jobs/worker",
             )
             await complete_extract_job_success(session=session, job_id=job_id, result=result)
+            await record_trace_event_best_effort(
+                trace_id=job.request_id,
+                event_name="extract_job.completed",
+                route="/v1/extract/jobs/worker",
+                stage="complete_job",
+                status="completed",
+                request_id=job.request_id,
+                job_id=job_id,
+                model_id=result.model,
+                details={
+                    "schema_id": job.schema_id,
+                    "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
+                },
+            )
             logger.info(
                 "extract_job_done job_id=%s status=%s schema_id=%s resolved_model_id=%s",
                 job_id,
@@ -287,6 +328,22 @@ async def process_extract_job_once(
             return ExtractJobProcessResult(job_id=job_id, status=STATUS_SUCCEEDED)
         except AppError as e:
             await complete_extract_job_failure(session=session, job_id=job_id, error=e)
+            error_stage = (e.extra or {}).get("stage") if isinstance(e.extra, dict) else None
+            await record_trace_event_best_effort(
+                trace_id=job.request_id,
+                event_name="extract_job.failed",
+                route="/v1/extract/jobs/worker",
+                stage=str(error_stage or "app_error"),
+                status="failed",
+                request_id=job.request_id,
+                job_id=job_id,
+                model_id=job.resolved_model_id,
+                details={
+                    "schema_id": job.schema_id,
+                    "error_code": e.code,
+                    "error_stage": error_stage,
+                },
+            )
             logger.info(
                 "extract_job_done job_id=%s status=%s schema_id=%s resolved_model_id=%s error_code=%s",
                 job_id,
@@ -312,6 +369,7 @@ def serialize_extract_job(job: ExtractJob) -> dict[str, Any]:
         }
     return {
         "job_id": job.id,
+        "trace_id": job.request_id,
         "status": job.status,
         "schema_id": job.schema_id,
         "model": job.resolved_model_id or job.requested_model_id,

@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 from llm_server.core.time import request_latency_ms
 from llm_server.services.llm_runtime.inference import write_failure_log
+from llm_server.telemetry.traces import record_trace_event_best_effort
 
 logger = logging.getLogger("llm.errors")
 
@@ -90,6 +91,38 @@ def _best_api_key_value(request: Request) -> str:
     if isinstance(v, str) and v.strip():
         return v.strip()
     return ""
+
+
+async def _best_effort_trace_failure(
+    request: Request,
+    *,
+    status_code: int,
+    error_code: str,
+    error_stage: Optional[str],
+) -> None:
+    route = _best_route_label(request)
+    if not route.startswith("/v1/extract"):
+        return
+    if bool(getattr(getattr(request, "state", None), "trace_terminal_emitted", False)):
+        return
+    trace_id = getattr(getattr(request, "state", None), "trace_id", None)
+    if not isinstance(trace_id, str) or not trace_id.strip():
+        return
+    await record_trace_event_best_effort(
+        trace_id=trace_id,
+        event_name="extract.failed",
+        route=route,
+        stage=error_stage,
+        status="failed",
+        request_id=_request_id(request),
+        job_id=getattr(getattr(request, "state", None), "trace_job_id", None),
+        model_id=_best_model_id(request),
+        details={
+            "error_code": error_code,
+            "error_stage": error_stage,
+            "status_code": int(status_code),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -174,22 +207,33 @@ async def handle_fastapi_http_exception(request: Request, exc: FastAPIHTTPExcept
         if not isinstance(extra, dict):
             extra = {k: v for k, v in detail.items() if k not in {"code", "message", "extra"}}
 
-        await _best_effort_log_failure(
-            request,
-            status_code=exc.status_code,
-            error_code=code,
-            error_stage="http_exception",
-        )
-
-        return _to_json_error(
-            request,
-            status_code=exc.status_code,
-            code=code,
-            message=message,
-            extra=extra or None,
-        )
+    await _best_effort_log_failure(
+        request,
+        status_code=exc.status_code,
+        error_code=code,
+        error_stage="http_exception",
+    )
+    await _best_effort_trace_failure(
+        request,
+        status_code=exc.status_code,
+        error_code=code,
+        error_stage="http_exception",
+    )
+    return _to_json_error(
+        request,
+        status_code=exc.status_code,
+        code=code,
+        message=message,
+        extra=extra or None,
+    )
 
     await _best_effort_log_failure(
+        request,
+        status_code=exc.status_code,
+        error_code="http_error",
+        error_stage="http_exception",
+    )
+    await _best_effort_trace_failure(
         request,
         status_code=exc.status_code,
         error_code="http_error",
@@ -212,6 +256,12 @@ async def handle_starlette_http_exception(request: Request, exc: StarletteHTTPEx
             error_code="not_found",
             error_stage="router",
         )
+        await _best_effort_trace_failure(
+            request,
+            status_code=404,
+            error_code="not_found",
+            error_stage="router",
+        )
         return _to_json_error(
             request,
             status_code=404,
@@ -220,6 +270,12 @@ async def handle_starlette_http_exception(request: Request, exc: StarletteHTTPEx
         )
 
     await _best_effort_log_failure(
+        request,
+        status_code=exc.status_code,
+        error_code="http_error",
+        error_stage="router",
+    )
+    await _best_effort_trace_failure(
         request,
         status_code=exc.status_code,
         error_code="http_error",
@@ -238,6 +294,12 @@ async def handle_validation_error(request: Request, exc: RequestValidationError)
     logger.debug("validation_error: %s", exc.errors())
 
     await _best_effort_log_failure(
+        request,
+        status_code=422,
+        error_code="validation_error",
+        error_stage="request_validation",
+    )
+    await _best_effort_trace_failure(
         request,
         status_code=422,
         error_code="validation_error",
@@ -281,6 +343,12 @@ async def handle_app_error(request: Request, exc: AppError):
         error_code=exc.code,
         error_stage=stage,
     )
+    await _best_effort_trace_failure(
+        request,
+        status_code=exc.status_code,
+        error_code=exc.code,
+        error_stage=stage,
+    )
 
     return _to_json_error(
         request,
@@ -306,6 +374,12 @@ async def handle_unhandled_exception(request: Request, exc: Exception):
         safe_extra["stage"] = st.strip()
 
     await _best_effort_log_failure(
+        request,
+        status_code=500,
+        error_code="internal_error",
+        error_stage=str(safe_extra.get("stage")),
+    )
+    await _best_effort_trace_failure(
         request,
         status_code=500,
         error_code="internal_error",

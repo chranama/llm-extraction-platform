@@ -1,0 +1,13 @@
+{
+  "status_code": 200,
+  "trace_id": "81af1dbe740044a5b3494d16084b2bbc",
+  "body": {
+    "schema_id": "proof_async",
+    "model": "fake-extract",
+    "data": {
+      "id": "1"
+    },
+    "cached": false,
+    "repair_attempted": false
+  }
+}

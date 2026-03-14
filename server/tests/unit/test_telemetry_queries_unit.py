@@ -143,6 +143,7 @@ async def test_list_logs_and_admin_stats_and_reload_key():
         session,
         model_id="m1",
         api_key_value="k1",
+        request_id="rid-1",
         route="/v1/generate",
         from_ts=None,
         to_ts=None,
@@ -163,6 +164,43 @@ async def test_list_logs_and_admin_stats_and_reload_key():
 
     reloaded = await q.reload_key_with_role(session, api_key_id=9)
     assert reloaded is key_obj
+
+
+@pytest.mark.anyio
+async def test_trace_summary_helpers():
+    now = datetime.now(timezone.utc)
+    rows = [
+        SimpleNamespace(
+            created_at=now,
+            event_name="extract.accepted",
+            route="/v1/extract",
+            stage="start",
+            status="accepted",
+            request_id="rid-1",
+            job_id=None,
+            model_id=None,
+            details_json={"schema_id": "ticket"},
+        ),
+        SimpleNamespace(
+            created_at=now,
+            event_name="extract.completed",
+            route="/v1/extract",
+            stage="complete",
+            status="completed",
+            request_id="rid-1",
+            job_id=None,
+            model_id="fake",
+            details_json={"cached": False},
+        ),
+    ]
+    session = _Session(execute_results=[_Result(scalars=rows)])
+    detail = await q.summarize_trace(session, trace_id="rid-1")
+    assert detail is not None
+    assert detail.trace_id == "rid-1"
+    assert detail.status == "completed"
+    assert detail.request_kind == "sync_extract"
+    assert detail.root_route == "/v1/extract"
+    assert len(detail.events) == 2
 
 
 @pytest.mark.anyio

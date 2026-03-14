@@ -121,6 +121,30 @@ class AdminLogsPage(BaseModel):
     items: List[AdminLogEntry]
 
 
+class AdminTraceEvent(BaseModel):
+    created_at: datetime
+    event_name: str
+    route: str
+    stage: Optional[str] = None
+    status: str
+    request_id: Optional[str] = None
+    job_id: Optional[str] = None
+    model_id: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
+
+
+class AdminTraceDetailResponse(BaseModel):
+    trace_id: str
+    status: str
+    root_route: str
+    request_kind: str
+    job_id: Optional[str] = None
+    model_id: Optional[str] = None
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    events: List[AdminTraceEvent]
+
+
 class AdminModelStats(BaseModel):
     model_id: str
     total_requests: int
@@ -342,6 +366,7 @@ async def list_inference_logs(
     key: Optional[str] = Query(
         default=None, alias="api_key", description="Filter by API key value"
     ),
+    request_id: Optional[str] = Query(default=None, description="Filter by request_id"),
     route: Optional[str] = Query(default=None, description="Filter by route, e.g. /v1/generate"),
     from_ts: Optional[datetime] = Query(
         default=None, description="Filter logs created_at >= this timestamp (ISO8601)"
@@ -359,6 +384,7 @@ async def list_inference_logs(
         session,
         model_id=model_id,
         api_key_value=key,
+        request_id=request_id,
         route=route,
         from_ts=from_ts,
         to_ts=to_ts,
@@ -368,6 +394,49 @@ async def list_inference_logs(
 
     items = [AdminLogEntry.model_validate(row) for row in page.items]
     return AdminLogsPage(total=page.total, limit=page.limit, offset=page.offset, items=items)
+
+
+@router.get("/v1/admin/traces/{trace_id}", response_model=AdminTraceDetailResponse)
+async def get_trace_detail(
+    trace_id: str,
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    set_request_meta(request, route="/v1/admin/traces", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+    detail = await telem_q.summarize_trace(session, trace_id=trace_id)
+    if detail is None:
+        raise AppError(
+            code="not_found",
+            message="Trace not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    events = [
+        AdminTraceEvent(
+            created_at=event.created_at,
+            event_name=event.event_name,
+            route=event.route,
+            stage=event.stage,
+            status=event.status,
+            request_id=event.request_id,
+            job_id=event.job_id,
+            model_id=event.model_id,
+            details=dict(event.details) if isinstance(event.details, dict) else event.details,
+        )
+        for event in detail.events
+    ]
+    return AdminTraceDetailResponse(
+        trace_id=detail.trace_id,
+        status=detail.status,
+        root_route=detail.root_route,
+        request_kind=detail.request_kind,
+        job_id=detail.job_id,
+        model_id=detail.model_id,
+        started_at=detail.started_at,
+        finished_at=detail.finished_at,
+        events=events,
+    )
 
 
 # -------------------------------------------------------------------
