@@ -240,6 +240,7 @@ def _sync_runtime_env(s: "Settings") -> None:
     os.environ.setdefault("REDIS_ENABLED", _truthy(s.redis_enabled))
 
     os.environ.setdefault("MODEL_LOAD_MODE", str(s.model_load_mode))
+    os.environ.setdefault("EDGE_MODE", str(s.edge_mode))
     os.environ.setdefault("REQUIRE_MODEL_READY", _truthy(s.require_model_ready))
     os.environ.setdefault("TOKEN_COUNTING", _truthy(s.token_counting))
 
@@ -303,6 +304,9 @@ class Settings(BaseSettings):
     # --- runtime model behavior toggles ---
     model_load_mode: Literal["off", "lazy", "eager"] = Field(
         default="lazy", validation_alias="MODEL_LOAD_MODE"
+    )
+    edge_mode: Literal["standalone", "behind_gateway"] = Field(
+        default="standalone", validation_alias="EDGE_MODE"
     )
     require_model_ready: bool = Field(default=False, validation_alias="REQUIRE_MODEL_READY")
     token_counting: bool = Field(default=True, validation_alias="TOKEN_COUNTING")

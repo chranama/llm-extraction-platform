@@ -1,4 +1,4 @@
-# 06) Eval Methodology
+# Eval Methodology
 
 This document defines how evaluation artifacts are used in this project and how threshold/policy decisions are justified.
 

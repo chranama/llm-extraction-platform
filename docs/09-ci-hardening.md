@@ -1,4 +1,4 @@
-# 09) CI Hardening
+# CI Hardening
 
 This document defines CI quality expectations for public portfolio credibility.
 

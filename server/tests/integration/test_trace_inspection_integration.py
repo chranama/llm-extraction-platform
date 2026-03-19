@@ -195,3 +195,129 @@ async def test_failed_sync_extract_trace_records_error_stage(
     failed = [item for item in body["events"] if item["event_name"] == "extract.failed"]
     assert failed
     assert failed[-1]["details"]["error_code"] == "capability_not_supported"
+
+
+@pytest.mark.anyio
+async def test_sync_extract_uses_gateway_trace_id_in_behind_gateway_mode(
+    app_client, monkeypatch, api_key, admin_headers, schema_dir
+):
+    monkeypatch.setenv("EDGE_MODE", "behind_gateway")
+    monkeypatch.setenv("MODEL_LOAD_MODE", "lazy")
+
+    async with await app_client() as client:
+        client.app.state.settings.model_load_mode = "lazy"
+        client.app.state.model_load_mode = "lazy"
+        client.app.state.model_loaded = True
+        headers = {
+            "X-API-Key": api_key,
+            "X-Request-ID": "sync-request-1",
+            "X-Trace-ID": "sync-trace-1",
+            "X-Gateway-Proxy": "inference-serving-gateway",
+        }
+        r = await client.post(
+            "/v1/extract",
+            headers=headers,
+            json={"schema_id": "a", "text": "id 1", "cache": False, "repair": True},
+        )
+        assert r.status_code == 200, r.text
+        assert r.headers["X-Request-ID"] == "sync-request-1"
+        assert r.headers["X-Trace-ID"] == "sync-trace-1"
+
+        detail = await client.get("/v1/admin/traces/sync-trace-1", headers=admin_headers)
+        assert detail.status_code == 200, detail.text
+        body = detail.json()
+        assert body["trace_id"] == "sync-trace-1"
+        assert any(
+            item["event_name"] == "extract.accepted" and item["request_id"] == "sync-request-1"
+            for item in body["events"]
+        )
+
+        logs = await client.get(
+            "/v1/admin/logs?request_id=sync-request-1",
+            headers=admin_headers,
+        )
+        assert logs.status_code == 200, logs.text
+        assert logs.json()["total"] >= 1
+
+
+@pytest.mark.anyio
+async def test_async_extract_preserves_gateway_trace_with_split_poll_request_id(
+    app_client,
+    monkeypatch,
+    api_key,
+    admin_headers,
+    extract_job_queue,
+    test_sessionmaker,
+    schema_dir,
+):
+    monkeypatch.setenv("EDGE_MODE", "behind_gateway")
+    monkeypatch.setenv("MODEL_LOAD_MODE", "lazy")
+
+    async with await app_client() as client:
+        client.app.state.settings.model_load_mode = "lazy"
+        client.app.state.model_load_mode = "lazy"
+        client.app.state.model_loaded = True
+        client.app.state.extract_job_queue = extract_job_queue
+
+        submit_headers = {
+            "X-API-Key": api_key,
+            "X-Request-ID": "submit-request-1",
+            "X-Trace-ID": "shared-trace-1",
+            "X-Gateway-Proxy": "inference-serving-gateway",
+        }
+        submit = await client.post(
+            "/v1/extract/jobs",
+            headers=submit_headers,
+            json={"schema_id": "a", "text": "id 1", "cache": False, "repair": True},
+        )
+        assert submit.status_code == 202, submit.text
+        assert submit.headers["X-Request-ID"] == "submit-request-1"
+        assert submit.headers["X-Trace-ID"] == "shared-trace-1"
+        submit_body = submit.json()
+        assert submit_body["trace_id"] == "shared-trace-1"
+
+        from llm_server.db.models import ExtractJob
+
+        async with test_sessionmaker() as session:
+            row = (
+                await session.execute(select(ExtractJob).where(ExtractJob.id == submit_body["job_id"]))
+            ).scalar_one()
+            assert row.request_id == "submit-request-1"
+            assert row.trace_id == "shared-trace-1"
+
+        result = await process_extract_job_once(
+            app=client.app,
+            sessionmaker=test_sessionmaker,
+            queue=extract_job_queue,
+            timeout_seconds=1,
+        )
+        assert result is not None
+        assert result.status == "succeeded"
+
+        poll_headers = {
+            "X-API-Key": api_key,
+            "X-Request-ID": "poll-request-1",
+            "X-Trace-ID": "shared-trace-1",
+            "X-Gateway-Proxy": "inference-serving-gateway",
+        }
+        status_r = await client.get(submit_body["poll_path"], headers=poll_headers)
+        assert status_r.status_code == 200, status_r.text
+        assert status_r.headers["X-Request-ID"] == "poll-request-1"
+        assert status_r.headers["X-Trace-ID"] == "shared-trace-1"
+        status_body = status_r.json()
+        assert status_body["trace_id"] == "shared-trace-1"
+
+        detail = await client.get("/v1/admin/traces/shared-trace-1", headers=admin_headers)
+        assert detail.status_code == 200, detail.text
+        body = detail.json()
+        assert body["trace_id"] == "shared-trace-1"
+        assert any(
+            item["event_name"] == "extract_job.submitted"
+            and item["request_id"] == "submit-request-1"
+            for item in body["events"]
+        )
+        assert any(
+            item["event_name"] == "extract_job.status_polled"
+            and item["request_id"] == "poll-request-1"
+            for item in body["events"]
+        )

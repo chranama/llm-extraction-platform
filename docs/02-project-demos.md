@@ -1,4 +1,4 @@
-# 02) Project Demos
+# Project Demos
 
 This document tracks reproducible project demos.
 

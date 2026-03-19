@@ -12,6 +12,7 @@ This directory contains the canonical, latest-only proof bundle for recruiter an
 - `generate_async_extract_proof.py`: local async extraction proof helper
 - `generate_trace_inspection_proof.py`: sync and async request-trace proof helper
 - `validate_evidence_manifest.py`: strict validator (schema-lite + artifact checks)
+- `fixtures/models.gateway-proof.yaml`: deterministic fake-model profile for live gateway-backed extract proof
 
 ## Regenerate
 

@@ -1,4 +1,4 @@
-# 08) Demo Evidence Index
+# Demo Evidence Index
 
 This page maps each demo to expected evidence artifacts.
 

@@ -1,4 +1,4 @@
-# 04) Architecture Deep Dive
+# Architecture Deep Dive
 
 This document explains how the major packages interact at runtime and through control-plane artifacts.
 

@@ -1,4 +1,4 @@
-# 10) Model Decision Memo (Example with Concrete Evidence)
+# Model Decision Memo (Example with Concrete Evidence)
 
 This memo captures a concrete decision for extract capability assignment using current repo artifacts.
 

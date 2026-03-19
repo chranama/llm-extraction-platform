@@ -114,6 +114,16 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def job_trace_id(job: ExtractJob) -> str | None:
+    trace_id = getattr(job, "trace_id", None)
+    if isinstance(trace_id, str) and trace_id.strip():
+        return trace_id.strip()
+    request_id = getattr(job, "request_id", None)
+    if isinstance(request_id, str) and request_id.strip():
+        return request_id.strip()
+    return None
+
+
 @dataclass
 class ExtractJobProcessResult:
     job_id: str
@@ -127,6 +137,7 @@ async def create_extract_job(
     queue: ExtractJobQueue,
     api_key: ApiKey,
     request_id: str | None,
+    trace_id: str | None,
     body: ExtractJobBody,
     resolved_model_id: str,
 ) -> ExtractJob:
@@ -135,6 +146,7 @@ async def create_extract_job(
         status=STATUS_QUEUED,
         api_key=api_key.key,
         request_id=request_id,
+        trace_id=trace_id or request_id,
         schema_id=body.schema_id,
         text=body.text,
         requested_model_id=body.model,
@@ -254,10 +266,10 @@ async def process_extract_job_once(
             route="/v1/extract/jobs/worker",
             request_id=job.request_id,
             client_host=None,
-            trace_id=job.request_id,
+            trace_id=job_trace_id(job),
             trace_job_id=job_id,
         )
-        set_trace_meta(ctx, trace_id=job.request_id, job_id=job_id)
+        set_trace_meta(ctx, trace_id=job_trace_id(job), job_id=job_id)
         body = ExtractJobBody(
             schema_id=job.schema_id,
             text=job.text,
@@ -271,7 +283,7 @@ async def process_extract_job_once(
 
         try:
             await record_trace_event_best_effort(
-                trace_id=job.request_id,
+                trace_id=job_trace_id(job),
                 event_name="extract_job.worker_claimed",
                 route="/v1/extract/jobs/worker",
                 stage="claim_job",
@@ -283,7 +295,7 @@ async def process_extract_job_once(
             )
             validate_extract_submission(ctx=ctx, body=body, llm=llm)
             await record_trace_event_best_effort(
-                trace_id=job.request_id,
+                trace_id=job_trace_id(job),
                 event_name="extract_job.execution_started",
                 route="/v1/extract/jobs/worker",
                 stage="execution_started",
@@ -304,7 +316,7 @@ async def process_extract_job_once(
             )
             await complete_extract_job_success(session=session, job_id=job_id, result=result)
             await record_trace_event_best_effort(
-                trace_id=job.request_id,
+                trace_id=job_trace_id(job),
                 event_name="extract_job.completed",
                 route="/v1/extract/jobs/worker",
                 stage="complete_job",
@@ -330,7 +342,7 @@ async def process_extract_job_once(
             await complete_extract_job_failure(session=session, job_id=job_id, error=e)
             error_stage = (e.extra or {}).get("stage") if isinstance(e.extra, dict) else None
             await record_trace_event_best_effort(
-                trace_id=job.request_id,
+                trace_id=job_trace_id(job),
                 event_name="extract_job.failed",
                 route="/v1/extract/jobs/worker",
                 stage=str(error_stage or "app_error"),
@@ -369,7 +381,7 @@ def serialize_extract_job(job: ExtractJob) -> dict[str, Any]:
         }
     return {
         "job_id": job.id,
-        "trace_id": job.request_id,
+        "trace_id": job_trace_id(job),
         "status": job.status,
         "schema_id": job.schema_id,
         "model": job.resolved_model_id or job.requested_model_id,

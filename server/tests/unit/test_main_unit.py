@@ -45,7 +45,7 @@ def mmod(monkeypatch):
     return importlib.reload(mod)
 
 
-def _request(path="/v1/generate", headers=None):
+def _request(path="/v1/generate", headers=None, app=None):
     hdrs = []
     for k, v in (headers or {}).items():
         hdrs.append((k.lower().encode(), str(v).encode()))
@@ -61,6 +61,8 @@ def _request(path="/v1/generate", headers=None):
         "server": ("testserver", 80),
         "scheme": "http",
     }
+    if app is not None:
+        scope["app"] = app
     return Request(scope)
 
 
@@ -149,6 +151,53 @@ async def test_request_context_middleware_sets_request_id_and_defaults(mmod):
 
     resp = await mw.dispatch(req, _call_next)
     assert resp.headers["X-Request-ID"] == "rid-abc"
+    assert resp.headers["X-Trace-ID"] == "rid-abc"
+
+
+@pytest.mark.anyio
+async def test_request_context_middleware_trusts_gateway_trace_id_in_behind_gateway_mode(mmod):
+    async def _app(scope, receive, send):
+        return None
+
+    mw = mmod.RequestContextMiddleware(_app)
+    req = _request(
+        headers={
+            "x-request-id": "rid-abc",
+            "x-trace-id": "trace-abc",
+            "x-gateway-proxy": "inference-serving-gateway",
+        },
+        app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))),
+    )
+
+    async def _call_next(request):
+        assert request.state.request_id == "rid-abc"
+        assert request.state.trace_id == "trace-abc"
+        return Response("ok", status_code=200)
+
+    resp = await mw.dispatch(req, _call_next)
+    assert resp.headers["X-Request-ID"] == "rid-abc"
+    assert resp.headers["X-Trace-ID"] == "trace-abc"
+
+
+@pytest.mark.anyio
+async def test_request_context_middleware_ignores_trace_id_without_gateway_proxy(mmod):
+    async def _app(scope, receive, send):
+        return None
+
+    mw = mmod.RequestContextMiddleware(_app)
+    req = _request(
+        headers={"x-request-id": "rid-abc", "x-trace-id": "trace-abc"},
+        app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))),
+    )
+
+    async def _call_next(request):
+        assert request.state.request_id == "rid-abc"
+        assert request.state.trace_id == "rid-abc"
+        return Response("ok", status_code=200)
+
+    resp = await mw.dispatch(req, _call_next)
+    assert resp.headers["X-Request-ID"] == "rid-abc"
+    assert resp.headers["X-Trace-ID"] == "rid-abc"
 
 
 @pytest.mark.anyio

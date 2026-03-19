@@ -21,6 +21,7 @@ from llm_server.services.extract_jobs import (
     ExtractJobBody,
     create_extract_job,
     get_owned_extract_job,
+    job_trace_id,
     job_poll_path,
     queue_from_request,
     serialize_extract_job,
@@ -174,6 +175,7 @@ async def submit_extract_job(
 
     resolved_model_id, _ = validate_extract_submission(ctx=request, body=body, llm=llm)
     request_id = getattr(getattr(request, "state", None), "request_id", None)
+    trace_id = trace_id_from_ctx(request)
 
     async with db_session.get_sessionmaker()() as session:
         job = await create_extract_job(
@@ -181,6 +183,7 @@ async def submit_extract_job(
             queue=queue,
             api_key=api_key,
             request_id=request_id,
+            trace_id=trace_id,
             body=body,
             resolved_model_id=resolved_model_id,
         )
@@ -209,7 +212,7 @@ async def submit_extract_job(
         )
         return ExtractJobSubmitResponse(
             job_id=job.id,
-            trace_id=job.request_id,
+            trace_id=job_trace_id(job),
             status=job.status,
             schema_id=job.schema_id,
             model=job.resolved_model_id or job.requested_model_id or "unknown",
@@ -220,6 +223,7 @@ async def submit_extract_job(
 
 @router.get("/v1/extract/jobs/{job_id}", response_model=ExtractJobStatusResponse)
 async def get_extract_job_status(
+    request: Request,
     job_id: str,
     api_key=Depends(get_api_key),
 ):
@@ -231,13 +235,15 @@ async def get_extract_job_status(
                 message="Job not found",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
+        trace_id = job_trace_id(job)
+        set_trace_meta(request, trace_id=trace_id, job_id=job.id)
         await record_trace_event_best_effort(
-            trace_id=job.request_id,
+            trace_id=trace_id,
             event_name="extract_job.status_polled",
             route=job_poll_path(job.id),
             stage="status_poll",
             status="ok",
-            request_id=job.request_id,
+            request_id=getattr(getattr(request, "state", None), "request_id", None),
             job_id=job.id,
             model_id=job.resolved_model_id,
             details={"job_status": job.status, "schema_id": job.schema_id},

@@ -31,6 +31,29 @@ from llm_contracts.config.models_config import (
 )
 
 _REQUEST_ID_HEADER = "X-Request-ID"
+_TRACE_ID_HEADER = "X-Trace-ID"
+_GATEWAY_PROXY_HEADER = "X-Gateway-Proxy"
+_GATEWAY_PROXY_VALUE = "inference-serving-gateway"
+
+
+def _edge_mode_from_request(request: Request) -> str:
+    try:
+        settings = getattr(getattr(request.app, "state", None), "settings", None)
+    except Exception:
+        settings = None
+    raw = getattr(settings, "edge_mode", None)
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+    return "standalone"
+
+
+def _trusted_gateway_headers(request: Request) -> bool:
+    if _edge_mode_from_request(request) != "behind_gateway":
+        return False
+    proxy = request.headers.get(_GATEWAY_PROXY_HEADER)
+    if not isinstance(proxy, str):
+        return False
+    return proxy.strip().lower() == _GATEWAY_PROXY_VALUE
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -40,8 +63,18 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         rid = request.headers.get(_REQUEST_ID_HEADER) or request.headers.get("x-request-id")
         if not (isinstance(rid, str) and rid.strip()):
             rid = secrets.token_hex(16)
+        rid = rid.strip()
+
+        trace_id = rid
+        if _trusted_gateway_headers(request):
+            candidate = request.headers.get(_TRACE_ID_HEADER) or request.headers.get(
+                _TRACE_ID_HEADER.lower()
+            )
+            if isinstance(candidate, str) and candidate.strip():
+                trace_id = candidate.strip()
+
         request.state.request_id = rid
-        request.state.trace_id = rid
+        request.state.trace_id = trace_id
         request.state.trace_job_id = None
 
         if not isinstance(getattr(request.state, "route", None), str):
@@ -54,8 +87,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         resp = await call_next(request)
 
         try:
-            if _REQUEST_ID_HEADER not in resp.headers:
-                resp.headers[_REQUEST_ID_HEADER] = rid
+            current_request_id = getattr(getattr(request, "state", None), "request_id", None)
+            if isinstance(current_request_id, str) and current_request_id.strip():
+                if _REQUEST_ID_HEADER not in resp.headers:
+                    resp.headers[_REQUEST_ID_HEADER] = current_request_id.strip()
+            current_trace_id = getattr(getattr(request, "state", None), "trace_id", None)
+            if isinstance(current_trace_id, str) and current_trace_id.strip():
+                if _TRACE_ID_HEADER not in resp.headers:
+                    resp.headers[_TRACE_ID_HEADER] = current_trace_id.strip()
         except Exception:
             pass
 
@@ -311,7 +350,7 @@ def create_app() -> FastAPI:
             allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],
-            expose_headers=[_REQUEST_ID_HEADER],
+            expose_headers=[_REQUEST_ID_HEADER, _TRACE_ID_HEADER],
             max_age=600,
         )
 

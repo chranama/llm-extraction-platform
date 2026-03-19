@@ -235,6 +235,7 @@ class ExtractJob(Base):
 
     api_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    trace_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
     schema_id: Mapped[str] = mapped_column(String(128), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)

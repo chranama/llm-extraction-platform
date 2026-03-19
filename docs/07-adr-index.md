@@ -1,4 +1,4 @@
-# 07) ADR Index
+# ADR Index
 
 Architecture Decision Records (ADRs) capture the “why” behind key design choices.
 

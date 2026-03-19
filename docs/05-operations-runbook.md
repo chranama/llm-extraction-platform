@@ -1,4 +1,4 @@
-# 05) Operations Runbook
+# Operations Runbook
 
 Quick diagnostics for common failures in local dev and CI.
 
