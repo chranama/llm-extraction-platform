@@ -166,7 +166,9 @@ async def test_request_context_middleware_trusts_gateway_trace_id_in_behind_gate
             "x-trace-id": "trace-abc",
             "x-gateway-proxy": "inference-serving-gateway",
         },
-        app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))),
+        app=SimpleNamespace(
+            state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))
+        ),
     )
 
     async def _call_next(request):
@@ -187,7 +189,9 @@ async def test_request_context_middleware_ignores_trace_id_without_gateway_proxy
     mw = mmod.RequestContextMiddleware(_app)
     req = _request(
         headers={"x-request-id": "rid-abc", "x-trace-id": "trace-abc"},
-        app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))),
+        app=SimpleNamespace(
+            state=SimpleNamespace(settings=SimpleNamespace(edge_mode="behind_gateway"))
+        ),
     )
 
     async def _call_next(request):

@@ -280,7 +280,9 @@ async def test_async_extract_preserves_gateway_trace_with_split_poll_request_id(
 
         async with test_sessionmaker() as session:
             row = (
-                await session.execute(select(ExtractJob).where(ExtractJob.id == submit_body["job_id"]))
+                await session.execute(
+                    select(ExtractJob).where(ExtractJob.id == submit_body["job_id"])
+                )
             ).scalar_one()
             assert row.request_id == "submit-request-1"
             assert row.trace_id == "shared-trace-1"
