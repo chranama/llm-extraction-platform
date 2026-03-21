@@ -1,14 +1,22 @@
 # LLM Extraction Platform
 
-Portfolio project demonstrating production-style AI engineering: serving LLM features, enforcing extraction policy, validating structured outputs, and operating with test-first reliability across multiple deployment modes.
+Production-style LLM application service for serving generate and schema-constrained extract capabilities with explicit contracts, policy-aware runtime behavior, and test-first reliability across multiple deployment modes.
 
 ## Why This Project Exists
 
-I built this repository to demonstrate skills relevant to an entry-level AI Engineer role:
-- building and operating LLM-backed product features,
-- designing backend APIs with clear contracts,
-- evaluating model behavior and enforcing policy decisions,
-- shipping reliable systems with CI, integration tests, and operational diagnostics.
+This repository exists to solve a concrete systems problem:
+
+- expose LLM-backed product behavior through explicit backend APIs
+- enforce extraction capability and policy at runtime instead of relying on prompts alone
+- validate structured outputs against clear contracts
+- make behavior inspectable through proof artifacts, tests, and operational diagnostics
+
+As a hiring surface, it also demonstrates:
+
+- building and operating LLM-backed product features
+- designing backend APIs with clear contracts
+- evaluating model behavior and enforcing policy decisions
+- shipping reliable systems with CI, integration tests, and operational diagnostics
 
 ## How To Review This Repo
 
