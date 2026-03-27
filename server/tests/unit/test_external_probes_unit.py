@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_server.services.api_deps.health import external_probes as probes
+from llm_server.runtime import external_probes as probes
 
 
 class _Client:

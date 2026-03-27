@@ -28,6 +28,7 @@ Recommended review flow (5-10 minutes):
 
 Deep index: [`docs/README.md`](docs/README.md)
 Quick skim summary: [`PORTFOLIO_ONE_PAGER.md`](PORTFOLIO_ONE_PAGER.md)
+Backend internal architecture: [`docs/application-runtime-architecture.md`](docs/application-runtime-architecture.md)
 
 ## Proof System
 
@@ -116,6 +117,7 @@ What it does not claim:
 1. Read architecture and scope:
 - [`docs/03-deployment-modes.md`](docs/03-deployment-modes.md)
 - [`docs/01-extraction-contract.md`](docs/01-extraction-contract.md)
+- [`docs/application-runtime-architecture.md`](docs/application-runtime-architecture.md)
 
 2. Generate the canonical proof bundle:
 ```bash

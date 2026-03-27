@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_server.services.api_deps.admin import reload_ops as ro
+from llm_server.services import runtime_reload as ro
 
 
 class _Loader:

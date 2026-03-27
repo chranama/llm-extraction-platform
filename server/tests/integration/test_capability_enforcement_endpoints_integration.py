@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_server.services.api_deps.enforcement import capabilities
+from llm_server.runtime import capabilities
 
 pytestmark = pytest.mark.integration
 

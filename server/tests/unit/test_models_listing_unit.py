@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.models import listing as ml
+from llm_server.runtime import model_listing as ml
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 

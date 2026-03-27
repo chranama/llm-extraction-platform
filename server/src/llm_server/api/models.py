@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from llm_server.services.api_deps.core.llm_access import get_llm
+from llm_server.services.llm_runtime.access import get_llm
 from llm_server.services.llm_runtime.inference import set_request_meta
 
-from llm_server.services.api_deps.models.status import compute_public_models_status
-from llm_server.services.api_deps.models.listing import list_models_payload
+from llm_server.runtime.model_listing import list_models_payload
+from llm_server.runtime.model_status import compute_public_models_status
 
 router = APIRouter()
 

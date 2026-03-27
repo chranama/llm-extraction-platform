@@ -11,18 +11,18 @@ from llm_server.core.redis import get_redis_from_request
 from llm_server.core.time import request_latency_ms
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 
-from llm_server.services.api_deps.core.auth import get_api_key
-from llm_server.services.api_deps.core.cache_keys import (
+from llm_server.api.dependencies.auth import get_api_key
+from llm_server.core.cache_keys import (
     fingerprint_pydantic,
     make_cache_redis_key,
     sha32,
 )
-from llm_server.services.api_deps.core.llm_access import get_llm
-from llm_server.services.api_deps.core.model_load_mode import effective_model_load_mode_from_request
-from llm_server.services.api_deps.enforcement.assessed_gate import require_assessed_gate
-from llm_server.services.api_deps.enforcement.capabilities import require_capability
-from llm_server.services.api_deps.enforcement.model_ready import require_inprocess_loaded_if_needed
+from llm_server.core.model_load_mode import effective_model_load_mode_from_request
+from llm_server.runtime.assessment import require_assessed_gate
+from llm_server.runtime.capabilities import require_capability
+from llm_server.runtime.model_loading import require_inprocess_loaded_if_needed
 from llm_server.services.limits.generate_gating import get_generate_gate
+from llm_server.services.llm_runtime.access import get_llm
 from llm_server.services.llm_runtime.inference import (
     CacheSpec,
     get_cached_output,

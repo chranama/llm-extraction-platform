@@ -12,6 +12,7 @@
 ## Deep Reference
 
 - [04) Architecture Deep Dive](04-architecture-deep-dive.md)
+- [Application Runtime Architecture](application-runtime-architecture.md)
 - [05) Operations Runbook](05-operations-runbook.md)
 - [06) Eval Methodology](06-eval-methodology.md)
 - [07) ADR Index](07-adr-index.md)

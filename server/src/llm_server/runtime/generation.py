@@ -9,7 +9,7 @@ from fastapi import Request
 from transformers import AutoTokenizer
 
 from llm_server.io.policy_decisions import get_policy_snapshot
-from llm_server.services.api_deps.core.policy_snapshot import snapshot_generate_cap
+from llm_server.runtime.policy import snapshot_generate_cap
 
 
 def normalize_positive_int(x: Any) -> int | None:

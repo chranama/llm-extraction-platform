@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from llm_server.services.api_deps.admin import models_ops as mo
+from llm_server.services import runtime_admin as mo
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 

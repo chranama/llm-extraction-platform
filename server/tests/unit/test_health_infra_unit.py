@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_server.services.api_deps.health import infra
+from llm_server.core import health_checks as infra
 
 
 def _req():

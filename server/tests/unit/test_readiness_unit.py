@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_server.services.api_deps.health import readiness as rd
+from llm_server.runtime import readiness as rd
 
 
 def _req():

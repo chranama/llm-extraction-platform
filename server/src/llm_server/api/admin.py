@@ -21,19 +21,19 @@ from llm_server.observability.replay_cases import (
     build_replay_case_from_trace,
 )
 from llm_server.reports import writer as report_w
-from llm_server.services.api_deps.admin.authz import ensure_admin
-from llm_server.services.api_deps.admin.models_ops import (
+from llm_server.api.dependencies.admin import ensure_admin
+from llm_server.api.dependencies.auth import get_api_key
+from llm_server.core.models_config import clear_models_config_cache
+from llm_server.core.request_settings import settings_from_request
+from llm_server.runtime.capabilities import effective_capabilities
+from llm_server.runtime.policy import snapshot_generate_cap
+from llm_server.services.runtime_admin import (
     allowed_model_ids_from_settings,
     get_loader,
     runtime_default_model_id_from_app,
     summarize_registry,
 )
-from llm_server.services.api_deps.admin.reload_ops import reload_runtime_state
-from llm_server.services.api_deps.core.auth import get_api_key
-from llm_server.services.api_deps.core.models_config import clear_models_config_cache
-from llm_server.services.api_deps.core.policy_snapshot import snapshot_generate_cap
-from llm_server.services.api_deps.core.settings import settings_from_request
-from llm_server.services.api_deps.enforcement.capabilities import effective_capabilities
+from llm_server.services.runtime_reload import reload_runtime_state
 from llm_server.services.llm_runtime.inference import set_request_meta
 from llm_server.telemetry import queries as telem_q
 

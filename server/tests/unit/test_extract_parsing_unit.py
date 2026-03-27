@@ -7,7 +7,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_iter_json_objects_finds_multiple_dicts():
-    from llm_server.services.api_deps.extract.json_parse import iter_json_objects
+    from llm_server.services.extract_support.json_parse import iter_json_objects
 
     raw = 'noise {"a": 1} mid {"b": 2} tail'
     objs = list(iter_json_objects(raw))
@@ -17,7 +17,7 @@ def test_iter_json_objects_finds_multiple_dicts():
 
 
 def test_iter_json_objects_ignores_arrays_and_scalars():
-    from llm_server.services.api_deps.extract.json_parse import iter_json_objects
+    from llm_server.services.extract_support.json_parse import iter_json_objects
 
     raw = '["x"] {"a": 1} 123 {"b": 2}'
     objs = list(iter_json_objects(raw))
@@ -29,8 +29,8 @@ def test_iter_json_objects_ignores_arrays_and_scalars():
 
 def test_validate_first_matching_prefers_delimited_json(monkeypatch):
     from llm_server.core.validation import JSONSchemaValidationError
-    from llm_server.services.api_deps.extract.constants import _JSON_BEGIN, _JSON_END
-    import llm_server.services.api_deps.extract.json_parse as ex
+    from llm_server.services.extract_support.constants import _JSON_BEGIN, _JSON_END
+    import llm_server.services.extract_support.json_parse as ex
 
     # accept only {"ok": True}
     def fake_validate(schema, data):
@@ -49,7 +49,7 @@ def test_validate_first_matching_prefers_delimited_json(monkeypatch):
 
 
 def test_validate_first_matching_raises_invalid_json_when_no_objects(monkeypatch):
-    import llm_server.services.api_deps.extract.json_parse as ex
+    import llm_server.services.extract_support.json_parse as ex
 
     monkeypatch.setattr(ex, "validate_jsonschema", lambda s, d: None, raising=True)
 
@@ -65,7 +65,7 @@ def test_validate_first_matching_raises_schema_validation_failed_when_no_candida
     monkeypatch,
 ):
     from llm_server.core.validation import JSONSchemaValidationError
-    import llm_server.services.api_deps.extract.json_parse as ex
+    import llm_server.services.extract_support.json_parse as ex
 
     def always_fail(schema, data):
         raise JSONSchemaValidationError(
@@ -85,7 +85,7 @@ def test_validate_first_matching_raises_schema_validation_failed_when_no_candida
 def test_failure_stage_mapping():
     from fastapi import status
     from llm_server.core.errors import AppError
-    from llm_server.services.api_deps.extract.stage import failure_stage_for_app_error
+    from llm_server.services.extract_support.stage import failure_stage_for_app_error
 
     e_parse = AppError(
         code="invalid_json",

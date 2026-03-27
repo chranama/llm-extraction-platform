@@ -1,59 +1,156 @@
 # Architecture Deep Dive
 
-This document explains how the major packages interact at runtime and through control-plane artifacts.
+This document explains the current architecture after the backend application/runtime refactor work.
 
-## System components
+The short version:
 
-- `server/`: online API plane for generate/extract/admin endpoints.
-- `policy/`: policy decision engine and onboarding logic.
-- `eval/`: offline evaluation jobs that produce scored artifacts.
-- `schemas/`: JSON schema specs.
-- `contracts/`: Python validation/types used across services/jobs.
-- `integrations/`: repo-level end-to-end suites.
-- `ui/`: frontend client.
+- `llm-extraction-platform` is still one backend service at deployment time
+- internally, that backend is now more explicitly split into:
+  - transport
+  - application orchestration
+  - domain/run state
+  - runtime planning
+  - observability/export seams
 
-## Request path (extract)
+For the backend-internal view, read [Application Runtime Architecture](application-runtime-architecture.md).
 
-1. Client calls `POST /v1/extract` in `server`.
-2. Server resolves active model profile from `MODELS_YAML` + `MODELS_PROFILE`.
-3. Server checks extract capability/policy gating.
-4. LLM runtime generates output.
-5. Output is parsed and schema-validated against `schemas/model_output/sroie_receipt_v1.json`.
-6. Validated payload is returned; metrics/logs emitted.
+## Repository-Level System Components
 
-## Control-plane artifact path
+- `server/`: online runtime API for generate, extract, admin, and health/readiness surfaces
+- `policy/`: policy decision engine and onboarding logic
+- `eval/`: offline evaluation jobs and reporting pipeline
+- `schemas/`: JSON schema specs for structured outputs
+- `contracts/`: shared validation/types
+- `integrations/`: repo-level end-to-end suites
+- `ui/`: frontend client
 
-1. `eval/` produces run artifacts.
-2. `policy/` onboarding consumes eval artifacts and writes patched model config artifacts.
-3. `server/` is pointed at those artifacts through `MODELS_YAML`.
-4. Runtime behavior changes deterministically based on artifact state.
+## Backend Center Of Gravity
 
-## Policy decision path (generate clamp)
+Inside `server/src/llm_server`, the architecture now reads more clearly as:
 
-1. `server` exports runtime SLO snapshot (`runtime_generate_slo_v1`).
-2. `policy runtime-decision` consumes SLO + threshold profile.
-3. Policy artifact (`policy_decision_v2`) is written.
-4. `server` admin reload applies decision; generate cap is enforced at request-time.
+- `api/`
+  - thin transport layer
+  - request parsing, dependency injection, response shaping
+- `application/`
+  - request/use-case orchestration
+  - sync extract, async submit, async poll
+- `domain/`
+  - durable concepts like `ExtractionRun`, `RunIdentity`, `RunOutcome`, and async job lifecycle
+- `runtime/`
+  - routing, prompt construction, generate-cap policy application, token counting, off-loop generation
+- `observability/`
+  - replay/export packaging from traces and execution logs
+- `services/`
+  - runtime adapters, enforcement helpers, queue/job services, and compatibility layers
+- `telemetry/`
+  - persisted trace and execution-log query surfaces
 
-## Deployment shapes
+The main architectural change is that runtime behavior is no longer hidden behind a generic dependency layer.
 
-- Host server + docker infra (`infra-host`).
-- Docker server + docker infra (`infra`).
-- Docker server + in-compose llama (`server-llama`).
-- Docker server + host llama (`server-llama-host`).
+## Runtime Request Paths
 
-See [03-deployment-modes.md](03-deployment-modes.md) for exact profile wiring.
+### Sync Extract
 
-## Design constraints
+1. Client calls `POST /v1/extract`
+2. `api/extract.py` acts as transport only
+3. `application/run_extract.py` builds an `ExtractionRun`
+4. `runtime/` logic decides:
+   - model routing
+   - prompt construction
+   - generate-cap policy application
+   - token accounting strategy
+5. validation/repair and execution logging occur
+6. trace + execution signals are persisted
 
-- Capability-aware behavior (extract may be disabled/blocked per model/profile).
-- Schema spec and contract enforcement split is explicit (`schemas/` vs `contracts/`).
-- Offline artifacts control runtime behavior; this is intentional for reproducibility.
-- Tests are layered: package unit/integration + repo integration lanes.
+### Async Extract
 
-## Related docs
+1. Client calls `POST /v1/extract/jobs`
+2. `application/submit_extract_job.py` validates and persists the job
+3. worker process claims and executes the job
+4. `GET /v1/extract/jobs/{job_id}` polls current lifecycle state
+5. submit, worker, and poll all correlate through:
+   - `request_id`
+   - `trace_id`
+   - `job_id`
 
-- [00-testing.md](00-testing.md)
-- [01-extraction-contract.md](01-extraction-contract.md)
-- [02-project-demos.md](02-project-demos.md)
+### Generate
+
+`/v1/generate` still uses the older route shape, but its core runtime-planning pieces now come from `runtime/` instead of route-adjacent helper modules.
+
+That means the architectural center of gravity is clearer even before generate is moved onto a fuller application-layer use case.
+
+## Control-Plane Artifact Paths
+
+### Eval -> Policy -> Runtime
+
+1. `eval/` produces run artifacts
+2. `policy/` onboarding consumes those artifacts
+3. policy/model artifacts are written
+4. `server/` reads those artifacts through `MODELS_YAML` and policy snapshots
+5. runtime behavior changes deterministically
+
+### Runtime Telemetry -> Replay Export
+
+1. request trace events and execution logs are persisted
+2. admin surfaces expose:
+   - trace detail
+   - execution-log detail
+3. `observability/replay_cases.py` packages those into replay-oriented cases
+4. `observability/regression_manifests.py` wraps them in a minimal regression-manifest shape
+
+This does **not** replace `eval/`.
+
+It creates the first architectural bridge from runtime observability to future replay/regression evaluation work.
+
+## Gateway Integration Shape
+
+The backend still supports two deployment identities:
+
+- standalone backend
+- gateway-backed backend through `EDGE_MODE=behind_gateway`
+
+That external service boundary is described in:
+
+- [Service Boundary: `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)
+- [12) Trace Identity Contract](12-trace-identity-contract.md)
+
+The internal backend refactor does not change that boundary.
+
+It makes the backend side easier to explain:
+
+- transport in `api/`
+- orchestration in `application/`
+- runtime decisions in `runtime/`
+- replay/export packaging in `observability/`
+
+## Deployment Shapes
+
+- host server + docker infra
+- docker server + docker infra
+- docker server + host llama
+- docker server + in-compose llama
+- integrated local stack with gateway + backend
+- local `kind` deployment for the integrated stack
+
+See:
+
 - [03-deployment-modes.md](03-deployment-modes.md)
+- [Local Environment Contract](local-environment-contract.md)
+- [Kind Deployment Contract](kind-deployment-contract.md)
+
+## Design Constraints
+
+- extraction contracts and schema validation remain explicit
+- offline artifacts still influence runtime behavior intentionally
+- trace identity must remain stable across standalone and gateway-backed modes
+- async worker execution remains backend-owned
+- replay/export is allowed to be partial:
+  - a case may be exportable before it is fully replay-ready
+
+## Best Follow-On Docs
+
+- [Application Runtime Architecture](application-runtime-architecture.md)
+- [Replay Export Seam](replay-export-seam.md)
+- [12) Trace Identity Contract](12-trace-identity-contract.md)
+- [Service Boundary: `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)
+- [06) Eval Methodology](06-eval-methodology.md)

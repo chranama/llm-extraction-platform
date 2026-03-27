@@ -1,3 +1,10 @@
+"""Derived observability artifacts and exports.
+
+`observability/` turns persisted telemetry into replay cases, manifests, and
+other higher-level artifacts. Raw signal storage and querying stay in
+`telemetry/`.
+"""
+
 from llm_server.observability.regression_manifests import (
     REGRESSION_REPLAY_MANIFEST_VERSION,
     build_regression_replay_manifest,

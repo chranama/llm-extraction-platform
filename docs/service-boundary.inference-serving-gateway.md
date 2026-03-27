@@ -25,6 +25,10 @@ The goal is to separate:
 - serving/runtime concerns at the edge
 - inference application concerns in this repo
 
+Internal backend architecture reference:
+
+- [Application Runtime Architecture](application-runtime-architecture.md)
+
 ## Design Principles
 
 1. `llm-extraction-platform` must remain a complete standalone service.
@@ -68,12 +72,16 @@ Both modes remain supported in the implemented integration.
 - API-key validation
 - quota consumption and local RPM limiting
 - generate / extract semantics
+- application orchestration
+- run identity and async job lifecycle
 - schema handling
 - model capability gating
 - validation and repair behavior
+- runtime prompt/routing/planning
 - async job persistence and worker execution
 - inference logging
 - trace event recording and inspection
+- replay/export packaging from traces and execution logs
 - admin/debugging surfaces
 
 ### Deferred beyond the current split release
@@ -253,3 +261,13 @@ The current integration is considered successful when:
 ## Implementation Note
 
 The gateway was developed in isolation and validated first against a mock backend. `llm-extraction-platform v3` then added the gateway-aware changes needed to support both standalone and gateway-backed operation without moving extraction semantics out of this repository.
+
+The backend side is now also organized more explicitly around:
+
+- transport in `api/`
+- orchestration in `application/`
+- run/domain state in `domain/`
+- runtime planning in `runtime/`
+- replay/export packaging in `observability/`
+
+That internal refactor does not change the external gateway/backend contract, but it makes the backend side of the split easier to reason about.

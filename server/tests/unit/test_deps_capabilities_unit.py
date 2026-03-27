@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.enforcement import capabilities as caps
+from llm_server.runtime import capabilities as caps
 
 
 class FakeModelsConfig:

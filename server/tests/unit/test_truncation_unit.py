@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.extract import truncation as trunc
+from llm_server.services.extract_support import truncation as trunc
 
 
 def test_truncation_guard_ignores_non_applicable_cases():

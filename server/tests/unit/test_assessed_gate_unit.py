@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.enforcement import assessed_gate as gate
+from llm_server.runtime import assessment as gate
 
 
 def _req():

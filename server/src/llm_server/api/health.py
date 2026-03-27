@@ -9,10 +9,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from llm_server.db.session import get_session
-from llm_server.services.api_deps.core.model_load_mode import effective_model_load_mode_from_request
-from llm_server.services.api_deps.health.infra import db_check, redis_check, settings_from_request
-from llm_server.services.api_deps.health.readiness import model_ready_check_async
-from llm_server.services.api_deps.health.snapshots import (
+from llm_server.core.health_checks import db_check, redis_check
+from llm_server.core.model_load_mode import effective_model_load_mode_from_request
+from llm_server.core.request_settings import settings_from_request
+from llm_server.runtime.readiness import model_ready_check_async
+from llm_server.runtime.snapshots import (
     assessed_gate_snapshot,
     deployment_metadata_snapshot,
     generate_gate_snapshot,

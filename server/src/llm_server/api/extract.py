@@ -18,8 +18,8 @@ from llm_server.core.schema_registry import (
     list_schemas,
     load_schema,
 )
-from llm_server.services.api_deps.core.auth import get_api_key
-from llm_server.services.api_deps.core.llm_access import get_llm
+from llm_server.api.dependencies.auth import get_api_key
+from llm_server.services.llm_runtime.access import get_llm
 from llm_server.services.extract_jobs import (
     ExtractJobBody,
     serialize_extract_job,

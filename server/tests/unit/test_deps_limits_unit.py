@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.core import auth
+from llm_server.api.dependencies import auth
 
 pytestmark = pytest.mark.unit
 

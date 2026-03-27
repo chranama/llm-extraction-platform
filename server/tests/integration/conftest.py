@@ -306,7 +306,7 @@ def app(
     from fakes import FakeLLM
     import llm_server.main as main
     import llm_server.services.llm_runtime.llm_build as llm_svc
-    from llm_server.services.api_deps.core.auth import clear_rate_limit_state
+    from llm_server.api.dependencies.auth import clear_rate_limit_state
     from llm_server.services.llm_runtime.model_state import ModelStateStore
 
     fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))
@@ -354,7 +354,7 @@ def app_client(monkeypatch, llm_outputs, llm_sleep_s, test_engine, test_sessionm
 
         import llm_server.main as main
         import llm_server.services.llm_runtime.llm_build as llm_svc
-        from llm_server.services.api_deps.core.auth import clear_rate_limit_state
+        from llm_server.api.dependencies.auth import clear_rate_limit_state
         from llm_server.services.llm_runtime.model_state import ModelStateStore
 
         fake = FakeLLM(outputs=list(llm_outputs), sleep_s=float(llm_sleep_s))

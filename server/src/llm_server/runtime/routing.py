@@ -5,7 +5,7 @@ from typing import Any, Literal, Optional, cast
 from fastapi import Request
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.core.settings import settings_from_request
+from llm_server.core.request_settings import settings_from_request
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 from llm_server.services.llm_runtime.model_state import ModelStateStore
 

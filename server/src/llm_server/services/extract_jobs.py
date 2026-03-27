@@ -19,7 +19,7 @@ from llm_server.db.models import ApiKey, ExtractJob
 from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.outcomes import RunOutcome
 from llm_server.domain.runs import ExtractionRun, RunIdentity
-from llm_server.services.api_deps.core.llm_access import get_llm
+from llm_server.services.llm_runtime.access import get_llm
 from llm_server.services.extract_execution import (
     InternalRequestContext,
     execute_extract,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from llm_server.services.api_deps.core import auth
+from llm_server.api.dependencies import auth
 
 pytestmark = pytest.mark.integration
 

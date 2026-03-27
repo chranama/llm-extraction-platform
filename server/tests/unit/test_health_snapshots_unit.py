@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_server.services.api_deps.health import snapshots as snap
+from llm_server.runtime import snapshots as snap
 
 
 def _req():

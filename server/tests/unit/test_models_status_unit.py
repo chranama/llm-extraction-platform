@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from llm_server.services.api_deps.models import status as st
+from llm_server.runtime import model_status as st
 
 
 def _req():
