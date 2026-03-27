@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import types
 
-from llm_server.services.api_deps.generate import token_counting as tc
+from llm_server.runtime import generation as tc
 
 
 class _TokOut:

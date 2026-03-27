@@ -13,7 +13,7 @@ from llm_server.services.api_deps.enforcement.capabilities import (
     deployment_capabilities,
     effective_capabilities,
 )
-from llm_server.services.api_deps.routing.models import allowed_model_ids
+from llm_server.runtime.routing import allowed_model_ids
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 

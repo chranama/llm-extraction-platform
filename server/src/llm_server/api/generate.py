@@ -22,10 +22,6 @@ from llm_server.services.api_deps.core.model_load_mode import effective_model_lo
 from llm_server.services.api_deps.enforcement.assessed_gate import require_assessed_gate
 from llm_server.services.api_deps.enforcement.capabilities import require_capability
 from llm_server.services.api_deps.enforcement.model_ready import require_inprocess_loaded_if_needed
-from llm_server.services.api_deps.generate.generate_policy import apply_generate_cap
-from llm_server.services.api_deps.generate.generate_runner import run_generate_rich_offloop
-from llm_server.services.api_deps.generate.token_counting import count_tokens_split
-from llm_server.services.api_deps.routing.models import resolve_model
 from llm_server.services.limits.generate_gating import get_generate_gate
 from llm_server.services.llm_runtime.inference import (
     CacheSpec,
@@ -35,6 +31,12 @@ from llm_server.services.llm_runtime.inference import (
     write_cache,
     write_inference_log,
 )
+from llm_server.runtime.generation import (
+    apply_generate_cap,
+    count_tokens_split,
+    run_generate_rich_offloop,
+)
+from llm_server.runtime.routing import resolve_model
 from llm_server.telemetry.traces import trace_id_from_ctx, trace_job_id_from_ctx
 
 router = APIRouter()

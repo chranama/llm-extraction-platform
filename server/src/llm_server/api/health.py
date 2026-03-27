@@ -18,7 +18,7 @@ from llm_server.services.api_deps.health.snapshots import (
     generate_gate_snapshot,
     policy_summary,
 )
-from llm_server.services.api_deps.routing.models import (
+from llm_server.runtime.routing import (
     model_flags_from_app_state,
     per_model_readiness_mode,
     resolve_default_model_id_and_backend_obj,

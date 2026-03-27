@@ -33,16 +33,18 @@ from llm_server.services.api_deps.enforcement.capabilities import require_capabi
 from llm_server.services.api_deps.enforcement.model_ready import require_inprocess_loaded_if_needed
 from llm_server.services.api_deps.extract.constants import REDIS_TTL_SECONDS
 from llm_server.services.api_deps.extract.json_parse import validate_first_matching
-from llm_server.services.api_deps.extract.prompts import (
+from llm_server.runtime.generation import (
+    apply_generate_cap,
+    count_tokens_split,
+    run_generate_rich_offloop,
+)
+from llm_server.runtime.prompts import (
     build_extraction_prompt,
     build_repair_prompt,
 )
+from llm_server.runtime.routing import resolve_model
 from llm_server.services.api_deps.extract.stage import failure_stage_for_app_error, set_stage
 from llm_server.services.api_deps.extract.truncation import maybe_raise_truncation_error
-from llm_server.services.api_deps.generate.generate_policy import apply_generate_cap
-from llm_server.services.api_deps.generate.generate_runner import run_generate_rich_offloop
-from llm_server.services.api_deps.generate.token_counting import count_tokens_split
-from llm_server.services.api_deps.routing.models import resolve_model
 from llm_server.services.llm_runtime.inference import (
     CacheSpec,
     get_cached_output,

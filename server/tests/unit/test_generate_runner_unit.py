@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_server.services.api_deps.generate import generate_runner as gr
+from llm_server.runtime import generation as gr
 
 
 def test_extract_usage_dict_paths():

@@ -12,8 +12,8 @@ from fastapi import Request
 from llm_server.io.policy_decisions import get_policy_snapshot
 from llm_server.services.api_deps.core.models_config import models_config_from_request
 from llm_server.services.api_deps.core.policy_snapshot import policy_snapshot_summary
-from llm_server.services.api_deps.routing.models import resolve_default_model_id_and_backend_obj
 from llm_server.services.limits.generate_gating import get_generate_gate
+from llm_server.runtime.routing import resolve_default_model_id_and_backend_obj
 
 # ============================================================
 # Helpers

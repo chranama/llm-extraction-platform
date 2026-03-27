@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from llm_server.core.errors import AppError
-from llm_server.services.api_deps.routing import models as routing_models
+from llm_server.runtime import routing as routing_models
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
 

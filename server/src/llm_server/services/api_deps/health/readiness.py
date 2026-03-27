@@ -11,10 +11,10 @@ from llm_server.services.api_deps.health.external_probes import (
     llamacpp_dependency_check_async,
     remote_probe_async,
 )
-from llm_server.services.api_deps.routing.models import (
+from llm_server.runtime.routing import (
     model_flags_from_app_state,
-    resolve_default_model_id_and_backend_obj,
     per_model_readiness_mode,
+    resolve_default_model_id_and_backend_obj,
 )
 
 

@@ -5,7 +5,7 @@ from fastapi import Request
 from llm_server.services.api_deps.core.model_load_mode import (
     effective_model_load_mode_from_request,
 )
-from llm_server.services.api_deps.routing.models import (
+from llm_server.runtime.routing import (
     model_flags_from_app_state,
     resolve_default_model_id_and_backend_obj,
 )
