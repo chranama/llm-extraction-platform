@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_policy.reports.writer import render_decision_md, render_decision_text
+from llm_policy.rendering import render_decision_md, render_decision_text
 from llm_policy.types.decision import (
     Decision,
     DecisionReason,

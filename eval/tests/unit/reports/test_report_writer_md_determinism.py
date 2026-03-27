@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm_eval.reports import writer
+import llm_eval.rendering as writer
 
 
 def test_render_report_md_patches_generated_at(monkeypatch):

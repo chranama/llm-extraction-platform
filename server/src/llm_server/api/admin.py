@@ -15,12 +15,12 @@ from llm_server.db.models import ApiKey
 from llm_server.db.session import get_session
 from llm_server.io.policy_decisions import get_policy_snapshot, reload_policy_snapshot
 from llm_server.io.runtime_generate_slo import write_generate_slo_artifact
+from llm_server.api.admin_rendering import render_admin_summary
 from llm_server.observability.regression_manifests import build_regression_replay_manifest
 from llm_server.observability.replay_cases import (
     build_replay_case_from_inference_log,
     build_replay_case_from_trace,
 )
-from llm_server.reports import writer as report_w
 from llm_server.api.dependencies.admin import ensure_admin
 from llm_server.api.dependencies.auth import get_api_key
 from llm_server.core.models_config import clear_models_config_cache
@@ -621,9 +621,7 @@ async def admin_report_summary(
         for m in stats.per_model
     ]
 
-    return report_w.render_admin_summary(
-        stats_payload=stats_payload, per_model=per_model, fmt=format
-    )
+    return render_admin_summary(stats_payload=stats_payload, per_model=per_model, fmt=format)
 
 
 # -------------------------------------------------------------------

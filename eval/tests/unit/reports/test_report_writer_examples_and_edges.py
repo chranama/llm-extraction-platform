@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from llm_eval.reports import writer
+import llm_eval.rendering as writer
 
 
 def test_render_report_md_examples_failures_sorted_first(monkeypatch):

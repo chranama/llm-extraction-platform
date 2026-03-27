@@ -1,4 +1,3 @@
-# server/src/llm_server/reports/writer.py
 from __future__ import annotations
 
 import json
@@ -70,12 +69,6 @@ def render_md_table(title: str, *, columns: list[str], rows: Iterable[Mapping[st
 def render_admin_summary(
     *, stats_payload: Mapping[str, Any], per_model: list[Mapping[str, Any]], fmt: str
 ) -> str:
-    """
-    A lightweight "presentation output" that can be served from llm_server.
-
-    stats_payload: global fields (window_days, since, totals, avg_latency)
-    per_model: list of model rows
-    """
     title = "LLM Server Admin Summary"
 
     if fmt == "json":
@@ -95,7 +88,6 @@ def render_admin_summary(
         )
         return "\n".join(out).strip() + "\n"
 
-    # text
     buf = []
     buf.append(render_text_kv(title, stats_payload).rstrip())
     buf.append("")

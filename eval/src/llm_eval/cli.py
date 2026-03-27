@@ -15,7 +15,7 @@ from llm_eval.io.run_artifacts import (
     write_eval_latest_pointer,
     write_eval_run_artifacts,
 )
-from llm_eval.reports.writer import render_reports_bundle
+from llm_eval.rendering import render_reports_bundle
 from llm_eval.runners.base import BaseEvalRunner, EvalConfig
 
 

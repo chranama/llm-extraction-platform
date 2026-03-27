@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from llm_eval.reports import writer
+import llm_eval.rendering as writer
 
 
 def test_render_reports_bundle_contract_basic():

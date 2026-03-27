@@ -168,7 +168,6 @@ llm_server/
   domain/
   io/
   observability/
-  reports/
   runtime/
   services/
     backends/

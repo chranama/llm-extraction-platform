@@ -26,7 +26,7 @@ from llm_policy.policies.generate_slo_clamp import (
     decide_generate_slo_clamp,
     thresholds_from_mapping,
 )
-from llm_policy.reports.writer import render_decision_md, render_decision_text
+from llm_policy.rendering import render_decision_md, render_decision_text
 from llm_policy.types.decision import (
     Decision,
     DecisionReason,

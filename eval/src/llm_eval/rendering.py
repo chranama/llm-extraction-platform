@@ -1,4 +1,3 @@
-# llm_eval/reports/writer.py
 from __future__ import annotations
 
 import json
@@ -9,14 +8,6 @@ from typing import Any, Iterable, Optional
 
 @dataclass(frozen=True)
 class RenderedReports:
-    """
-    Pure rendering outputs (no filesystem writes).
-
-    - text: canonical CLI/log report
-    - md:   PR/docs-friendly markdown report
-    - json_summary: json string of summary (optional convenience)
-    """
-
     text: str
     md: str
     json_summary: str
@@ -31,7 +22,7 @@ def _safe_float(x: Any) -> Optional[float]:
         if x is None:
             return None
         f = float(x)
-        if f != f:  # NaN
+        if f != f:
             return None
         return f
     except Exception:
@@ -53,24 +44,17 @@ def _ms(x: Any) -> Optional[str]:
 
 
 def _pick_metrics(summary: dict[str, Any]) -> list[tuple[str, Any]]:
-    """
-    Stable, cross-task-friendly metric selection.
-    We intentionally don't assume every task has the same metric keys.
-    """
     keys = [
-        # extraction-style
         "schema_validity_rate",
         "doc_required_exact_match_rate",
         "required_present_rate",
         "answerable_exact_match_rate",
         "unanswerable_accuracy",
         "combined_score",
-        # generic classification
         "precision",
         "recall",
         "f1",
         "accuracy",
-        # latency
         "latency_p50_ms",
         "latency_p95_ms",
         "latency_p99_ms",
@@ -99,7 +83,6 @@ def _format_kv_lines(summary: dict[str, Any]) -> list[str]:
         if summary.get(k) is not None:
             lines.append(f"{k}={summary.get(k)}")
 
-    # metrics
     for k, v in _pick_metrics(summary):
         if k.endswith("_rate"):
             vv = _pct(v) or v
@@ -120,17 +103,9 @@ def render_report_text(
     summary: dict[str, Any],
     runner_report_text: Optional[str] = None,
 ) -> str:
-    """
-    Canonical report.txt text.
-    Prefer runner_report_text if provided (it often includes task-specific formatting),
-    else fall back to a stable summary-driven report.
-    """
     if isinstance(runner_report_text, str) and runner_report_text.strip():
-        # Ensure it ends with newline for nice CLI/file behavior
-        s = runner_report_text.strip("\n") + "\n"
-        return s
+        return runner_report_text.strip("\n") + "\n"
 
-    # fallback
     merged = dict(summary)
     merged.setdefault("task", task)
     merged.setdefault("run_id", run_id)
@@ -150,12 +125,6 @@ def render_report_md(
     runner_report_text: Optional[str] = None,
     max_example_rows: int = 10,
 ) -> str:
-    """
-    Canonical report.md markdown.
-    - includes top-line metadata
-    - includes a metrics table if possible
-    - optionally includes a small 'worst examples' table (best-effort)
-    """
     merged = dict(summary)
     merged.setdefault("task", task)
     merged.setdefault("run_id", run_id)
@@ -179,7 +148,6 @@ def render_report_md(
     lines.append(f"- **generated_at:** `{_utc_now_iso()}`")
     lines.append("")
 
-    # Metrics table
     metrics = _pick_metrics(merged)
     if metrics:
         lines.append("## Summary metrics")
@@ -196,24 +164,19 @@ def render_report_md(
             lines.append(f"| `{k}` | `{vv}` |")
         lines.append("")
 
-    # Include runner report text as a details section if it exists
     if isinstance(runner_report_text, str) and runner_report_text.strip():
         lines.append("## Runner details")
         lines.append("")
-        # keep it readable without fenced code blocks; markdown readers handle this fine
-        # but we still indent as a blockquote-ish style to avoid huge headings
         for ln in runner_report_text.strip().splitlines():
             lines.append(f"> {ln}")
         lines.append("")
 
-    # Example rows (best-effort)
     rows: list[dict[str, Any]] = []
     if results is not None:
         for r in results:
             if isinstance(r, dict):
                 rows.append(r)
 
-    # show failing examples first if 'ok' is present
     def _is_fail(r: dict[str, Any]) -> bool:
         ok = r.get("ok")
         if ok is None:
@@ -263,7 +226,7 @@ def render_reports_bundle(
         run_id=run_id,
         base_url=base_url,
         summary=summary,
-        results=results or [],
+        results=results,
         runner_report_text=runner_report_text,
     )
     json_summary = json.dumps(summary, ensure_ascii=False, indent=2) + "\n"

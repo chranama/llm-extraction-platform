@@ -1,4 +1,3 @@
-# policy/src/llm_policy/reports/writer.py
 from __future__ import annotations
 
 import json
@@ -10,24 +9,15 @@ from llm_policy.types.decision import Decision
 
 
 def _to_mapping(x: Any) -> Mapping[str, Any]:
-    """
-    Normalize DecisionReason/DecisionWarning objects (pydantic) or dicts into a Mapping.
-
-    reports/ is HUMAN OUTPUT ONLY:
-      - text for terminals/logs
-      - markdown for docs/PR comments
-    """
     if x is None:
         return {}
     if isinstance(x, dict):
         return x
     if isinstance(x, BaseModel):
-        # pydantic v2
         try:
             return x.model_dump()
         except Exception:
             pass
-    # last resort: try attribute access
     out: Dict[str, Any] = {}
     for k in ("code", "message", "context", "extra"):
         if hasattr(x, k):
@@ -40,11 +30,6 @@ def _iter_issues(items: Optional[Iterable[Any]]) -> Iterable[Mapping[str, Any]]:
         yield _to_mapping(it)
 
 
-# ------------------------------------------------------------------------------
-# Deployment provenance helpers (pure formatting)
-# ------------------------------------------------------------------------------
-
-
 def _safe_json_one_line(x: Any) -> str:
     try:
         return json.dumps(x, ensure_ascii=False, sort_keys=True)
@@ -53,17 +38,9 @@ def _safe_json_one_line(x: Any) -> str:
 
 
 def _extract_provenance(metrics: Mapping[str, Any]) -> Dict[str, Any]:
-    """
-    Pull deployment + key provenance out of decision.metrics.
-
-    We keep this tolerant:
-      - deployment may be missing (gate is enforced elsewhere)
-      - deployment may be dict or string depending on legacy writers
-    """
     dep = metrics.get("deployment")
     dep_key = metrics.get("deployment_key")
 
-    # Legacy/alt keys (just in case)
     if dep is None:
         dep = metrics.get("deployment_info") or metrics.get("eval_deployment")
     if dep_key is None:
@@ -86,7 +63,6 @@ def _render_provenance_text(metrics: Mapping[str, Any]) -> str:
     lines: list[str] = []
     lines.append("PROVENANCE:")
 
-    # Keep this short and top-loaded for log scanning.
     def add(k: str, v: Any) -> None:
         if v is None:
             lines.append(f"- {k}: (missing)")
@@ -98,13 +74,10 @@ def _render_provenance_text(metrics: Mapping[str, Any]) -> str:
 
     add("deployment_key", p.get("deployment_key"))
     add("deployment", p.get("deployment"))
-
-    # Eval identifiers
     add("task", p.get("eval_task"))
     add("run_id", p.get("eval_run_id"))
     add("run_dir", p.get("eval_run_dir"))
 
-    # Helpful context (often used when comparing environments)
     if p.get("base_url") is not None:
         add("base_url", p.get("base_url"))
     if p.get("model_id") is not None:
@@ -134,7 +107,6 @@ def _render_provenance_md(metrics: Mapping[str, Any]) -> str:
     lines.append(f"| run_id | {cell(p.get('eval_run_id'))} |")
     lines.append(f"| run_dir | {cell(p.get('eval_run_dir'))} |")
 
-    # Optional but useful
     if p.get("base_url") is not None:
         lines.append(f"| base_url | {cell(p.get('base_url'))} |")
     if p.get("model_id") is not None:
@@ -144,22 +116,13 @@ def _render_provenance_md(metrics: Mapping[str, Any]) -> str:
 
 
 def render_decision_text(decision: Decision) -> str:
-    """
-    Human-oriented single-decision summary for terminals.
-
-    NOTE: This is NOT the runtime ingestion artifact.
-    Runtime ingestion should use DecisionArtifactV1 (io/ or artifacts/).
-    """
     lines: list[str] = []
     lines.append(f"policy={decision.policy}")
 
     if getattr(decision, "thresholds_profile", None):
         lines.append(f"thresholds_profile={decision.thresholds_profile}")
-
-    # keep legacy UX
     if getattr(decision, "enable_extract", None) is not None:
         lines.append(f"enable_extract={bool(decision.enable_extract)}")
-
     if getattr(decision, "status", None) is not None:
         lines.append(f"status={decision.status}")
 
@@ -171,7 +134,6 @@ def render_decision_text(decision: Decision) -> str:
         lines.append(f"contract_errors={ce}")
         lines.append(f"contract_warnings={cw}")
 
-    # --- Provenance block (deployment + eval identifiers) ---
     metrics_any = getattr(decision, "metrics", None) or {}
     if isinstance(metrics_any, dict) and metrics_any:
         lines.append("")
@@ -206,11 +168,6 @@ def render_decision_text(decision: Decision) -> str:
 
 
 def render_decision_md(decision: Decision) -> str:
-    """
-    Human-oriented markdown report for docs / PRs / GitHub comments.
-
-    NOTE: This is NOT the runtime ingestion artifact.
-    """
     lines: list[str] = []
     lines.append(f"# Policy Decision: `{decision.policy}`")
     lines.append("")
@@ -220,10 +177,8 @@ def render_decision_md(decision: Decision) -> str:
 
     if getattr(decision, "status", None) is not None:
         lines.append(f"| status | `{decision.status}` |")
-
     if getattr(decision, "thresholds_profile", None):
         lines.append(f"| thresholds_profile | `{decision.thresholds_profile}` |")
-
     if getattr(decision, "enable_extract", None) is not None:
         lines.append(f"| enable_extract | `{bool(decision.enable_extract)}` |")
 
@@ -245,7 +200,7 @@ def render_decision_md(decision: Decision) -> str:
         for r in reasons:
             code = r.get("code", "reason")
             msg = r.get("message", "")
-            lines.append(f"- **{code}** — {msg}")
+            lines.append(f"- **{code}** - {msg}")
 
     warnings = list(_iter_issues(getattr(decision, "warnings", None)))
     if warnings:
@@ -254,14 +209,15 @@ def render_decision_md(decision: Decision) -> str:
         for w in warnings:
             code = w.get("code", "warning")
             msg = w.get("message", "")
-            lines.append(f"- **{code}** — {msg}")
+            lines.append(f"- **{code}** - {msg}")
 
     if isinstance(metrics, dict) and metrics:
         lines.append("")
         lines.append("## Metrics")
         lines.append("")
-        lines.append("```json")
-        lines.append(json.dumps(metrics, ensure_ascii=False, indent=2))
-        lines.append("```")
+        lines.append("| Metric | Value |")
+        lines.append("|---|---|")
+        for k in sorted(metrics.keys()):
+            lines.append(f"| `{k}` | `{metrics[k]}` |")
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines).strip() + "\n"
