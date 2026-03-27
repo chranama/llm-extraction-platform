@@ -154,6 +154,8 @@ async def test_write_cache_and_write_logs(monkeypatch):
         session3,
         api_key="k",
         request_id="r1",
+        trace_id=" trace-1 ",
+        job_id=" job-1 ",
         route="/v1/generate",
         client_host="127.0.0.1",
         model_id="m1",
@@ -172,6 +174,8 @@ async def test_write_cache_and_write_logs(monkeypatch):
     assert session3.did_commit is True
     row = session3.added[-1]
     assert row.status_code == 500
+    assert row.trace_id == "trace-1"
+    assert row.job_id == "job-1"
     assert row.error_code == "e1"
     assert row.error_stage == "parse"
 
@@ -181,6 +185,8 @@ async def test_write_cache_and_write_logs(monkeypatch):
         session4,
         api_key="k",
         request_id=None,
+        trace_id="trace-failure-1",
+        job_id=None,
         route="/x",
         client_host=None,
         model_id="m1",
@@ -194,4 +200,6 @@ async def test_write_cache_and_write_logs(monkeypatch):
     row2 = session4.added[-1]
     assert row2.prompt == ""
     assert row2.output is None
+    assert row2.trace_id == "trace-failure-1"
+    assert row2.job_id is None
     assert row2.status_code == 503

@@ -1,23 +1,22 @@
 {
   "id": null,
   "uid": "llm-server-overview",
-  "title": "LLM Server Overview",
-  "tags": ["llm", "server"],
+  "title": "Gateway + Backend Overview",
+  "tags": ["llm", "gateway", "observability"],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "panels": [
     {
       "type": "stat",
-      "title": "Server Up",
+      "title": "Observed Targets",
       "id": 1,
-      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "max(up{job=\"$job\"})",
-          "legendFormat": "",
+          "expr": "count(up{job=~\"llm-server-api-host|llm_server_container|llm-server-gateway-host\"} == 1)",
           "refId": "A"
         }
       ],
@@ -31,14 +30,14 @@
     },
     {
       "type": "timeseries",
-      "title": "HTTP Request Rate (req/s)",
+      "title": "Gateway Request Rate (req/s)",
       "id": 2,
-      "gridPos": { "x": 4, "y": 0, "w": 10, "h": 4 },
+      "gridPos": { "x": 6, "y": 0, "w": 9, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "sum by (method, endpoint) (rate(http_requests_total{job=\"$job\"}[1m]))",
-          "legendFormat": "{{method}} {{endpoint}}",
+          "expr": "sum by (route, method) (rate(gateway_requests_total{job=~\"llm-server-gateway-host\"}[5m]))",
+          "legendFormat": "{{method}} {{route}}",
           "refId": "A"
         }
       ],
@@ -48,14 +47,14 @@
     },
     {
       "type": "timeseries",
-      "title": "HTTP Latency p95 (seconds)",
+      "title": "Gateway Latency p95 (s)",
       "id": 3,
-      "gridPos": { "x": 14, "y": 0, "w": 10, "h": 4 },
+      "gridPos": { "x": 15, "y": 0, "w": 9, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket{job=\"$job\"}[5m])))",
-          "legendFormat": "{{endpoint}}",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(gateway_request_duration_seconds_bucket{job=~\"llm-server-gateway-host\"}[5m])))",
+          "legendFormat": "{{route}}",
           "refId": "A"
         }
       ],
@@ -65,30 +64,30 @@
     },
     {
       "type": "timeseries",
-      "title": "LLM Request Rate (req/s)",
+      "title": "Gateway Edge Errors (rate)",
       "id": 4,
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 4, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "sum by (route, model_id) (rate(llm_requests_total{job=\"$job\"}[1m]))",
-          "legendFormat": "{{route}} [{{model_id}}]",
+          "expr": "sum by (code) (rate(gateway_edge_errors_total{job=~\"llm-server-gateway-host\"}[5m]))",
+          "legendFormat": "{{code}}",
           "refId": "A"
         }
       ],
       "options": {
-        "legend": { "displayMode": "table", "placement": "bottom" }
+        "legend": { "displayMode": "list", "placement": "bottom" }
       }
     },
     {
       "type": "timeseries",
-      "title": "LLM Latency p95 (ms)",
+      "title": "Backend API Request Rate (req/s)",
       "id": 5,
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, route, model_id) (rate(llm_request_latency_ms_bucket{job=\"$job\"}[5m])))",
+          "expr": "sum by (route, model_id) (rate(llm_api_request_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
           "legendFormat": "{{route}} [{{model_id}}]",
           "refId": "A"
         }
@@ -99,14 +98,14 @@
     },
     {
       "type": "timeseries",
-      "title": "LLM Token Throughput (tokens/s)",
+      "title": "Backend API Latency p95 (s)",
       "id": 6,
-      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "sum by (direction, model_id) (rate(llm_tokens_total{job=\"$job\"}[1m]))",
-          "legendFormat": "{{direction}} [{{model_id}}]",
+          "expr": "histogram_quantile(0.95, sum by (le, route, model_id) (rate(llm_api_request_latency_seconds_bucket{job=~\"llm-server-api-host|llm_server_container\"}[5m])))",
+          "legendFormat": "{{route}} [{{model_id}}]",
           "refId": "A"
         }
       ],
@@ -116,73 +115,45 @@
     },
     {
       "type": "timeseries",
-      "title": "Redis Cache Hits & Misses (rate)",
+      "title": "Extraction Request Rate (req/s)",
       "id": 7,
-      "gridPos": { "x": 0, "y": 20, "w": 8, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "sum by (kind) (rate(llm_redis_hits_total{job=\"$job\"}[1m]))",
-          "legendFormat": "hits {{kind}}",
+          "expr": "sum by (schema_id, model_id) (rate(llm_extraction_requests_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+          "legendFormat": "{{schema_id}} [{{model_id}}]",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Validation Failures and Repairs (rate)",
+      "id": 8,
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (stage) (rate(llm_extraction_validation_failures_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+          "legendFormat": "validation {{stage}}",
           "refId": "A"
         },
         {
-          "expr": "sum by (kind) (rate(llm_redis_misses_total{job=\"$job\"}[1m]))",
-          "legendFormat": "misses {{kind}}",
+          "expr": "sum by (outcome) (rate(llm_extraction_repair_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+          "legendFormat": "repair {{outcome}}",
           "refId": "B"
         }
       ],
       "options": {
         "legend": { "displayMode": "table", "placement": "bottom" }
       }
-    },
-    {
-      "type": "timeseries",
-      "title": "Redis Hit Ratio",
-      "id": 8,
-      "gridPos": { "x": 8, "y": 20, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        {
-          "expr": "sum(rate(llm_redis_hits_total{job=\"$job\"}[5m])) / (sum(rate(llm_redis_hits_total{job=\"$job\"}[5m])) + sum(rate(llm_redis_misses_total{job=\"$job\"}[5m])))",
-          "legendFormat": "hit_ratio",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "Redis Latency p95 (seconds)",
-      "id": 9,
-      "gridPos": { "x": 16, "y": 20, "w": 8, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(llm_redis_latency_seconds_bucket{job=\"$job\"}[5m])))",
-          "legendFormat": "{{kind}}",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" }
-      }
     }
   ],
   "templating": {
-    "list": [
-      {
-        "name": "job",
-        "type": "query",
-        "datasource": { "type": "prometheus", "uid": "Prometheus" },
-        "query": "label_values(up, job)",
-        "includeAll": true,
-        "allValue": ".*",
-        "multi": false,
-        "regex": "llm_server_.*"
-      }
-    ]
+    "list": []
   }
 }

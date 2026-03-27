@@ -79,6 +79,16 @@ def _best_cached(request: Request) -> Optional[bool]:
     return c if isinstance(c, bool) else None
 
 
+def _best_trace_id(request: Request) -> Optional[str]:
+    trace_id = getattr(getattr(request, "state", None), "trace_id", None)
+    return trace_id.strip() if isinstance(trace_id, str) and trace_id.strip() else None
+
+
+def _best_job_id(request: Request) -> Optional[str]:
+    job_id = getattr(getattr(request, "state", None), "trace_job_id", None)
+    return job_id.strip() if isinstance(job_id, str) and job_id.strip() else None
+
+
 def _best_client_host(request: Request) -> Optional[str]:
     try:
         return request.client.host if request.client else None
@@ -144,6 +154,8 @@ async def _best_effort_log_failure(
                 session,
                 api_key=_best_api_key_value(request),
                 request_id=_request_id(request),
+                trace_id=_best_trace_id(request),
+                job_id=_best_job_id(request),
                 route=_best_route_label(request),
                 client_host=_best_client_host(request),
                 model_id=_best_model_id(request),

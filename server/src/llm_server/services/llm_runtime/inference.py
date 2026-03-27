@@ -203,6 +203,8 @@ async def write_inference_log(
     *,
     api_key: str,
     request_id: str | None,
+    trace_id: str | None,
+    job_id: str | None,
     route: str,
     client_host: str | None,
     model_id: str,
@@ -220,7 +222,7 @@ async def write_inference_log(
     commit: bool = True,
 ) -> None:
     """
-    Canonical log write (success + failure).
+    Canonical execution-log write (success + failure).
 
     Default commit=True matches your early-return pattern.
     For batched endpoints, pass commit=False and commit once at the end.
@@ -239,6 +241,8 @@ async def write_inference_log(
         sc = 500
 
     # Normalize optional strings
+    tid = trace_id.strip() if isinstance(trace_id, str) and trace_id.strip() else None
+    jid = job_id.strip() if isinstance(job_id, str) and job_id.strip() else None
     ec = error_code.strip() if isinstance(error_code, str) and error_code.strip() else None
     es = error_stage.strip() if isinstance(error_stage, str) and error_stage.strip() else None
 
@@ -246,6 +250,8 @@ async def write_inference_log(
         InferenceLog(
             api_key=api_key,
             request_id=request_id,
+            trace_id=tid,
+            job_id=jid,
             route=route,
             client_host=client_host,
             model_id=model_id,
@@ -270,6 +276,8 @@ async def write_failure_log(
     *,
     api_key: str,
     request_id: str | None,
+    trace_id: str | None,
+    job_id: str | None,
     route: str,
     client_host: str | None,
     model_id: str,
@@ -288,6 +296,8 @@ async def write_failure_log(
         session,
         api_key=api_key,
         request_id=request_id,
+        trace_id=trace_id,
+        job_id=job_id,
         route=route,
         client_host=client_host,
         model_id=model_id,

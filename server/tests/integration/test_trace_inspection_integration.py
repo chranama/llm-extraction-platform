@@ -237,7 +237,10 @@ async def test_sync_extract_uses_gateway_trace_id_in_behind_gateway_mode(
             headers=admin_headers,
         )
         assert logs.status_code == 200, logs.text
-        assert logs.json()["total"] >= 1
+        logs_body = logs.json()
+        assert logs_body["total"] >= 1
+        assert logs_body["items"][0]["trace_id"] == "sync-trace-1"
+        assert logs_body["items"][0]["job_id"] is None
 
 
 @pytest.mark.anyio
@@ -322,4 +325,18 @@ async def test_async_extract_preserves_gateway_trace_with_split_poll_request_id(
             item["event_name"] == "extract_job.status_polled"
             and item["request_id"] == "poll-request-1"
             for item in body["events"]
+        )
+
+        logs = await client.get(
+            f"/v1/admin/logs?trace_id=shared-trace-1&job_id={submit_body['job_id']}",
+            headers=admin_headers,
+        )
+        assert logs.status_code == 200, logs.text
+        logs_body = logs.json()
+        assert logs_body["total"] >= 1
+        assert any(
+            item["trace_id"] == "shared-trace-1"
+            and item["job_id"] == submit_body["job_id"]
+            and item["route"] == "/v1/extract/jobs/worker"
+            for item in logs_body["items"]
         )

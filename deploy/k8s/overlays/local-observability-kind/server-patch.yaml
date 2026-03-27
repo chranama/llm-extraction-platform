@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: llm
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: APP_PROFILE
+              value: "test"
+            - name: MODELS_PROFILE
+              value: "observability-proof"
+            - name: MODELS_YAML
+              value: "/app/models/models.yaml"
+            - name: SCHEMAS_DIR
+              value: "/app/schemas/model_output"
+            - name: EDGE_MODE
+              value: "behind_gateway"
+            - name: MODEL_LOAD_MODE
+              value: "lazy"
+            - name: REQUIRE_MODEL_READY
+              value: "0"

@@ -5,7 +5,8 @@
 #
 # Assumptions:
 # - Your host API exposes Prometheus metrics at GET /metrics on port 8000.
-# - The API is reachable from containers via host.docker.internal (Docker Desktop).
+# - Your host-run gateway exposes Prometheus metrics at GET /metrics on port 18082.
+# - Both targets are reachable from containers via host.docker.internal (Docker Desktop).
 
 global:
   scrape_interval: 10s
@@ -18,3 +19,10 @@ scrape_configs:
     static_configs:
       - targets:
           - "host.docker.internal:8000"
+
+  - job_name: "llm-server-gateway-host"
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - "host.docker.internal:18082"

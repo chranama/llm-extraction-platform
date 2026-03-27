@@ -189,6 +189,8 @@ async def list_inference_logs(
     model_id: Optional[str],
     api_key_value: Optional[str],
     request_id: Optional[str],
+    trace_id: Optional[str],
+    job_id: Optional[str],
     route: Optional[str],
     from_ts: Optional[datetime],
     to_ts: Optional[datetime],
@@ -208,6 +210,10 @@ async def list_inference_logs(
         filters.append(InferenceLog.api_key == api_key_value)
     if request_id:
         filters.append(InferenceLog.request_id == request_id)
+    if trace_id:
+        filters.append(InferenceLog.trace_id == trace_id)
+    if job_id:
+        filters.append(InferenceLog.job_id == job_id)
     if route:
         filters.append(InferenceLog.route == route)
     if from_ts:

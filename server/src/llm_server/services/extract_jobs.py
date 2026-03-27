@@ -255,7 +255,14 @@ async def process_extract_job_once(
     async with sessionmaker() as session:
         job = await claim_extract_job(session=session, job_id=job_id)
         if job is None:
-            logger.info("extract_job_skip job_id=%s reason=not_queued", job_id)
+            logger.info(
+                "extract_job_skip",
+                extra={
+                    "job_id": job_id,
+                    "route": "/v1/extract/jobs/worker",
+                    "error_message": "not_queued",
+                },
+            )
             return ExtractJobProcessResult(job_id=job_id, status="skipped")
 
         row = await session.execute(select(ApiKey).where(ApiKey.key == job.api_key))
@@ -331,11 +338,14 @@ async def process_extract_job_once(
                 },
             )
             logger.info(
-                "extract_job_done job_id=%s status=%s schema_id=%s resolved_model_id=%s",
-                job_id,
-                STATUS_SUCCEEDED,
-                job.schema_id,
-                result.model,
+                "extract_job_done",
+                extra={
+                    "job_id": job_id,
+                    "request_id": job.request_id,
+                    "trace_id": job_trace_id(job),
+                    "route": "/v1/extract/jobs/worker",
+                    "model_id": result.model,
+                },
             )
             return ExtractJobProcessResult(job_id=job_id, status=STATUS_SUCCEEDED)
         except AppError as e:
@@ -357,12 +367,16 @@ async def process_extract_job_once(
                 },
             )
             logger.info(
-                "extract_job_done job_id=%s status=%s schema_id=%s resolved_model_id=%s error_code=%s",
-                job_id,
-                STATUS_FAILED,
-                job.schema_id,
-                job.resolved_model_id,
-                e.code,
+                "extract_job_done",
+                extra={
+                    "job_id": job_id,
+                    "request_id": job.request_id,
+                    "trace_id": job_trace_id(job),
+                    "route": "/v1/extract/jobs/worker",
+                    "model_id": job.resolved_model_id,
+                    "error_type": "app_error",
+                    "error_message": e.code,
+                },
             )
             return ExtractJobProcessResult(job_id=job_id, status=STATUS_FAILED, error_code=e.code)
 

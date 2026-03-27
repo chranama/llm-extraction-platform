@@ -144,6 +144,8 @@ async def test_list_logs_and_admin_stats_and_reload_key():
         model_id="m1",
         api_key_value="k1",
         request_id="rid-1",
+        trace_id="trace-1",
+        job_id="job-1",
         route="/v1/generate",
         from_ts=None,
         to_ts=None,

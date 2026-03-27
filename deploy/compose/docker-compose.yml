@@ -462,7 +462,7 @@ services:
     restart: unless-stopped
     profiles: ["obs-host"]
     command:
-      - "--config.file=/etc/prometheus/prometheus.host.yml"
+      - "--config.file=/etc/prometheus/prometheus.yml"
     volumes:
       - ../observability/prometheus/prometheus.host.yml:/etc/prometheus/prometheus.yml:ro
     ports:

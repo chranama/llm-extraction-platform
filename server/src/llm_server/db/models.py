@@ -109,12 +109,13 @@ class ApiKey(Base):
 
 class InferenceLog(Base):
     """
-    One row per request attempt (success OR failure).
+    One row per inference execution attempt (success OR failure).
 
     Notes:
       - Store status_code so telemetry can compute error rates deterministically.
       - error_code/error_stage are stable classification signals (safe to expose internally).
       - prompt/output are kept for admin observability; for failures, output can be null.
+      - trace_id and job_id make execution rows joinable to trace and async job surfaces.
     """
 
     __tablename__ = "inference_logs"
@@ -133,6 +134,8 @@ class InferenceLog(Base):
     # --------------------
     api_key: Mapped[Optional[str]] = mapped_column(String(128), index=True, nullable=True)
     request_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
+    trace_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
+    job_id: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
     route: Mapped[str] = mapped_column(String(64), nullable=False)
     client_host: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
@@ -181,6 +184,9 @@ class InferenceLog(Base):
         Index("ix_inflog_model_created", "model_id", "created_at"),
         # Common SLO window query: per-route time series
         Index("ix_inflog_route_created", "route", "created_at"),
+        # Correlation-friendly windows by shared operation or async job
+        Index("ix_inflog_trace_created", "trace_id", "created_at"),
+        Index("ix_inflog_job_created", "job_id", "created_at"),
         # Common SLO window query: filter failures
         Index("ix_inflog_status_created", "status_code", "created_at"),
     )

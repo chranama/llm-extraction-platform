@@ -83,7 +83,9 @@ class AdminApiKeyListResponse(BaseModel):
 
 class AdminLogEntry(BaseModel):
     """
-    Admin log row. Keep this stable: UI depends on it.
+    Admin execution-log row from `InferenceLog`, not a generic request log row.
+
+    Keep this stable: UI depends on it.
     New fields are optional for back-compat with older DBs/tests.
     """
 
@@ -94,6 +96,8 @@ class AdminLogEntry(BaseModel):
 
     api_key: Optional[str] = None
     request_id: Optional[str] = None
+    trace_id: Optional[str] = None
+    job_id: Optional[str] = None
     route: str
     client_host: Optional[str] = None
 
@@ -367,6 +371,8 @@ async def list_inference_logs(
         default=None, alias="api_key", description="Filter by API key value"
     ),
     request_id: Optional[str] = Query(default=None, description="Filter by request_id"),
+    trace_id: Optional[str] = Query(default=None, description="Filter by trace_id"),
+    job_id: Optional[str] = Query(default=None, description="Filter by job_id"),
     route: Optional[str] = Query(default=None, description="Filter by route, e.g. /v1/generate"),
     from_ts: Optional[datetime] = Query(
         default=None, description="Filter logs created_at >= this timestamp (ISO8601)"
@@ -377,6 +383,17 @@ async def list_inference_logs(
     limit: int = Query(default=50, ge=1, le=200, description="Max number of rows to return"),
     offset: int = Query(default=0, ge=0, description="Offset for pagination"),
 ):
+    """
+    Return persisted inference execution rows.
+
+    This surface is intentionally narrower than raw request logging:
+    - it includes actual generate/extract execution attempts
+    - it can be correlated by request_id, trace_id, and job_id
+    - it does not attempt to represent every HTTP request
+
+    In particular, async status-poll requests are expected to be visible in
+    access logs and trace events, not as standalone rows in `InferenceLog`.
+    """
     set_request_meta(request, route="/v1/admin/logs", model_id="admin", cached=False)
     await ensure_admin(api_key, session)
 
@@ -385,6 +402,8 @@ async def list_inference_logs(
         model_id=model_id,
         api_key_value=key,
         request_id=request_id,
+        trace_id=trace_id,
+        job_id=job_id,
         route=route,
         from_ts=from_ts,
         to_ts=to_ts,

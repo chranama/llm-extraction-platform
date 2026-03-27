@@ -298,6 +298,8 @@ async def test_admin_logs_filters_and_paging(
                 "created_at": now - timedelta(hours=3),
                 "api_key": k1,
                 "request_id": "l1",
+                "trace_id": "trace-l1",
+                "job_id": None,
                 "route": "/v1/generate",
                 "client_host": "test",
                 "model_id": "m1",
@@ -312,6 +314,8 @@ async def test_admin_logs_filters_and_paging(
                 "created_at": now - timedelta(hours=2),
                 "api_key": k1,
                 "request_id": "l2",
+                "trace_id": "trace-l2",
+                "job_id": "job-l2",
                 "route": "/v1/extract",
                 "client_host": "test",
                 "model_id": "m1",
@@ -326,6 +330,8 @@ async def test_admin_logs_filters_and_paging(
                 "created_at": now - timedelta(hours=1),
                 "api_key": k1,
                 "request_id": "l3",
+                "trace_id": "trace-l3",
+                "job_id": None,
                 "route": "/v1/generate",
                 "client_host": "test",
                 "model_id": "m2",
@@ -350,6 +356,8 @@ async def test_admin_logs_filters_and_paging(
     assert len(data["items"]) == 1
     assert data["items"][0]["model_id"] == "m1"
     assert data["items"][0]["route"] == "/v1/generate"
+    assert data["items"][0]["trace_id"] == "trace-l1"
+    assert data["items"][0]["job_id"] is None
 
     # Paging sanity: limit=1 should return 1 item, total stays 3 for no filters
     r2 = await client.get("/v1/admin/logs?limit=1&offset=0", headers=admin_headers)
@@ -357,6 +365,18 @@ async def test_admin_logs_filters_and_paging(
     data2 = r2.json()
     assert data2["total"] == 3
     assert len(data2["items"]) == 1
+
+    # Exact async execution-style filters should be available too
+    r3 = await client.get(
+        "/v1/admin/logs?trace_id=trace-l2&job_id=job-l2&limit=50&offset=0",
+        headers=admin_headers,
+    )
+    assert r3.status_code == 200
+    data3 = r3.json()
+    assert data3["total"] == 1
+    assert data3["items"][0]["request_id"] == "l2"
+    assert data3["items"][0]["trace_id"] == "trace-l2"
+    assert data3["items"][0]["job_id"] == "job-l2"
 
 
 @pytest.mark.anyio

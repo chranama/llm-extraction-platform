@@ -128,6 +128,7 @@ def proof_env() -> dict[str, str]:
         **dict(os.environ),
         "APP_ROOT": str(ROOT),
         "APP_PROFILE": "test",
+        "EDGE_MODE": "behind_gateway",
         "MODELS_PROFILE": "async-proof",
         "APP_CONFIG_PATH": "config/server.yaml",
         "MODELS_YAML": str(MODELS_YAML),

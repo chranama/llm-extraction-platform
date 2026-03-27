@@ -35,6 +35,7 @@ from llm_server.services.llm_runtime.inference import (
     write_cache,
     write_inference_log,
 )
+from llm_server.telemetry.traces import trace_id_from_ctx, trace_job_id_from_ctx
 
 router = APIRouter()
 
@@ -154,6 +155,8 @@ async def generate(
                 session,
                 api_key=api_key.key,
                 request_id=request_id,
+                trace_id=trace_id_from_ctx(request),
+                job_id=trace_job_id_from_ctx(request),
                 route="/v1/generate",
                 client_host=request.client.host if request.client else None,
                 model_id=model_id,
@@ -229,6 +232,8 @@ async def generate(
             session,
             api_key=api_key.key,
             request_id=request_id,
+            trace_id=trace_id_from_ctx(request),
+            job_id=trace_job_id_from_ctx(request),
             route="/v1/generate",
             client_host=request.client.host if request.client else None,
             model_id=model_id,

@@ -24,7 +24,7 @@ class JsonFormatter(logging.Formatter):
       - ts, level, logger, message
 
     Plus selected extras if present on the LogRecord:
-      - request_id, method, path, status_code, latency_ms, client_ip
+      - request_id, trace_id, job_id, method, path, status_code, latency_ms, client_ip
       - route, model_id, api_key_id, api_key_role
       - error_type, error_message
       - cached
@@ -32,6 +32,8 @@ class JsonFormatter(logging.Formatter):
 
     _EXTRA_KEYS = [
         "request_id",
+        "trace_id",
+        "job_id",
         "method",
         "path",
         "status_code",
@@ -91,6 +93,22 @@ def _best_request_id(request: Request) -> Optional[str]:
     return None
 
 
+def _best_trace_id(request: Request) -> Optional[str]:
+    """
+    Canonical trace id lookup.
+
+    MUST be set upstream by RequestContextMiddleware.
+    We do not generate IDs here.
+    """
+    try:
+        trace_id = getattr(getattr(request, "state", None), "trace_id", None)
+        if isinstance(trace_id, str) and trace_id.strip():
+            return trace_id.strip()
+    except Exception:
+        pass
+    return None
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Per-request structured logging.
@@ -109,6 +127,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         rid = _best_request_id(request)
+        trace_id = _best_trace_id(request)
 
         client_ip: Optional[str] = None
         if request.client:
@@ -123,6 +142,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "request_error",
                 extra={
                     "request_id": rid,
+                    "trace_id": trace_id,
                     "method": request.method,
                     "path": request.url.path,
                     "client_ip": client_ip,
@@ -141,6 +161,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         extra: Dict[str, Any] = {
             "request_id": rid,
+            "trace_id": trace_id,
             "method": request.method,
             "path": request.url.path,
             "status_code": response.status_code,

@@ -136,6 +136,10 @@ When disabled:
 
 Even in gateway-backed mode, the backend should retain defensive domain validation.
 
+Canonical identity-semantics reference:
+
+- `12-trace-identity-contract.md`
+
 ## Response Contract
 
 The gateway preserves backend:
@@ -205,6 +209,7 @@ For `POST /v1/extract/jobs`:
 
 ### Backend emits
 
+- backend access logs for HTTP-request visibility
 - inference logs
 - request trace events
 - admin log surfaces
@@ -213,8 +218,17 @@ For `POST /v1/extract/jobs`:
 
 - `request_id`
 - `trace_id`
+- `job_id` for async flows
 
 The design prefers linked edge and backend telemetry rather than moving all request inspection into the gateway.
+
+Interpretation:
+
+- `request_id` identifies one concrete HTTP request
+- `trace_id` identifies the full logical operation
+- `job_id` identifies the async job entity
+- poll requests should be visible in access logs and trace events
+- `/v1/admin/logs` should remain execution-focused rather than acting as a catch-all request log surface
 
 ## Security and Logging Rules
 

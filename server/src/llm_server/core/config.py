@@ -294,7 +294,7 @@ class Settings(BaseSettings):
     allowed_models: List[str] = Field(default_factory=list)
 
     models_config_path: Optional[str] = Field(
-        default="config/models.generate-only.yaml",
+        default="config/models.yaml",
         validation_alias="MODELS_YAML",
     )
 
