@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import llm_server.db.session as db_session
+
 from llm_server.core.errors import AppError
 from llm_server.domain.outcomes import RunOutcome
 from llm_server.domain.runs import ExtractionRun, RunIdentity, RunPolicySnapshot
@@ -107,3 +109,24 @@ async def run_extract(
         run=apply_extract_result(run, result),
         response=result,
     )
+
+
+async def run_extract_request(
+    *,
+    ctx: Any,
+    body: Any,
+    api_key: Any,
+    llm: Any,
+    redis: Any | None = None,
+    route_label: str = "/v1/extract",
+) -> RunExtractResult:
+    async with db_session.get_sessionmaker()() as session:
+        return await run_extract(
+            ctx=ctx,
+            body=body,
+            api_key=api_key,
+            llm=llm,
+            session=session,
+            redis=redis,
+            route_label=route_label,
+        )

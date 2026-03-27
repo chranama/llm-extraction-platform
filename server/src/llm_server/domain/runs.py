@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.outcomes import RunOutcome
 
 
@@ -29,6 +30,7 @@ class ExtractionRun:
     requested_max_new_tokens: int | None = None
     effective_max_new_tokens: int | None = None
     policy: RunPolicySnapshot | None = None
+    job_lifecycle: AsyncJobLifecycle | None = None
     outcome: RunOutcome = field(default_factory=RunOutcome.accepted)
 
     @property
@@ -60,3 +62,22 @@ class ExtractionRun:
 
     def with_outcome(self, outcome: RunOutcome) -> "ExtractionRun":
         return replace(self, outcome=outcome)
+
+    def with_identity(
+        self,
+        *,
+        request_id: str | None = None,
+        trace_id: str | None = None,
+        job_id: str | None = None,
+    ) -> "ExtractionRun":
+        return replace(
+            self,
+            identity=RunIdentity(
+                request_id=self.identity.request_id if request_id is None else request_id,
+                trace_id=self.identity.trace_id if trace_id is None else trace_id,
+                job_id=self.identity.job_id if job_id is None else job_id,
+            ),
+        )
+
+    def with_job_lifecycle(self, lifecycle: AsyncJobLifecycle | None) -> "ExtractionRun":
+        return replace(self, job_lifecycle=lifecycle)

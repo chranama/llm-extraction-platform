@@ -16,6 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from llm_server.core.errors import AppError
 from llm_server.core.redis import get_redis_from_request
 from llm_server.db.models import ApiKey, ExtractJob
+from llm_server.domain.jobs import AsyncJobLifecycle
+from llm_server.domain.outcomes import RunOutcome
+from llm_server.domain.runs import ExtractionRun, RunIdentity
 from llm_server.services.api_deps.core.llm_access import get_llm
 from llm_server.services.extract_execution import (
     InternalRequestContext,
@@ -267,16 +270,32 @@ async def process_extract_job_once(
 
         row = await session.execute(select(ApiKey).where(ApiKey.key == job.api_key))
         api_key = row.scalar_one()
+        run = ExtractionRun(
+            identity=RunIdentity(
+                request_id=job.request_id,
+                trace_id=job_trace_id(job),
+                job_id=job_id,
+            ),
+            route="/v1/extract/jobs/worker",
+            schema_id=job.schema_id,
+            requested_model_id=job.requested_model_id,
+            resolved_model_id=job.resolved_model_id,
+            cache_enabled=bool(job.cache),
+            repair_enabled=bool(job.repair),
+            requested_max_new_tokens=job.max_new_tokens,
+            job_lifecycle=AsyncJobLifecycle.RUNNING,
+            outcome=RunOutcome.accepted(),
+        )
 
         ctx = InternalRequestContext(
             app=app,
-            route="/v1/extract/jobs/worker",
-            request_id=job.request_id,
+            route=run.route,
+            request_id=run.request_id,
             client_host=None,
-            trace_id=job_trace_id(job),
-            trace_job_id=job_id,
+            trace_id=run.trace_id,
+            trace_job_id=run.job_id,
         )
-        set_trace_meta(ctx, trace_id=job_trace_id(job), job_id=job_id)
+        set_trace_meta(ctx, trace_id=run.trace_id, job_id=run.job_id)
         body = ExtractJobBody(
             schema_id=job.schema_id,
             text=job.text,
@@ -340,10 +359,10 @@ async def process_extract_job_once(
             logger.info(
                 "extract_job_done",
                 extra={
-                    "job_id": job_id,
-                    "request_id": job.request_id,
-                    "trace_id": job_trace_id(job),
-                    "route": "/v1/extract/jobs/worker",
+                    "job_id": run.job_id,
+                    "request_id": run.request_id,
+                    "trace_id": run.trace_id,
+                    "route": run.route,
                     "model_id": result.model,
                 },
             )
@@ -369,10 +388,10 @@ async def process_extract_job_once(
             logger.info(
                 "extract_job_done",
                 extra={
-                    "job_id": job_id,
-                    "request_id": job.request_id,
-                    "trace_id": job_trace_id(job),
-                    "route": "/v1/extract/jobs/worker",
+                    "job_id": run.job_id,
+                    "request_id": run.request_id,
+                    "trace_id": run.trace_id,
+                    "route": run.route,
                     "model_id": job.resolved_model_id,
                     "error_type": "app_error",
                     "error_message": e.code,
