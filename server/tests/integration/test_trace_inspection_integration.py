@@ -196,6 +196,22 @@ async def test_failed_sync_extract_trace_records_error_stage(
     assert failed
     assert failed[-1]["details"]["error_code"] == "capability_not_supported"
 
+    replay = await client.get(
+        f"/v1/admin/replay-cases/traces/{trace_id}",
+        headers=admin_headers,
+    )
+    assert replay.status_code == 200, replay.text
+    replay_body = replay.json()
+    assert replay_body["source"]["kind"] == "trace"
+    assert replay_body["source"]["trace_id"] == trace_id
+    case = replay_body["cases"][0]
+    assert case["case_id"] == f"trace:{trace_id}"
+    assert case["replay_ready"] is False
+    assert case["missing_fields"]
+    assert any(field in {"text", "schema_id"} for field in case["missing_fields"])
+    assert case["expectation"]["status"] == "failed"
+    assert case["expectation"]["error_code"] == "capability_not_supported"
+
 
 @pytest.mark.anyio
 async def test_sync_extract_uses_gateway_trace_id_in_behind_gateway_mode(

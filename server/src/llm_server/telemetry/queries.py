@@ -280,6 +280,23 @@ async def list_trace_events(session: AsyncSession, *, trace_id: str) -> list[Req
     return (await session.execute(stmt)).scalars().all()
 
 
+async def get_inference_log_by_id(session: AsyncSession, *, log_id: int) -> InferenceLog | None:
+    return await session.get(InferenceLog, log_id)
+
+
+async def list_inference_logs_for_trace(
+    session: AsyncSession,
+    *,
+    trace_id: str,
+    job_id: str | None = None,
+) -> list[InferenceLog]:
+    stmt = select(InferenceLog).where(InferenceLog.trace_id == trace_id)
+    if isinstance(job_id, str) and job_id:
+        stmt = stmt.where(InferenceLog.job_id == job_id)
+    stmt = stmt.order_by(InferenceLog.created_at.asc(), InferenceLog.id.asc())
+    return (await session.execute(stmt)).scalars().all()
+
+
 async def summarize_trace(session: AsyncSession, *, trace_id: str) -> TraceDetail | None:
     rows = await list_trace_events(session, trace_id=trace_id)
     if not rows:

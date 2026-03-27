@@ -19,6 +19,7 @@
 - [09) CI Hardening](09-ci-hardening.md)
 - [10) Model Decision Memo](10-model-decision-memo.md)
 - [12) Trace Identity Contract](12-trace-identity-contract.md)
+- [Replay Export Seam](replay-export-seam.md)
 - [Local Environment Contract](local-environment-contract.md)
 - [Kind Deployment Contract](kind-deployment-contract.md)
 - [Service Boundary: `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)

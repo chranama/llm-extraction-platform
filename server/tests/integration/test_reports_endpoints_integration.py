@@ -38,19 +38,22 @@ async def _mk_role_and_key(test_sessionmaker, *, role_name: str, active: bool = 
 
 
 @pytest.fixture
-async def admin_headers(test_sessionmaker):
+async def admin_headers(test_sessionmaker, create_schema):
+    del create_schema
     key = await _mk_role_and_key(test_sessionmaker, role_name="admin")
     return {"X-API-Key": key}
 
 
 @pytest.fixture
-async def standard_headers(test_sessionmaker):
+async def standard_headers(test_sessionmaker, create_schema):
+    del create_schema
     key = await _mk_role_and_key(test_sessionmaker, role_name="standard")
     return {"X-API-Key": key}
 
 
 @pytest.fixture
-async def other_headers(test_sessionmaker):
+async def other_headers(test_sessionmaker, create_schema):
+    del create_schema
     key = await _mk_role_and_key(test_sessionmaker, role_name="standard")
     return {"X-API-Key": key}
 
@@ -62,6 +65,19 @@ async def _insert_logs(test_sessionmaker, rows: list[dict]):
         for r in rows:
             session.add(InferenceLog(**r))
         await session.commit()
+
+
+async def _log_id_for_request_id(test_sessionmaker, *, request_id: str) -> int:
+    from llm_server.db.models import InferenceLog
+
+    async with test_sessionmaker() as session:
+        row = (
+            await session.execute(
+                select(InferenceLog.id).where(InferenceLog.request_id == request_id)
+            )
+        ).first()
+    assert row is not None
+    return int(row[0])
 
 
 @pytest.mark.anyio
@@ -377,6 +393,57 @@ async def test_admin_logs_filters_and_paging(
     assert data3["items"][0]["request_id"] == "l2"
     assert data3["items"][0]["trace_id"] == "trace-l2"
     assert data3["items"][0]["job_id"] == "job-l2"
+
+
+@pytest.mark.anyio
+async def test_admin_can_export_log_replay_case(
+    client,
+    test_sessionmaker,
+    admin_headers,
+    standard_headers,
+):
+    now = datetime.now(UTC)
+    k1 = standard_headers["X-API-Key"]
+
+    await _insert_logs(
+        test_sessionmaker,
+        [
+            {
+                "created_at": now,
+                "api_key": k1,
+                "request_id": "replay-log-1",
+                "trace_id": "replay-trace-1",
+                "job_id": None,
+                "route": "/v1/generate",
+                "client_host": "test",
+                "model_id": "m1",
+                "params_json": {
+                    "cache": True,
+                    "temperature": 0.2,
+                    "requested_max_new_tokens": 32,
+                },
+                "prompt": "Say hello",
+                "output": "hello",
+                "latency_ms": 5.0,
+                "prompt_tokens": 3,
+                "completion_tokens": 1,
+            }
+        ],
+    )
+    log_id = await _log_id_for_request_id(test_sessionmaker, request_id="replay-log-1")
+
+    r = await client.get(f"/v1/admin/replay-cases/logs/{log_id}", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"]["kind"] == "inference_log"
+    assert body["source"]["log_id"] == log_id
+    case = body["cases"][0]
+    assert case["case_id"] == f"log:{log_id}"
+    assert case["request_kind"] == "generate"
+    assert case["replay_ready"] is True
+    assert case["request"]["prompt"] == "Say hello"
+    assert case["expectation"]["status"] == "succeeded"
+    assert case["expectation"]["output"] == "hello"
 
 
 @pytest.mark.anyio

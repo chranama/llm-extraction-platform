@@ -15,6 +15,11 @@ from llm_server.db.models import ApiKey
 from llm_server.db.session import get_session
 from llm_server.io.policy_decisions import get_policy_snapshot, reload_policy_snapshot
 from llm_server.io.runtime_generate_slo import write_generate_slo_artifact
+from llm_server.observability.regression_manifests import build_regression_replay_manifest
+from llm_server.observability.replay_cases import (
+    build_replay_case_from_inference_log,
+    build_replay_case_from_trace,
+)
 from llm_server.reports import writer as report_w
 from llm_server.services.api_deps.admin.authz import ensure_admin
 from llm_server.services.api_deps.admin.models_ops import (
@@ -230,6 +235,13 @@ class AdminWriteGenerateSloResponse(BaseModel):
     ok: bool
     out_path: str
     payload: Dict[str, Any]
+
+
+class AdminReplayExportResponse(BaseModel):
+    schema_version: str
+    generated_at: str
+    source: Dict[str, Any] = Field(default_factory=dict)
+    cases: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 # ---- Runtime model ops ----
@@ -456,6 +468,83 @@ async def get_trace_detail(
         finished_at=detail.finished_at,
         events=events,
     )
+
+
+@router.get("/v1/admin/replay-cases/traces/{trace_id}", response_model=AdminReplayExportResponse)
+async def export_trace_replay_case(
+    trace_id: str,
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    set_request_meta(request, route="/v1/admin/replay-cases/traces", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    detail = await telem_q.summarize_trace(session, trace_id=trace_id)
+    if detail is None:
+        raise AppError(
+            code="not_found",
+            message="Trace not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    logs = await telem_q.list_inference_logs_for_trace(
+        session,
+        trace_id=trace_id,
+        job_id=detail.job_id,
+    )
+    case = build_replay_case_from_trace(detail, inference_logs=logs)
+    manifest = build_regression_replay_manifest(
+        source={
+            "kind": "trace",
+            "trace_id": detail.trace_id,
+            "status": detail.status,
+            "root_route": detail.root_route,
+            "request_kind": detail.request_kind,
+            "job_id": detail.job_id,
+            "model_id": detail.model_id,
+        },
+        cases=[case],
+    )
+    return AdminReplayExportResponse.model_validate(manifest)
+
+
+@router.get("/v1/admin/replay-cases/logs/{log_id}", response_model=AdminReplayExportResponse)
+async def export_log_replay_case(
+    log_id: int,
+    request: Request,
+    api_key: ApiKey = Depends(get_api_key),
+    session: AsyncSession = Depends(get_session),
+):
+    set_request_meta(request, route="/v1/admin/replay-cases/logs", model_id="admin", cached=False)
+    await ensure_admin(api_key, session)
+
+    log_row = await telem_q.get_inference_log_by_id(session, log_id=log_id)
+    if log_row is None:
+        raise AppError(
+            code="not_found",
+            message="Inference log not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    trace_detail = None
+    if isinstance(log_row.trace_id, str) and log_row.trace_id:
+        trace_detail = await telem_q.summarize_trace(session, trace_id=log_row.trace_id)
+
+    case = build_replay_case_from_inference_log(log_row, trace_detail=trace_detail)
+    manifest = build_regression_replay_manifest(
+        source={
+            "kind": "inference_log",
+            "log_id": log_row.id,
+            "trace_id": log_row.trace_id,
+            "route": log_row.route,
+            "status_code": log_row.status_code,
+            "job_id": log_row.job_id,
+            "model_id": log_row.model_id,
+        },
+        cases=[case],
+    )
+    return AdminReplayExportResponse.model_validate(manifest)
 
 
 # -------------------------------------------------------------------
