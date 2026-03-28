@@ -468,6 +468,33 @@ services:
     ports:
       - "${PROM_HOST_PORT:-9091}:9090"
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    restart: unless-stopped
+    profiles: ["otel-host"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    expose:
+      - "4317"
+      - "4318"
+      - "14269"
+    ports:
+      - "${JAEGER_PORT:-16686}:16686"
+
+  otel_collector_host:
+    image: otel/opentelemetry-collector-contrib:0.122.1
+    restart: unless-stopped
+    profiles: ["otel-host"]
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    depends_on:
+      - jaeger
+    volumes:
+      - ../observability/opentelemetry/collector.host.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${OTEL_COLLECTOR_HOST_PORT:-4318}:4318"
+      - "${OTEL_COLLECTOR_HEALTH_HOST_PORT:-13133}:13133"
+
   # ==========================
   # Eval
   # ==========================

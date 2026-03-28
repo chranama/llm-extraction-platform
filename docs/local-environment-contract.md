@@ -18,6 +18,8 @@ DATABASE_URL=postgresql+asyncpg://llm:llm@127.0.0.1:5433/llm
 REDIS_ENABLED=1
 REDIS_URL=redis://127.0.0.1:6379/0
 EDGE_MODE=behind_gateway
+OTEL_ENABLED=1
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/v1/traces
 ```
 
 This is the canonical local contract for:
@@ -33,7 +35,19 @@ These environment values close the seams uncovered during the live Phase 1 and 1
 - `MODELS_YAML` is explicit, so the proof does not depend on fallback model config resolution
 - `SCHEMAS_DIR` is explicit, so schema lookup is stable from the server runtime
 - `EDGE_MODE=behind_gateway` preserves the shared trace contract
+- `OTEL_ENABLED=1` turns on the canonical local distributed tracing path
+- `OTEL_EXPORTER_OTLP_ENDPOINT=...` points the backend and worker at the local collector
 - the proof fixture is checked into the repo instead of being generated in `/tmp`
+
+Canonical local OTel service names:
+
+- backend: `llm-extraction-platform`
+- worker: `llm-extraction-platform-worker`
+
+Canonical local trace infrastructure:
+
+- collector: `http://127.0.0.1:4318/v1/traces`
+- Jaeger UI: `http://127.0.0.1:16686`
 
 ## Canonical Proof Fixture
 

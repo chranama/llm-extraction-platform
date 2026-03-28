@@ -1,4 +1,4 @@
-# 14) Phase 2 Kind Deployment Contract
+# Kind Deployment Contract
 
 This document mirrors the gateway-side Phase 2 kind contract and defines how `llm-extraction-platform` participates in the Kubernetes-shaped local stack.
 
@@ -29,6 +29,10 @@ That overlay is responsible for:
   - `APP_PROFILE=test`
   - `MODELS_PROFILE=observability-proof`
   - `EDGE_MODE=behind_gateway`
+- exporting traces to the in-cluster collector with:
+  - `OTEL_ENABLED=1`
+  - `OTEL_SERVICE_NAME=llm-extraction-platform`
+  - `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318/v1/traces`
 - disabling nonessential local policy-gate behavior for the kind demo
 
 ## Canonical models config
@@ -58,6 +62,7 @@ The backend overlay does not include:
 
 - the async worker deployment
 - the gateway deployment/service
+- the collector and Jaeger add-ons
 - the proof-key seed job
 
 Those integrated stack resources live in:
