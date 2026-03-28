@@ -73,6 +73,12 @@ lint = [
 [project.scripts]
 llm = "llm_server.cli:main"
 
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "asgi-lifespan>=2.1",
+]
+
 # ---------- uv configuration ----------
 
 [tool.uv.sources]
@@ -109,11 +115,6 @@ llm-contracts = { path = "../contracts", editable = true }
 [tool.uv]
 package = true
 prerelease = "allow"
-
-dev-dependencies = [
-  "pytest>=8",
-  "asgi-lifespan>=2.1",
-]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

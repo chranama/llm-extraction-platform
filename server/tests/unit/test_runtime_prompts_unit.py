@@ -42,5 +42,5 @@ def test_build_repair_prompt_contains_previous_output_and_error_hint():
         '{"code": "schema_invalid"}',
     )
 
-    assert "PREVIOUS_OUTPUT:\n{\"merchant\": 123}" in prompt
-    assert "ERROR_HINT:\n{\"code\": \"schema_invalid\"}" in prompt
+    assert 'PREVIOUS_OUTPUT:\n{"merchant": 123}' in prompt
+    assert 'ERROR_HINT:\n{"code": "schema_invalid"}' in prompt

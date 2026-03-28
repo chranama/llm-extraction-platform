@@ -225,7 +225,9 @@ def build_replay_case_from_inference_log(
     trace_detail: TraceDetail | None = None,
 ) -> dict[str, Any]:
     route = str(getattr(log, "route", "") or "")
-    request_kind = trace_detail.request_kind if trace_detail is not None else _request_kind_from_route(route)
+    request_kind = (
+        trace_detail.request_kind if trace_detail is not None else _request_kind_from_route(route)
+    )
     request_payload = _request_payload_from_log(log)
     missing_fields = _missing_fields_for_request(route=route, request_payload=request_payload)
 
@@ -291,7 +293,9 @@ def build_replay_case_from_trace(
         return case
 
     request_payload = _request_payload_from_trace(detail)
-    missing_fields = _missing_fields_for_request(route=detail.root_route, request_payload=request_payload)
+    missing_fields = _missing_fields_for_request(
+        route=detail.root_route, request_payload=request_payload
+    )
     return {
         "case_id": f"trace:{detail.trace_id}",
         "route": detail.root_route,

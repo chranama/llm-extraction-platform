@@ -24,6 +24,8 @@ That separation matters because the backend now needs to support:
 - sync and async extract flows
 - richer observability and replay export
 
+It also now needs to support OpenTelemetry without collapsing the existing application identity model.
+
 ## Current Internal Layers
 
 ### `api/`
@@ -133,6 +135,8 @@ to:
 
 - future replay/regression evaluation
 
+It also sits next to, not on top of, the OpenTelemetry transport tracing path.
+
 ### `services/`
 
 Role:
@@ -229,6 +233,33 @@ The intended architectural reading is:
   - the AI application runtime and control-plane layer
 - `core + db + io + telemetry + services`
   - the supporting substrate
+
+## OpenTelemetry And Application Identity
+
+OpenTelemetry is now part of the runtime story, but it does not replace the backend's existing identity model.
+
+The intentional split is:
+
+- application `trace_id`
+  - logical operation identity
+  - used by logs, admin trace inspection, replay export, and proof artifacts
+- OTel `TraceId`
+  - transport-level distributed trace identity
+  - used by Jaeger and cross-service span propagation
+
+The bridge between those layers is explicit span attributes:
+
+- `llm.request_id`
+- `llm.trace_id`
+- `llm.job_id`
+
+Async behavior follows the same rule:
+
+- submit and worker execution share the distributed trace
+- poll requests remain separate HTTP traces
+- poll requests still carry the same application `trace_id` and `job_id`
+
+This keeps the OTel model accurate without weakening the backend's existing trace semantics.
 
 ## Extract Flow After The Refactor
 
