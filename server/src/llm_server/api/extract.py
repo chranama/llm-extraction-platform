@@ -12,6 +12,7 @@ from llm_server.application.submit_extract_job import (
     submit_extract_job_response_payload,
 )
 from llm_server.core.errors import AppError
+from llm_server.core.tracing import bind_request_span
 from llm_server.core.schema_registry import (
     SchemaLoadError,
     SchemaNotFoundError,
@@ -114,6 +115,15 @@ async def extract(
     llm: Any = Depends(get_llm),
 ):
     set_trace_meta(request)
+    bind_request_span(
+        request,
+        name="backend.extract",
+        route="/v1/extract",
+        attributes={
+            "llm.schema_id": body.schema_id,
+            "llm.requested_model_id": body.model,
+        },
+    )
     result = await run_extract_request(
         ctx=request,
         body=body,
@@ -144,6 +154,15 @@ async def submit_extract_job(
     llm: Any = Depends(get_llm),
 ):
     set_trace_meta(request)
+    bind_request_span(
+        request,
+        name="backend.extract_jobs.submit",
+        route="/v1/extract/jobs",
+        attributes={
+            "llm.schema_id": body.schema_id,
+            "llm.requested_model_id": body.model,
+        },
+    )
     result = await submit_extract_job_request(
         request=request,
         body=body,
@@ -160,6 +179,12 @@ async def get_extract_job_status(
     job_id: str,
     api_key=Depends(get_api_key),
 ):
+    bind_request_span(
+        request,
+        name="backend.extract_jobs.poll",
+        route="/v1/extract/jobs/{job_id}",
+        attributes={"llm.job_id": job_id},
+    )
     result = await poll_extract_job_request(
         request=request,
         job_id=job_id,

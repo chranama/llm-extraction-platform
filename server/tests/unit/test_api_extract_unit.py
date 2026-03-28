@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -30,9 +31,13 @@ def _body():
 @pytest.mark.anyio
 async def test_extract_route_delegates_to_application_use_case(monkeypatch: pytest.MonkeyPatch):
     calls: list[dict[str, object]] = []
+    span_calls: list[dict[str, object]] = []
 
     def fake_set_trace_meta(request, **kwargs):
         calls.append({"set_trace_meta": request, "kwargs": kwargs})
+
+    def fake_bind_request_span(request, **kwargs):
+        span_calls.append({"request": request, "kwargs": deepcopy(kwargs)})
 
     async def fake_run_extract_request(**kwargs):
         calls.append(kwargs)
@@ -60,6 +65,7 @@ async def test_extract_route_delegates_to_application_use_case(monkeypatch: pyte
         )
 
     monkeypatch.setattr(extract_api, "set_trace_meta", fake_set_trace_meta, raising=True)
+    monkeypatch.setattr(extract_api, "bind_request_span", fake_bind_request_span, raising=True)
     monkeypatch.setattr(extract_api, "run_extract_request", fake_run_extract_request, raising=True)
 
     response = await extract_api.extract(
@@ -78,3 +84,16 @@ async def test_extract_route_delegates_to_application_use_case(monkeypatch: pyte
     use_case_call = calls[1]
     assert use_case_call["route_label"] == "/v1/extract"
     assert use_case_call["redis"] is None
+    assert span_calls == [
+        {
+            "request": _request(),
+            "kwargs": {
+                "name": "backend.extract",
+                "route": "/v1/extract",
+                "attributes": {
+                    "llm.schema_id": "sroie_receipt_v1",
+                    "llm.requested_model_id": "model-a",
+                },
+            },
+        }
+    ]

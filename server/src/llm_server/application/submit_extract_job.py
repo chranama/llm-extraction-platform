@@ -6,6 +6,7 @@ from typing import Any
 import llm_server.db.session as db_session
 
 from llm_server.core.errors import AppError
+from llm_server.core.tracing import current_trace_carrier, start_child_span
 from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.runs import ExtractionRun
 from llm_server.services.extract_jobs import (
@@ -71,6 +72,7 @@ async def submit_extract_job(
         api_key=api_key,
         request_id=request_id,
         trace_id=trace_id,
+        otel_parent_context=current_trace_carrier(),
         body=body,
         resolved_model_id=resolved_model_id,
     )
@@ -119,16 +121,24 @@ async def submit_extract_job_request(
             status_code=503,
         )
 
-    async with db_session.get_sessionmaker()() as session:
-        return await submit_extract_job(
-            request=request,
-            body=body,
-            api_key=api_key,
-            llm=llm,
-            session=session,
-            queue=queue,
-            route_label=route_label,
-        )
+    with start_child_span(
+        "extract.job_submit",
+        request=request,
+        attributes={
+            "llm.schema_id": body.schema_id,
+            "llm.requested_model_id": getattr(body, "model", None),
+        },
+    ):
+        async with db_session.get_sessionmaker()() as session:
+            return await submit_extract_job(
+                request=request,
+                body=body,
+                api_key=api_key,
+                llm=llm,
+                session=session,
+                queue=queue,
+                route_label=route_label,
+            )
 
 
 def submit_extract_job_response_payload(result: SubmitExtractJobResult) -> dict[str, Any]:

@@ -6,6 +6,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -246,6 +247,10 @@ def _sync_runtime_env(s: "Settings") -> None:
 
     # NEW: modelz semantics
     os.environ.setdefault("MODEL_READINESS_MODE", str(s.model_readiness_mode))
+    os.environ.setdefault("OTEL_ENABLED", _truthy(s.otel_enabled))
+    os.environ.setdefault("OTEL_SERVICE_NAME", str(s.otel_service_name))
+    if s.otel_exporter_otlp_endpoint:
+        os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", str(s.otel_exporter_otlp_endpoint))
 
     # Concurrency / soft guard knobs (best-effort; do not fight explicit env)
     os.environ.setdefault("MAX_CONCURRENT_REQUESTS", str(int(s.max_concurrent_requests)))
@@ -323,6 +328,17 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: Optional[str] = Field(default=None, validation_alias="REDIS_URL")
     redis_enabled: bool = Field(default=False, validation_alias="REDIS_ENABLED")
+
+    # --- OpenTelemetry tracing bootstrap ---
+    otel_enabled: bool = Field(default=False, validation_alias="OTEL_ENABLED")
+    otel_service_name: str = Field(
+        default="llm-extraction-platform",
+        validation_alias="OTEL_SERVICE_NAME",
+    )
+    otel_exporter_otlp_endpoint: Optional[str] = Field(
+        default=None,
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    )
 
     # --- LLM service ---
     llm_service_url: str = Field(default="http://127.0.0.1:9001")
@@ -419,6 +435,27 @@ class Settings(BaseSettings):
             return [str(v).strip()] if str(v).strip() else ["*"]
         except Exception:
             return ["*"]
+
+    @field_validator("otel_service_name", mode="after")
+    @classmethod
+    def normalize_otel_service_name(cls, v: str) -> str:
+        service_name = str(v).strip()
+        if not service_name:
+            raise ValueError("otel_service_name must not be empty")
+        return service_name
+
+    @field_validator("otel_exporter_otlp_endpoint", mode="after")
+    @classmethod
+    def normalize_otel_exporter_endpoint(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        endpoint = str(v).strip()
+        if not endpoint:
+            return None
+        parsed = urlparse(endpoint)
+        if not parsed.scheme or not parsed.netloc:
+            raise ValueError("otel_exporter_otlp_endpoint must be an absolute URL")
+        return endpoint
 
     model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
 

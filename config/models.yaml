@@ -430,7 +430,7 @@ profiles:
       backend: transformers
       load_mode: lazy
       capabilities: { generate: true, extract: true }
-      readiness_mode: off
+      readiness_mode: "off"
       deployment_key: test
       deployment:
         profile_id: test
@@ -448,7 +448,7 @@ profiles:
         backend: transformers
         load_mode: lazy
         capabilities: { generate: true, extract: true }
-        readiness_mode: off
+        readiness_mode: "off"
         deployment_key: test-fake
         assessment: { assessed: false }
         notes: "Fake model for integration tests"

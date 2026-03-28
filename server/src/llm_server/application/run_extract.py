@@ -6,6 +6,7 @@ from typing import Any
 import llm_server.db.session as db_session
 
 from llm_server.core.errors import AppError
+from llm_server.core.tracing import start_child_span
 from llm_server.domain.outcomes import RunOutcome
 from llm_server.domain.runs import ExtractionRun, RunIdentity, RunPolicySnapshot
 from llm_server.services.extract_execution import ExtractExecutionResult, execute_extract
@@ -120,13 +121,21 @@ async def run_extract_request(
     redis: Any | None = None,
     route_label: str = "/v1/extract",
 ) -> RunExtractResult:
-    async with db_session.get_sessionmaker()() as session:
-        return await run_extract(
-            ctx=ctx,
-            body=body,
-            api_key=api_key,
-            llm=llm,
-            session=session,
-            redis=redis,
-            route_label=route_label,
-        )
+    with start_child_span(
+        "extract.execute",
+        request=ctx,
+        attributes={
+            "llm.schema_id": body.schema_id,
+            "llm.requested_model_id": getattr(body, "model", None),
+        },
+    ):
+        async with db_session.get_sessionmaker()() as session:
+            return await run_extract(
+                ctx=ctx,
+                body=body,
+                api_key=api_key,
+                llm=llm,
+                session=session,
+                redis=redis,
+                route_label=route_label,
+            )

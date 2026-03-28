@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from llm_server.core.errors import AppError
 from llm_server.core.redis import get_redis_from_request
+from llm_server.core.tracing import record_error, start_child_span, start_consumer_span
 from llm_server.db.models import ApiKey, ExtractJob
 from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.outcomes import RunOutcome
@@ -141,6 +142,7 @@ async def create_extract_job(
     api_key: ApiKey,
     request_id: str | None,
     trace_id: str | None,
+    otel_parent_context: dict[str, str] | None,
     body: ExtractJobBody,
     resolved_model_id: str,
 ) -> ExtractJob:
@@ -150,6 +152,7 @@ async def create_extract_job(
         api_key=api_key.key,
         request_id=request_id,
         trace_id=trace_id or request_id,
+        otel_parent_context_json=otel_parent_context,
         schema_id=body.schema_id,
         text=body.text,
         requested_model_id=body.model,
@@ -306,40 +309,67 @@ async def process_extract_job_once(
             repair=job.repair,
         )
         llm = get_llm(ctx)
+        worker_span: Any | None = None
 
         try:
-            await record_trace_event_best_effort(
-                trace_id=job_trace_id(job),
-                event_name="extract_job.worker_claimed",
-                route="/v1/extract/jobs/worker",
-                stage="claim_job",
-                status="ok",
-                request_id=job.request_id,
-                job_id=job_id,
-                model_id=job.resolved_model_id,
-                details={"schema_id": job.schema_id},
-            )
-            validate_extract_submission(ctx=ctx, body=body, llm=llm)
-            await record_trace_event_best_effort(
-                trace_id=job_trace_id(job),
-                event_name="extract_job.execution_started",
-                route="/v1/extract/jobs/worker",
-                stage="execution_started",
-                status="ok",
-                request_id=job.request_id,
-                job_id=job_id,
-                model_id=job.resolved_model_id,
-                details={"schema_id": job.schema_id},
-            )
-            result = await execute_extract(
-                ctx=ctx,
-                body=body,
-                api_key=api_key,
-                llm=llm,
-                session=session,
-                redis=getattr(app.state, "redis", None),
-                route_label="/v1/extract/jobs/worker",
-            )
+            with start_consumer_span(
+                "extract.job_worker",
+                carrier=getattr(job, "otel_parent_context_json", None),
+                attributes={
+                    "llm.route": run.route,
+                    "llm.request_id": run.request_id,
+                    "llm.trace_id": run.trace_id,
+                    "llm.job_id": run.job_id,
+                    "llm.schema_id": run.schema_id,
+                    "llm.requested_model_id": run.requested_model_id,
+                    "llm.resolved_model_id": run.resolved_model_id,
+                    "messaging.system": "redis",
+                    "messaging.destination.name": EXTRACT_JOB_QUEUE_KEY,
+                },
+            ) as worker_span:
+                await record_trace_event_best_effort(
+                    trace_id=job_trace_id(job),
+                    event_name="extract_job.worker_claimed",
+                    route="/v1/extract/jobs/worker",
+                    stage="claim_job",
+                    status="ok",
+                    request_id=job.request_id,
+                    job_id=job_id,
+                    model_id=job.resolved_model_id,
+                    details={"schema_id": job.schema_id},
+                )
+                validate_extract_submission(ctx=ctx, body=body, llm=llm)
+                await record_trace_event_best_effort(
+                    trace_id=job_trace_id(job),
+                    event_name="extract_job.execution_started",
+                    route="/v1/extract/jobs/worker",
+                    stage="execution_started",
+                    status="ok",
+                    request_id=job.request_id,
+                    job_id=job_id,
+                    model_id=job.resolved_model_id,
+                    details={"schema_id": job.schema_id},
+                )
+                with start_child_span(
+                    "extract.execute",
+                    request=ctx,
+                    attributes={
+                        "llm.schema_id": job.schema_id,
+                        "llm.requested_model_id": job.requested_model_id,
+                        "llm.resolved_model_id": job.resolved_model_id,
+                        "llm.job_id": run.job_id,
+                    },
+                ):
+                    result = await execute_extract(
+                        ctx=ctx,
+                        body=body,
+                        api_key=api_key,
+                        llm=llm,
+                        session=session,
+                        redis=getattr(app.state, "redis", None),
+                        route_label="/v1/extract/jobs/worker",
+                    )
+                worker_span.set_attribute("llm.job_status", STATUS_SUCCEEDED)
             await complete_extract_job_success(session=session, job_id=job_id, result=result)
             await record_trace_event_best_effort(
                 trace_id=job_trace_id(job),
@@ -368,6 +398,9 @@ async def process_extract_job_once(
             )
             return ExtractJobProcessResult(job_id=job_id, status=STATUS_SUCCEEDED)
         except AppError as e:
+            if worker_span is not None:
+                record_error(worker_span, e)
+                worker_span.set_attribute("llm.job_status", STATUS_FAILED)
             await complete_extract_job_failure(session=session, job_id=job_id, error=e)
             error_stage = (e.extra or {}).get("stage") if isinstance(e.extra, dict) else None
             await record_trace_event_best_effort(

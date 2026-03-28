@@ -17,6 +17,7 @@ from starlette.responses import Response
 from llm_server.core import errors, limits, logging as logging_config, metrics
 from llm_server.core.config import get_settings
 from llm_server.core.redis import close_redis, init_redis
+from llm_server.core.tracing import set_http_response, setup_tracing, start_request_span
 from llm_server.io.policy_decisions import load_policy_decision_from_env
 from llm_server.services.extract_jobs import RedisExtractJobQueue
 from llm_server.services.llm_runtime.llm_build import build_llm_from_settings
@@ -84,21 +85,28 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         if not isinstance(getattr(request.state, "cached", None), bool):
             request.state.cached = False
 
-        resp = await call_next(request)
+        request.state.route = request.url.path
+        with start_request_span(request) as span:
+            try:
+                resp = await call_next(request)
+            except Exception:
+                raise
 
-        try:
-            current_request_id = getattr(getattr(request, "state", None), "request_id", None)
-            if isinstance(current_request_id, str) and current_request_id.strip():
-                if _REQUEST_ID_HEADER not in resp.headers:
-                    resp.headers[_REQUEST_ID_HEADER] = current_request_id.strip()
-            current_trace_id = getattr(getattr(request, "state", None), "trace_id", None)
-            if isinstance(current_trace_id, str) and current_trace_id.strip():
-                if _TRACE_ID_HEADER not in resp.headers:
-                    resp.headers[_TRACE_ID_HEADER] = current_trace_id.strip()
-        except Exception:
-            pass
+            set_http_response(span, resp.status_code)
 
-        return resp
+            try:
+                current_request_id = getattr(getattr(request, "state", None), "request_id", None)
+                if isinstance(current_request_id, str) and current_request_id.strip():
+                    if _REQUEST_ID_HEADER not in resp.headers:
+                        resp.headers[_REQUEST_ID_HEADER] = current_request_id.strip()
+                current_trace_id = getattr(getattr(request, "state", None), "trace_id", None)
+                if isinstance(current_trace_id, str) and current_trace_id.strip():
+                    if _TRACE_ID_HEADER not in resp.headers:
+                        resp.headers[_TRACE_ID_HEADER] = current_trace_id.strip()
+            except Exception:
+                pass
+
+            return resp
 
 
 def _effective_model_load_mode(settings: Any) -> str:
@@ -204,6 +212,7 @@ async def lifespan(app: FastAPI):
 
     s = getattr(app.state, "settings", None) or get_settings()
     app.state.settings = s
+    app.state.tracing = setup_tracing(s, logging.getLogger("uvicorn.error"))
 
     # ---- policy snapshot (best-effort) ----
     try:
@@ -323,6 +332,13 @@ async def lifespan(app: FastAPI):
             raise
 
     yield
+
+    tracing_runtime = getattr(app.state, "tracing", None)
+    if tracing_runtime is not None:
+        try:
+            tracing_runtime.shutdown()
+        except Exception:
+            logging.getLogger("uvicorn.error").exception("Tracing shutdown failed")
 
     await close_redis(getattr(app.state, "redis", None))
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 import sys
 import types
 from types import SimpleNamespace
@@ -205,6 +206,40 @@ async def test_request_context_middleware_ignores_trace_id_without_gateway_proxy
 
 
 @pytest.mark.anyio
+async def test_request_context_middleware_starts_request_span_and_records_status(mmod):
+    async def _app(scope, receive, send):
+        return None
+
+    span_events: list[dict[str, object]] = []
+
+    @contextmanager
+    def fake_start_request_span(request, name="backend.request"):
+        span_events.append({"event": "start", "request": request, "name": name})
+        yield SimpleNamespace()
+
+    def fake_set_http_response(span, status_code: int):
+        span_events.append({"event": "status", "status_code": status_code})
+
+    mmod.start_request_span = fake_start_request_span
+    mmod.set_http_response = fake_set_http_response
+
+    mw = mmod.RequestContextMiddleware(_app)
+    req = _request(headers={"x-request-id": "rid-abc"})
+
+    async def _call_next(request):
+        assert request.state.route == "/v1/generate"
+        return Response("ok", status_code=201)
+
+    resp = await mw.dispatch(req, _call_next)
+
+    assert resp.headers["X-Request-ID"] == "rid-abc"
+    assert span_events == [
+        {"event": "start", "request": req, "name": "backend.request"},
+        {"event": "status", "status_code": 201},
+    ]
+
+
+@pytest.mark.anyio
 async def test_lifespan_lazy_mode_continues_when_llm_build_fails(monkeypatch, mmod):
     app = SimpleNamespace(state=SimpleNamespace())
     closed = {"v": False}
@@ -310,3 +345,71 @@ async def test_lifespan_eager_mode_raises_on_models_config_failure(monkeypatch, 
     with pytest.raises(RuntimeError):
         async with mmod.lifespan(app):
             pass
+
+
+@pytest.mark.anyio
+async def test_lifespan_bootstraps_and_shuts_down_tracing(monkeypatch, mmod):
+    app = SimpleNamespace(state=SimpleNamespace())
+    tracing_events: list[str] = []
+
+    class _TracingRuntime:
+        def shutdown(self) -> None:
+            tracing_events.append("shutdown")
+
+    async def _init_redis():
+        return None
+
+    async def _close_redis(_redis):
+        return None
+
+    monkeypatch.setattr(
+        mmod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            env="dev",
+            debug=False,
+            db_instance="db",
+            redis_enabled=False,
+            model_load_mode="lazy",
+            service_name="svc",
+            version="1.0",
+            cors_allowed_origins=[],
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mmod,
+        "setup_tracing",
+        lambda settings, logger: tracing_events.append("setup") or _TracingRuntime(),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        mmod,
+        "load_policy_decision_from_env",
+        lambda: SimpleNamespace(
+            ok=True,
+            source_path=None,
+            model_id=None,
+            enable_extract=None,
+            error=None,
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(mmod, "init_redis", _init_redis, raising=True)
+    monkeypatch.setattr(
+        mmod, "load_models_config", lambda: SimpleNamespace(models=[], defaults={}), raising=True
+    )
+    monkeypatch.setattr(
+        mmod, "_validate_models_config_or_raise", lambda cfg, mode: None, raising=True
+    )
+    monkeypatch.setattr(mmod, "build_llm_from_settings", lambda: None, raising=True)
+    monkeypatch.setattr(
+        mmod, "RuntimeModelLoader", lambda state: SimpleNamespace(state=state), raising=True
+    )
+    monkeypatch.setattr(mmod, "close_redis", _close_redis, raising=True)
+
+    async with mmod.lifespan(app):
+        assert tracing_events == ["setup"]
+        assert isinstance(app.state.tracing, _TracingRuntime)
+
+    assert tracing_events == ["setup", "shutdown"]

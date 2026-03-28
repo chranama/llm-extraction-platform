@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -16,9 +17,13 @@ async def test_submit_extract_job_route_delegates_to_application_use_case(
     monkeypatch: pytest.MonkeyPatch,
 ):
     calls: list[object] = []
+    span_calls: list[dict[str, object]] = []
 
     def fake_set_trace_meta(request, **kwargs):
         calls.append(("set_trace_meta", request, kwargs))
+
+    def fake_bind_request_span(request, **kwargs):
+        span_calls.append({"request": request, "kwargs": deepcopy(kwargs)})
 
     async def fake_submit_extract_job_request(**kwargs):
         calls.append(("submit", kwargs))
@@ -28,6 +33,7 @@ async def test_submit_extract_job_route_delegates_to_application_use_case(
         )
 
     monkeypatch.setattr(extract_api, "set_trace_meta", fake_set_trace_meta, raising=True)
+    monkeypatch.setattr(extract_api, "bind_request_span", fake_bind_request_span, raising=True)
     monkeypatch.setattr(
         extract_api,
         "submit_extract_job_request",
@@ -60,12 +66,27 @@ async def test_submit_extract_job_route_delegates_to_application_use_case(
     assert response.status == "queued"
     assert response.poll_path == "/v1/extract/jobs/job-1"
     assert calls[1][0] == "submit"
+    assert span_calls == [
+        {
+            "request": _request(),
+            "kwargs": {
+                "name": "backend.extract_jobs.submit",
+                "route": "/v1/extract/jobs",
+                "attributes": {
+                    "llm.schema_id": "sroie_receipt_v1",
+                    "llm.requested_model_id": None,
+                },
+            },
+        }
+    ]
 
 
 @pytest.mark.anyio
 async def test_get_extract_job_status_route_delegates_to_application_use_case(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    span_calls: list[dict[str, object]] = []
+
     async def fake_poll_extract_job_request(**kwargs):
         return SimpleNamespace(
             payload={
@@ -84,12 +105,16 @@ async def test_get_extract_job_status_route_delegates_to_application_use_case(
             }
         )
 
+    def fake_bind_request_span(request, **kwargs):
+        span_calls.append({"request": request, "kwargs": deepcopy(kwargs)})
+
     monkeypatch.setattr(
         extract_api,
         "poll_extract_job_request",
         fake_poll_extract_job_request,
         raising=True,
     )
+    monkeypatch.setattr(extract_api, "bind_request_span", fake_bind_request_span, raising=True)
 
     response = await extract_api.get_extract_job_status(
         _request(),
@@ -101,3 +126,13 @@ async def test_get_extract_job_status_route_delegates_to_application_use_case(
     assert response.trace_id == "trace-1"
     assert response.status == "succeeded"
     assert response.result == {"id": "1"}
+    assert span_calls == [
+        {
+            "request": _request(),
+            "kwargs": {
+                "name": "backend.extract_jobs.poll",
+                "route": "/v1/extract/jobs/{job_id}",
+                "attributes": {"llm.job_id": "job-1"},
+            },
+        }
+    ]

@@ -6,6 +6,7 @@ from typing import Any
 import llm_server.db.session as db_session
 
 from llm_server.core.errors import AppError
+from llm_server.core.tracing import span_link_from_carrier, start_child_span
 from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.outcomes import RunOutcome
 from llm_server.domain.runs import ExtractionRun, RunIdentity
@@ -78,17 +79,35 @@ async def poll_extract_job(
     route_label = job_poll_path(job.id)
     run = build_extraction_run_from_job(job=job, route_label=route_label)
     set_trace_meta(request, trace_id=run.trace_id, job_id=run.job_id)
-    await record_trace_event_best_effort(
-        trace_id=run.trace_id,
-        event_name="extract_job.status_polled",
-        route=route_label,
-        stage="status_poll",
-        status="ok",
-        request_id=getattr(getattr(request, "state", None), "request_id", None),
-        job_id=run.job_id,
-        model_id=run.resolved_model_id,
-        details={"job_status": job.status, "schema_id": job.schema_id},
+    link = span_link_from_carrier(
+        getattr(job, "otel_parent_context_json", None),
+        attributes={
+            "llm.link_kind": "async_submit",
+            "llm.trace_id": run.trace_id,
+            "llm.job_id": run.job_id,
+        },
     )
+    with start_child_span(
+        "extract.job_poll.status",
+        request=request,
+        attributes={
+            "llm.job_id": run.job_id,
+            "llm.schema_id": job.schema_id,
+            "llm.job_status": job.status,
+        },
+        links=[link] if link is not None else None,
+    ):
+        await record_trace_event_best_effort(
+            trace_id=run.trace_id,
+            event_name="extract_job.status_polled",
+            route=route_label,
+            stage="status_poll",
+            status="ok",
+            request_id=getattr(getattr(request, "state", None), "request_id", None),
+            job_id=run.job_id,
+            model_id=run.resolved_model_id,
+            details={"job_status": job.status, "schema_id": job.schema_id},
+        )
     return PollExtractJobResult(run=run, payload=serialize_extract_job(job))
 
 
@@ -98,10 +117,15 @@ async def poll_extract_job_request(
     job_id: str,
     api_key: Any,
 ) -> PollExtractJobResult:
-    async with db_session.get_sessionmaker()() as session:
-        return await poll_extract_job(
-            request=request,
-            job_id=job_id,
-            api_key=api_key,
-            session=session,
-        )
+    with start_child_span(
+        "extract.job_poll",
+        request=request,
+        attributes={"llm.job_id": job_id},
+    ):
+        async with db_session.get_sessionmaker()() as session:
+            return await poll_extract_job(
+                request=request,
+                job_id=job_id,
+                api_key=api_key,
+                session=session,
+            )

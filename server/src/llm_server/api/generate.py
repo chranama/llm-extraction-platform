@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from llm_server.core.errors import AppError
 from llm_server.core.redis import get_redis_from_request
+from llm_server.core.tracing import bind_request_span, start_child_span
 from llm_server.core.time import request_latency_ms
 import llm_server.db.session as db_session  # module import so tests can patch session wiring
 
@@ -83,10 +84,17 @@ async def generate(
 ):
     # IMPORTANT: avoid touching llm dependency in model_load_mode=off
     _reject_if_mode_off(request)
+    bind_request_span(
+        request,
+        name="backend.generate",
+        route="/v1/generate",
+        attributes={"llm.requested_model_id": body.model},
+    )
 
     llm: Any = get_llm(request)
 
     model_id, model = resolve_model(llm, body.model, capability="generate", request=request)
+    bind_request_span(request, attributes={"llm.resolved_model_id": model_id})
     require_capability(model_id, "generate", request=request)
 
     # NEW: assessed gate enforcement (policy-driven allow/block)
@@ -132,13 +140,18 @@ async def generate(
     }
 
     async with db_session.get_sessionmaker()() as session:
-        cached_out, cached_flag, _layer = await get_cached_output(
-            session,
-            redis,
-            cache=cache,
-            kind="single",
-            enabled=bool(body.cache),
-        )
+        with start_child_span(
+            "generate.cache_lookup",
+            request=request,
+            attributes={"llm.resolved_model_id": model_id},
+        ):
+            cached_out, cached_flag, _layer = await get_cached_output(
+                session,
+                redis,
+                cache=cache,
+                kind="single",
+                enabled=bool(body.cache),
+            )
 
         if isinstance(cached_out, str) and cached_flag:
             request.state.cached = True
@@ -197,11 +210,16 @@ async def generate(
                 stop=body.stop,
             )
 
-        result = await gate.run(
-            _do_generate,
-            request_id=str(request_id) if request_id is not None else None,
-            model_id=model_id,
-        )
+        with start_child_span(
+            "generate.model_call",
+            request=request,
+            attributes={"llm.resolved_model_id": model_id},
+        ):
+            result = await gate.run(
+                _do_generate,
+                request_id=str(request_id) if request_id is not None else None,
+                model_id=model_id,
+            )
 
         if isinstance(result, tuple) and len(result) == 2:
             output_text = result[0] if isinstance(result[0], str) else str(result[0])

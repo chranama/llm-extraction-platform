@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -119,3 +120,49 @@ async def test_run_extract_returns_run_with_result_metadata(
     assert result.run.outcome.status is RunStatus.SUCCEEDED
     assert result.run.outcome.cached is True
     assert result.run.outcome.completion_tokens == 33
+
+
+@pytest.mark.anyio
+async def test_run_extract_request_opens_child_span(monkeypatch: pytest.MonkeyPatch):
+    span_calls: list[dict[str, object]] = []
+
+    @contextmanager
+    def fake_start_child_span(name: str, *, request=None, attributes=None):
+        span_calls.append({"name": name, "request": request, "attributes": attributes})
+        yield SimpleNamespace()
+
+    class _SessionContext:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    async def fake_run_extract(**kwargs):
+        return SimpleNamespace(run="ok", response="ok")
+
+    monkeypatch.setattr(run_extract_app, "start_child_span", fake_start_child_span, raising=True)
+    monkeypatch.setattr(
+        run_extract_app.db_session, "get_sessionmaker", lambda: lambda: _SessionContext()
+    )
+    monkeypatch.setattr(run_extract_app, "run_extract", fake_run_extract, raising=True)
+
+    result = await run_extract_app.run_extract_request(
+        ctx=_ctx(),
+        body=_body(),
+        api_key=SimpleNamespace(key="proof-user-key"),
+        llm=object(),
+        redis=None,
+    )
+
+    assert result.response == "ok"
+    assert span_calls == [
+        {
+            "name": "extract.execute",
+            "request": _ctx(),
+            "attributes": {
+                "llm.schema_id": "sroie_receipt_v1",
+                "llm.requested_model_id": "model-a",
+            },
+        }
+    ]
