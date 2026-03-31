@@ -24,6 +24,7 @@
 - [Replay Export Seam](replay-export-seam.md)
 - [Local Environment Contract](local-environment-contract.md)
 - [Kind Deployment Contract](kind-deployment-contract.md)
+- [AWS Deployment Contract](aws-deployment-contract.md)
 - [Service Boundary: `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)
 - [v3 Rollout Plan](v3-rollout-plan.md)
 
