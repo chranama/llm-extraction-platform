@@ -21,6 +21,7 @@ jobs:
     steps:
       - name: Guard required live secrets
         id: guard
+        working-directory: .
         run: |
           set -euo pipefail
           if [[ -n "${{ secrets.INTEGRATIONS_LIVE_BASE_URL }}" && -n "${{ secrets.INTEGRATIONS_LIVE_API_KEY }}" ]]; then
