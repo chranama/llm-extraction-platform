@@ -61,6 +61,7 @@ Examples:
 - [application/run_extract.py](../server/src/llm_server/application/run_extract.py)
 - [application/submit_extract_job.py](../server/src/llm_server/application/submit_extract_job.py)
 - [application/poll_extract_job.py](../server/src/llm_server/application/poll_extract_job.py)
+- [application/process_extract_job.py](../server/src/llm_server/application/process_extract_job.py)
 
 Expected rule:
 
@@ -142,7 +143,7 @@ It also sits next to, not on top of, the OpenTelemetry transport tracing path.
 Role:
 
 - lower-level adapters and operations
-- queue and worker logic
+- queue adapters and job persistence helpers
 - enforcement helpers
 - compatibility layers retained during the refactor
 
@@ -156,6 +157,7 @@ Important nuance:
 
 - route-specific dependency wiring now lives under `api/dependencies/`
 - non-route code should not depend on route-dependency packages
+- async worker business flow now starts in `application/process_extract_job.py`
 - `services/` is now intended as execution substrate, not as a second application layer
 
 ## Directory Map
@@ -189,7 +191,7 @@ How to read that structure:
   - route files and route-only dependency wiring
 - `application/`
   - use-case orchestration
-  - sync extract and async submit/poll entrypoints
+  - sync extract and async submit/poll/worker entrypoints
 - `domain/`
   - stable runtime concepts like runs, outcomes, and job lifecycle
 - `runtime/`

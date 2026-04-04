@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from llm_server.services.extract_jobs import process_extract_job_once
+from llm_server.application.process_extract_job import process_extract_job_once
 
 pytestmark = pytest.mark.integration
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+"""Lower-level extract execution machinery used by application-layer use cases."""
+
 import json
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any, Optional
 
 from llm_server.core.errors import AppError
@@ -60,32 +61,6 @@ from llm_server.telemetry.traces import (
     trace_id_from_ctx,
     trace_job_id_from_ctx,
 )
-
-
-class InternalRequestContext:
-    def __init__(
-        self,
-        *,
-        app: Any,
-        route: str,
-        request_id: str | None,
-        client_host: str | None = None,
-        trace_id: str | None = None,
-        trace_job_id: str | None = None,
-    ):
-        self.app = app
-        self.state = SimpleNamespace(
-            route=route,
-            model_id="unknown",
-            cached=False,
-            request_id=request_id,
-            trace_id=trace_id or request_id,
-            trace_job_id=trace_job_id,
-            api_key="",
-            start_ts=None,
-        )
-        self.client = SimpleNamespace(host=client_host) if client_host else None
-        self.url = SimpleNamespace(path=route)
 
 
 @dataclass

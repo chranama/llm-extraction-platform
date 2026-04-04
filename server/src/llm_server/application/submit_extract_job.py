@@ -9,13 +9,13 @@ from llm_server.core.errors import AppError
 from llm_server.core.tracing import current_trace_carrier, start_child_span
 from llm_server.domain.jobs import AsyncJobLifecycle
 from llm_server.domain.runs import ExtractionRun
+from llm_server.services.extract_execution import validate_extract_submission
 from llm_server.services.extract_jobs import (
     ExtractJobQueue,
     create_extract_job,
     job_poll_path,
     job_trace_id,
     queue_from_request,
-    validate_extract_submission,
 )
 from llm_server.telemetry.traces import (
     record_trace_event_best_effort,

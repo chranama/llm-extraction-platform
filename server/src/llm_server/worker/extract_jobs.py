@@ -4,8 +4,9 @@ import argparse
 import asyncio
 import logging
 
+from llm_server.application.process_extract_job import process_extract_job_once
 from llm_server.main import create_app
-from llm_server.services.extract_jobs import process_extract_job_once, queue_from_app
+from llm_server.services.extract_jobs import queue_from_app
 
 logger = logging.getLogger("llm_server.worker.extract_jobs")
 

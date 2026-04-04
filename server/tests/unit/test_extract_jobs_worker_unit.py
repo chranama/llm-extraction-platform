@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import llm_server.services.extract_jobs as extract_jobs
+import llm_server.application.process_extract_job as process_jobs_app
 
 
 class _FakeSession:
@@ -65,12 +65,17 @@ async def test_process_extract_job_once_continues_worker_trace(monkeypatch: pyte
 
     async def fake_execute_extract(**kwargs):
         return SimpleNamespace(
+            schema_id="sroie_receipt_v1",
             model="resolved-model",
             data={"id": "1"},
             cached=False,
             repair_attempted=False,
             prompt_tokens=11,
             completion_tokens=22,
+            policy_generate_max_new_tokens_cap=384,
+            effective_max_new_tokens=256,
+            requested_max_new_tokens=256,
+            clamped=False,
         )
 
     async def fake_complete_extract_job_success(*, session, job_id, result):
@@ -100,46 +105,51 @@ async def test_process_extract_job_once_continues_worker_trace(monkeypatch: pyte
         )
         yield SimpleNamespace()
 
-    monkeypatch.setattr(extract_jobs, "claim_extract_job", fake_claim_extract_job, raising=True)
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
+        "claim_extract_job",
+        fake_claim_extract_job,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        process_jobs_app,
         "record_trace_event_best_effort",
         fake_record_trace_event_best_effort,
         raising=True,
     )
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
         "execute_extract",
         fake_execute_extract,
         raising=True,
     )
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
         "complete_extract_job_success",
         fake_complete_extract_job_success,
         raising=True,
     )
-    monkeypatch.setattr(extract_jobs, "get_llm", lambda ctx: object(), raising=True)
+    monkeypatch.setattr(process_jobs_app, "get_llm", lambda ctx: object(), raising=True)
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
         "validate_extract_submission",
         lambda **_: ("resolved-model", object()),
         raising=True,
     )
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
         "start_consumer_span",
         fake_start_consumer_span,
         raising=True,
     )
     monkeypatch.setattr(
-        extract_jobs,
+        process_jobs_app,
         "start_child_span",
         fake_start_child_span,
         raising=True,
     )
 
-    result = await extract_jobs.process_extract_job_once(
+    result = await process_jobs_app.process_extract_job_once(
         app=SimpleNamespace(state=SimpleNamespace(redis=None)),
         sessionmaker=lambda: _FakeSessionContext(),
         queue=_FakeQueue(),
@@ -161,7 +171,7 @@ async def test_process_extract_job_once_continues_worker_trace(monkeypatch: pyte
                 "llm.requested_model_id": "model-a",
                 "llm.resolved_model_id": "resolved-model",
                 "messaging.system": "redis",
-                "messaging.destination.name": extract_jobs.EXTRACT_JOB_QUEUE_KEY,
+                "messaging.destination.name": process_jobs_app.EXTRACT_JOB_QUEUE_KEY,
             },
         }
     ]
