@@ -20,4 +20,4 @@ uv run pytest -q
 - Exercises compose deployments and interactions across `server/`, `eval/`, and `policy/`.
 
 ## Deep Links
-- [`/docs/00-testing.md`](../docs/00-testing.md)
+- [`/docs/testing.md`](../docs/testing.md)

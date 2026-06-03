@@ -6,14 +6,13 @@ cd "$ROOT"
 
 CANONICAL_DOCS=(
   README.md
-  PORTFOLIO_ONE_PAGER.md
   docs/README.md
-  docs/00-testing.md
-  docs/01-extraction-contract.md
-  docs/02-project-demos.md
-  docs/03-deployment-modes.md
-  docs/09-ci-hardening.md
-  docs/10-model-decision-memo.md
+  docs/architecture.md
+  docs/api.md
+  docs/testing.md
+  docs/operations.md
+  docs/artifacts.md
+  docs/scope.md
   CONTRIBUTING.md
 )
 
@@ -34,7 +33,7 @@ TOP_LEVEL_READMES=(
   ui/README.md
 )
 
-ARCHIVE_DOCS=(docs/archive/*.md)
+ARCHIVE_DOCS=(archive/docs/archive/*.md)
 
 has_rg=0
 if command -v rg >/dev/null 2>&1; then

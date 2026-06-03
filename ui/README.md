@@ -18,4 +18,4 @@ npm run test:coverage
 - Calls backend API configured via `config/ui.json` and build-time env vars.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
+- [`/docs/api.md`](../docs/api.md)

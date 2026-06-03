@@ -17,4 +17,4 @@ uv run --project cli pytest -q
 - Uses project configuration and compose wrappers in `deploy/`.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
+- [`/docs/operations.md`](../docs/operations.md)

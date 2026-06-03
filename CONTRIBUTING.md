@@ -37,22 +37,20 @@ Keep PRs focused and reviewable.
 
 When changing these areas, update docs in the same PR:
 - `deploy/compose/` or profile wiring changes:
-  - `docs/03-deployment-modes.md`
+  - `docs/operations.md`
   - `deploy/README.md`
 - extraction contract/status-code/shape changes:
-  - `docs/01-extraction-contract.md`
+  - `docs/api.md`
   - relevant integration tests
 - demo scripts or workflows:
-  - `docs/02-project-demos.md`
-  - `docs/08-demo-evidence-index.md`
+  - `docs/artifacts.md`
   - `scripts/README.md`
 - test layout/CI lane changes:
-  - `docs/00-testing.md`
-  - `docs/09-ci-hardening.md`
+  - `docs/testing.md`
   - `.github/workflows/ci.yml`
 - model onboarding/eval threshold decision semantics:
-  - `docs/06-eval-methodology.md`
-  - `docs/10-model-decision-memo.md`
+  - `docs/artifacts.md`
+  - `docs/scope.md`
 
 Treat docs as product assets; stale docs are considered defects.
 

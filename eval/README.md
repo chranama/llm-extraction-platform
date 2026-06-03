@@ -16,4 +16,4 @@ uv run --project eval --extra test pytest -q
 - Produces artifacts consumed by `policy/` onboarding logic.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
+- [`/docs/artifacts.md`](../docs/artifacts.md)

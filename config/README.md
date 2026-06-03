@@ -17,4 +17,4 @@ uv run --project server pytest -q tests/unit/test_llm_config_helpers_unit.py
 - Consumed by `server/`, `policy/`, `eval/`, and compose profiles.
 
 ## Deep Links
-- [`/docs/03-deployment-modes.md`](../docs/03-deployment-modes.md)
+- [`/docs/operations.md`](../docs/operations.md)

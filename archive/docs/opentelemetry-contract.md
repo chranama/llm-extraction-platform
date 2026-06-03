@@ -89,4 +89,8 @@ The default backend OTel service name is:
 
 - `llm-extraction-platform`
 
-Later slices will extend the trace path into the async worker.
+Phase 2.2 expects the backend tracing path to cover:
+
+- API request handling
+- bounded internal application/runtime spans
+- async worker continuation resumed from persisted W3C context

@@ -54,6 +54,11 @@ Concrete Phase-3 example:
 - clamp manifest (clamp expected): `traffic_out/phase3_generate_20260304/evidence_manifest_clamp.json`
 - adversarial mismatch (intentional failure): `traffic_out/phase3_generate_20260304/evidence_manifest_adversarial_mismatch.json`
 
+Phase 2.2.9 runtime-comparison note:
+
+- operational runtime choice should use the signals in [Runtime Quality Scorecard](runtime-quality-scorecard.md)
+- eval artifacts remain the richer comparison substrate, but they should now map back to explicit runtime quality signals
+
 ## Quality axes
 
 Evaluate completeness on these axes:
@@ -76,3 +81,4 @@ Any model/onboarding decision claim should link to:
 - [02-project-demos.md](02-project-demos.md)
 - [04-architecture-deep-dive.md](04-architecture-deep-dive.md)
 - [10-model-decision-memo.md](10-model-decision-memo.md)
+- [Runtime Quality Scorecard](runtime-quality-scorecard.md)

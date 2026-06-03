@@ -17,4 +17,4 @@ uv run python -m pytest -q simulations/tests
 - Exercises running server/policy deployments and writes evidence under `traffic_out/`.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
+- [`/docs/artifacts.md`](../docs/artifacts.md)

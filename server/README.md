@@ -20,5 +20,5 @@ uv run python -m pytest -q tests/integration
 - Reads config from `config/`; uses contracts from `contracts/` and schemas from `schemas/`.
 
 ## Deep Links
-- [`/docs/01-extraction-contract.md`](../docs/01-extraction-contract.md)
-- [`/docs/03-deployment-modes.md`](../docs/03-deployment-modes.md)
+- [`/docs/api.md`](../docs/api.md)
+- [`/docs/operations.md`](../docs/operations.md)

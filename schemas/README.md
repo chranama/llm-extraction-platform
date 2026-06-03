@@ -17,4 +17,4 @@ uv run --project server --extra test pytest -q tests/integration/test_schema_reg
 - Validation/type enforcement lives in `contracts/`.
 
 ## Deep Links
-- [`/docs/01-extraction-contract.md`](../docs/01-extraction-contract.md)
+- [`/docs/api.md`](../docs/api.md)

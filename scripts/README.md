@@ -23,5 +23,5 @@ RUN_INTEGRATION=1 bash scripts/ci_smoke_matrix.sh
 - Uses compose profiles in `deploy/compose/` and tools in `simulations/`.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
-- [`/docs/09-ci-hardening.md`](../docs/09-ci-hardening.md)
+- [`/docs/artifacts.md`](../docs/artifacts.md)
+- [`/docs/testing.md`](../docs/testing.md)

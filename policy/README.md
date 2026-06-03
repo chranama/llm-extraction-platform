@@ -17,4 +17,4 @@ uv run --project policy --extra test pytest -q
 - Consumes eval artifacts and writes decisions consumed by `server/` admin reload.
 
 ## Deep Links
-- [`/docs/02-project-demos.md`](../docs/02-project-demos.md)
+- [`/docs/artifacts.md`](../docs/artifacts.md)
