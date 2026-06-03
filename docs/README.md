@@ -12,6 +12,7 @@ scope boundaries.
 - [API](api.md): public runtime endpoints and contract surfaces.
 - [Testing](testing.md): test layout, CI lanes, and behavior coverage.
 - [Operations](operations.md): local runtime modes, diagnostics, and common failures.
+- [Runbook](runbook.md): start, verify, observe, and shut down the local system.
 - [Artifacts](artifacts.md): generated evidence files and validation commands.
 - [Scope](scope.md): current claims, non-claims, and known limits.
 

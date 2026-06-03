@@ -3,6 +3,9 @@
 This repository supports local host, compose, and Kubernetes-oriented workflows.
 Some paths are lightweight validation paths; others require local infrastructure.
 
+For ordered start, verification, log inspection, and shutdown commands, use
+[`runbook.md`](runbook.md).
+
 ## Requirements
 
 Common requirements:

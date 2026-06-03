@@ -81,6 +81,7 @@ Regeneration runs live local workflows and may require Docker, Kubernetes
 - [API](docs/api.md)
 - [Testing](docs/testing.md)
 - [Operations](docs/operations.md)
+- [Runbook](docs/runbook.md)
 - [Artifacts](docs/artifacts.md)
 - [Scope](docs/scope.md)
 

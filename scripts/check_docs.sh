@@ -11,6 +11,7 @@ CANONICAL_DOCS=(
   docs/api.md
   docs/testing.md
   docs/operations.md
+  docs/runbook.md
   docs/artifacts.md
   docs/scope.md
   CONTRIBUTING.md
