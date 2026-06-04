@@ -6,6 +6,10 @@ The system exposes explicit API contracts around model outputs, applies runtime
 policy and capability gates, and includes tests plus runtime evidence for sync
 and async extraction behavior.
 
+Text generation asks a model to produce new text from a prompt. Structured
+extraction asks a model to read source text and return fields that match a
+declared schema, such as receipt totals or invoice metadata.
+
 ## What It Does
 
 - Serves `/v1/generate` for text generation with runtime controls.
@@ -25,55 +29,15 @@ and async extraction behavior.
 - `proof/`: generated runtime evidence, validation scripts, and stable artifacts.
 - `ui/`: frontend surface for operating and inspecting the service.
 
-## Commands
+## Run Locally
 
-Install repo-level tooling:
+The local runbook provides the step-by-step guide for starting, verifying,
+inspecting, and shutting down the platform:
 
-```bash
-uv sync --extra dev
-```
+- [Runbook](docs/runbook.md)
 
-Run representative repo tests:
-
-```bash
-uv run python -m pytest -q cli/tests config/tests contracts/tests schemas/tests tools/tests
-```
-
-Run service tests:
-
-```bash
-cd server
-uv sync --extra test
-uv run python -m pytest -q tests/unit
-uv run python -m pytest -q tests/integration
-```
-
-Run policy tests:
-
-```bash
-uv run --project policy --extra test pytest -q
-```
-
-Run eval tests:
-
-```bash
-uv run --project eval --extra test pytest -q
-```
-
-Validate the current runtime evidence bundle:
-
-```bash
-python proof/validate_evidence_manifest.py
-```
-
-Regenerate the runtime evidence bundle:
-
-```bash
-python proof/generate_canonical_manifest.py
-```
-
-Regeneration runs live local workflows and may require Docker, Kubernetes
-`kind`, Redis, Postgres, and the configured local model profile.
+It covers the API server, Postgres, Redis, optional UI, observability services,
+health checks, smoke requests, logs, and cleanup.
 
 ## Documentation
 
