@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import atexit
 import shutil
 import socket
 import subprocess
@@ -33,15 +34,27 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def run(args: list[str], *, env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+def run(
+    args: list[str], *, env: dict[str, str] | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
         args,
         cwd=ROOT,
         capture_output=True,
         text=True,
-        check=check,
+        check=False,
         env=env,
     )
+    if check and result.returncode != 0:
+        fail(
+            "command failed: {cmd}\nreturncode={code}\nstdout:\n{stdout}\nstderr:\n{stderr}".format(
+                cmd=" ".join(args),
+                code=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        )
+    return result
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -82,6 +95,28 @@ def wait_http(path: str, timeout_seconds: float = 60.0) -> None:
             return
         time.sleep(0.5)
     fail(f"timed out waiting for {path}")
+
+
+def wait_postgres(env: dict[str, str], timeout_seconds: float = 60.0) -> None:
+    db_url = env["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
+    code = (
+        "import asyncio\n"
+        "import asyncpg\n"
+        f"DATABASE_URL={db_url!r}\n"
+        "async def main():\n"
+        "    conn = await asyncpg.connect(DATABASE_URL)\n"
+        "    await conn.close()\n"
+        "asyncio.run(main())\n"
+    )
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        result = run(
+            ["uv", "run", "--project", "server", "python", "-c", code], env=env, check=False
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1)
+    fail("timed out waiting for Postgres readiness")
 
 
 def compose_env() -> dict[str, str]:
@@ -157,7 +192,7 @@ def seed_api_key(env: dict[str, str]) -> None:
         "async def main():\n"
         "    conn = await asyncpg.connect(DATABASE_URL)\n"
         "    try:\n"
-        "        await conn.execute(\"INSERT INTO api_keys (key, active, quota_monthly, quota_used, created_at) VALUES ($1, true, NULL, 0, now()) ON CONFLICT (key) DO UPDATE SET active = EXCLUDED.active\", API_KEY)\n"
+        '        await conn.execute("INSERT INTO api_keys (key, active, quota_monthly, quota_used, created_at) VALUES ($1, true, NULL, 0, now()) ON CONFLICT (key) DO UPDATE SET active = EXCLUDED.active", API_KEY)\n'
         "    finally:\n"
         "        await conn.close()\n"
         "asyncio.run(main())\n"
@@ -174,18 +209,49 @@ def generate_async_extract_proof() -> None:
     cenv = compose_env()
     penv = proof_env()
 
+    def cleanup_compose() -> None:
+        run(compose_cmd("down", "--remove-orphans", "-v"), env=cenv, check=False)
+
+    atexit.register(cleanup_compose)
+
     run(compose_cmd("up", "-d", "postgres_host", "redis_host"), env=cenv)
     wait_tcp("127.0.0.1", int(POSTGRES_PORT))
     wait_tcp("127.0.0.1", int(REDIS_PORT))
+    wait_postgres(penv)
 
     run(
-        ["uv", "run", "--project", "server", "python", "-m", "alembic", "-c", "server/alembic.ini", "upgrade", "head"],
+        [
+            "uv",
+            "run",
+            "--project",
+            "server",
+            "python",
+            "-m",
+            "alembic",
+            "-c",
+            "server/alembic.ini",
+            "upgrade",
+            "head",
+        ],
         env=penv,
     )
     seed_api_key(penv)
 
     with managed_process(
-        ["uv", "run", "--project", "server", "python", "-m", "uvicorn", "llm_server.main:app", "--host", "127.0.0.1", "--port", API_PORT],
+        [
+            "uv",
+            "run",
+            "--project",
+            "server",
+            "python",
+            "-m",
+            "uvicorn",
+            "llm_server.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            API_PORT,
+        ],
         env=penv,
         log_path=SERVER_LOG,
     ) as server_proc:
@@ -207,14 +273,19 @@ def generate_async_extract_proof() -> None:
                 body=json.dumps(submit_payload).encode("utf-8"),
             )
             submit_json = json.loads(body.decode("utf-8"))
-            write_json(ARTIFACT_DIR / "async_submit_response.json", {"status_code": code, "body": submit_json})
+            write_json(
+                ARTIFACT_DIR / "async_submit_response.json",
+                {"status_code": code, "body": submit_json},
+            )
             if code != 202:
                 fail(f"async submit returned {code}")
 
             job_path = submit_json["poll_path"]
             code, body = http_request("GET", job_path)
             initial_json = json.loads(body.decode("utf-8"))
-            write_json(ARTIFACT_DIR / "async_job_initial.json", {"status_code": code, "body": initial_json})
+            write_json(
+                ARTIFACT_DIR / "async_job_initial.json", {"status_code": code, "body": initial_json}
+            )
             if code != 200:
                 fail(f"initial job read returned {code}")
             if initial_json["status"] not in {"queued", "running", "succeeded"}:
@@ -233,7 +304,10 @@ def generate_async_extract_proof() -> None:
                 time.sleep(0.5)
             if final_json is None or final_code != 200:
                 fail("timed out waiting for final async job state")
-            write_json(ARTIFACT_DIR / "async_job_final.json", {"status_code": final_code, "body": final_json})
+            write_json(
+                ARTIFACT_DIR / "async_job_final.json",
+                {"status_code": final_code, "body": final_json},
+            )
             if final_json["status"] != "succeeded":
                 fail(f"final async job status was {final_json['status']}")
             result = final_json.get("result") or {}
@@ -258,6 +332,8 @@ def generate_async_extract_proof() -> None:
     if not summary["worker_claimed"]:
         fail("worker log did not include job id")
     write_json(ARTIFACT_DIR / "async_job_summary.json", summary)
+    cleanup_compose()
+    atexit.unregister(cleanup_compose)
 
 
 if __name__ == "__main__":

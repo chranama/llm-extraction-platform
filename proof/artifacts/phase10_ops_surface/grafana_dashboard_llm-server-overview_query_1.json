@@ -1,0 +1,19 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=count%28up%7Bjob%3D~%22llm-server-api-host%7Cllm_server_container%7Cllm-server-gateway-host%22%7D%20%3D%3D%201%29",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1780690588.506,
+            "1"
+          ]
+        }
+      ]
+    }
+  }
+}

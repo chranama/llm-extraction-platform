@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -73,6 +74,7 @@ class ComposeContext:
     proc_env: process env passed to docker compose (sanitized)
     env_files: env files used (exactly one: effective env file)
     """
+
     base_cmd: list[str]
     proc_env: dict[str, str]
     env_files: list[Path]
@@ -99,7 +101,9 @@ def clean_compose_process_env(cfg: GlobalConfig) -> dict[str, str]:
 
 
 def resolve_defaults_yaml(cfg: GlobalConfig, defaults_yaml: str | None) -> Path:
-    rel = (defaults_yaml or "config/compose-defaults.yaml").strip() or "config/compose-defaults.yaml"
+    rel = (
+        defaults_yaml or "config/compose-defaults.yaml"
+    ).strip() or "config/compose-defaults.yaml"
     p = Path(rel)
     return p if p.is_absolute() else (cfg.repo_root / p)
 
@@ -138,7 +142,9 @@ def render_effective_env_file(
     defaults_env = render_compose_env_dict(
         config_yaml_path=defaults_yaml_path,
         profile=defaults_profile,
-        extra_env=dict(extra_env) if extra_env is not None else {"COMPOSE_PROJECT_NAME": cfg.project_name},
+        extra_env=(
+            dict(extra_env) if extra_env is not None else {"COMPOSE_PROJECT_NAME": cfg.project_name}
+        ),
     )
 
     overrides: dict[str, str] = {}
@@ -206,7 +212,9 @@ def build_compose_context(
         raise CLIError(f"compose defaults yaml not found: {dy}", code=2)
 
     # Option A: ONLY include explicit env override file (per invocation or global cfg).
-    user_env = _resolve_user_env(cfg, env_override_file if env_override_file is not None else cfg.env_override_file)
+    user_env = _resolve_user_env(
+        cfg, env_override_file if env_override_file is not None else cfg.env_override_file
+    )
 
     # Create ONE effective env file (defaults merged with user overrides)
     effective_env = render_effective_env_file(
@@ -214,7 +222,15 @@ def build_compose_context(
         defaults_yaml_path=dy,
         defaults_profile=dp,
         user_env_file=user_env,
-        extra_env={"COMPOSE_PROJECT_NAME": cfg.project_name},
+        extra_env={
+            "COMPOSE_PROJECT_NAME": cfg.project_name,
+            "API_PORT": cfg.api_port,
+            "UI_PORT": cfg.ui_port,
+            "PGADMIN_PORT": cfg.pgadmin_port,
+            "PROM_PORT": cfg.prom_port,
+            "GRAFANA_PORT": cfg.grafana_port,
+            "PROM_HOST_PORT": cfg.prom_host_port,
+        },
     )
 
     env_files: list[Path] = [effective_env]
@@ -247,6 +263,36 @@ def compose_run(
 
 def compose_config(ctx: ComposeContext, *, profiles: Sequence[str], verbose: bool) -> None:
     compose_run(ctx, profiles=profiles, args=["config"], verbose=verbose)
+
+
+def compose_config_check(ctx: ComposeContext, *, profiles: Sequence[str], verbose: bool) -> None:
+    """
+    Validate the rendered Compose config without streaming it.
+
+    The full `docker compose config` output includes resolved environment values,
+    including secrets from the effective env file. Keep the explicit
+    `llmctl compose config` command available for inspection, but use this helper
+    in curated happy-path commands.
+    """
+    cmd = add_profiles(ctx.base_cmd, profiles) + ["config"]
+    if verbose:
+        print("+ docker compose config (output suppressed)")
+    p = subprocess.run(
+        cmd,
+        cwd=None,
+        env=ctx.proc_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if p.returncode != 0:
+        message = (p.stderr or p.stdout or "").strip()
+        if len(message) > 2000:
+            message = message[-2000:]
+        raise CLIError(
+            f"Compose config validation failed (exit {p.returncode}): {message}",
+            code=p.returncode,
+        )
 
 
 def compose_up(

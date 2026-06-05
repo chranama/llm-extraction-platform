@@ -1,0 +1,119 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.19kB done
+#1 DONE 0.0s
+
+#2 [ui internal] load build definition from Dockerfile.ui
+#2 transferring dockerfile: 1.05kB done
+#2 DONE 0.0s
+
+#3 [server internal] load build definition from Dockerfile.server
+#3 transferring dockerfile: 1.55kB done
+#3 DONE 0.0s
+
+#4 [ui internal] load metadata for docker.io/library/nginx:1.27-alpine
+#4 DONE 0.0s
+
+#5 [server internal] load metadata for docker.io/library/python:3.12-slim
+#5 DONE 0.2s
+
+#6 [ui internal] load metadata for docker.io/library/node:22-alpine
+#6 DONE 0.3s
+
+#7 [server  1/13] FROM docker.io/library/python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+#7 DONE 0.0s
+
+#8 [server internal] load build context
+#8 transferring context: 96.64kB 0.0s done
+#8 DONE 0.0s
+
+#9 [server  6/13] COPY server/pyproject.toml /app/server/pyproject.toml
+#9 CACHED
+
+#10 [server  8/13] RUN pip install --no-cache-dir /app/server
+#10 CACHED
+
+#11 [server 12/13] COPY config /app/config
+#11 CACHED
+
+#12 [server 10/13] COPY server/alembic.ini /app/server/alembic.ini
+#12 CACHED
+
+#13 [server  3/13] WORKDIR /app
+#13 CACHED
+
+#14 [server  4/13] COPY contracts/ /app/contracts/
+#14 CACHED
+
+#15 [server 11/13] COPY server/migrations /app/server/migrations
+#15 CACHED
+
+#16 [server  5/13] RUN pip install --no-cache-dir /app/contracts
+#16 CACHED
+
+#17 [server  9/13] RUN pip install --no-cache-dir "llama-cpp-python>=0.2.90"
+#17 CACHED
+
+#18 [server  7/13] COPY server/src /app/server/src
+#18 CACHED
+
+#19 [server  2/13] RUN apt-get update && apt-get install -y --no-install-recommends     build-essential curl wget git ca-certificates     cmake pkg-config     libopenblas-dev     tini   && rm -rf /var/lib/apt/lists/*
+#19 CACHED
+
+#20 [server 13/13] COPY schemas /app/schemas
+#20 CACHED
+
+#21 [server] exporting to image
+#21 exporting layers done
+#21 writing image sha256:d8e05ce064224c89accbd4cdef56ec95c44334b0a25be5e339d33673588537cc done
+#21 naming to docker.io/library/llmep-ops-surface-server done
+#21 DONE 0.0s
+
+#22 [server] resolving provenance for metadata file
+#22 DONE 0.0s
+
+#23 [ui internal] load .dockerignore
+#23 transferring context: 1.60kB done
+#23 CACHED
+
+#24 [ui build 1/7] FROM docker.io/library/node:22-alpine@sha256:968df39aedcea65eeb078fb336ed7191baf48f972b4479711397108be0966920
+#24 DONE 0.0s
+
+#25 [ui runtime 1/3] FROM docker.io/library/nginx:1.27-alpine
+#25 DONE 0.0s
+
+#26 [ui internal] load build context
+#26 transferring context: 378.98kB 0.0s done
+#26 DONE 0.0s
+
+#27 [ui runtime 2/3] WORKDIR /usr/share/nginx/html
+#27 CACHED
+
+#28 [ui build 5/7] COPY ui/ ./
+#28 CACHED
+
+#29 [ui build 4/7] RUN npm install --no-audit --no-fund
+#29 CACHED
+
+#30 [ui build 6/7] COPY config/ui.json /app/ui/public/config.json
+#30 CACHED
+
+#31 [ui build 2/7] WORKDIR /app/ui
+#31 CACHED
+
+#32 [ui build 3/7] COPY ui/package.json ui/package-lock.json ./
+#32 CACHED
+
+#33 [ui build 7/7] RUN npm run build
+#33 CACHED
+
+#34 [ui runtime 3/3] COPY --from=build /app/ui/dist ./
+#34 CACHED
+
+#35 [ui] exporting to image
+#35 exporting layers done
+#35 writing image sha256:ef2f91acb36517b608e10f00d26a90dae7ad09958f6e4a4a4c435547d1cc25ac done
+#35 naming to docker.io/library/llmep-ops-surface-ui done
+#35 DONE 0.0s
+
+#36 [ui] resolving provenance for metadata file
+#36 DONE 0.0s

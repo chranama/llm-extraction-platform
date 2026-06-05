@@ -1,0 +1,16 @@
+{
+  "proof_phase": "phase9_policy_eval_linkage",
+  "generated_at": "2026-06-05T20:16:08.261107+00:00",
+  "status": "pass",
+  "policy_cli_allow_returncode": 0,
+  "policy_cli_deny_returncode": 2,
+  "allow_eval_run_dir": "proof/artifacts/phase9_policy_eval_linkage/eval_pass",
+  "deny_eval_run_dir": "proof/artifacts/phase9_policy_eval_linkage/eval_fail",
+  "allow_policy_ok": true,
+  "deny_policy_ok": false,
+  "admin_initial_enable_extract": true,
+  "admin_reload_enable_extract": false,
+  "extract_allow_status_code": 200,
+  "extract_deny_status_code": 400,
+  "runtime_policy_path": "proof/artifacts/phase9_policy_eval_linkage/runtime_policy.json"
+}

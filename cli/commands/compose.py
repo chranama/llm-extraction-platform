@@ -76,7 +76,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     # Option A: explicit env override only (no implicit .env.*)
     p.add_argument(
         "--env-override-file",
-        default=None,
+        default=argparse.SUPPRESS,
         help="Optional env file to include AFTER rendered compose-defaults for this invocation (e.g. .env.docker).",
     )
 
@@ -110,7 +110,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     up.add_argument("--remove-orphans", action="store_true")
     up.add_argument("args", nargs=argparse.REMAINDER)
 
-    rm = sp.add_parser("rm-orphans", help="Shortcut: compose up -d --remove-orphans for a profile set")
+    rm = sp.add_parser(
+        "rm-orphans", help="Shortcut: compose up -d --remove-orphans for a profile set"
+    )
     rm.add_argument("--profiles", nargs="*", default=[])
 
     infra = sp.add_parser("infra-up", help="Start postgres+redis (profile infra).")
@@ -134,7 +136,14 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
 
     # Shortcuts
     if getattr(args, "_shortcut", None) == "infra-up":
-        compose_up(ctx, profiles=["infra"], detach=True, build=False, remove_orphans=True, verbose=args.verbose)
+        compose_up(
+            ctx,
+            profiles=["infra"],
+            detach=True,
+            build=False,
+            remove_orphans=True,
+            verbose=args.verbose,
+        )
         print("✅ infra up (postgres/redis).")
         return 0
 
@@ -173,13 +182,20 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
         return 0
 
     if c == "ps":
-        compose_ps(ctx, profiles=list(args.profiles or []), extra_args=list(args.args or []), verbose=args.verbose)
+        compose_ps(
+            ctx,
+            profiles=list(args.profiles or []),
+            extra_args=list(args.args or []),
+            verbose=args.verbose,
+        )
         return 0
 
     if c == "logs":
         follow = True
         tail = int(getattr(args, "tail", 200))
-        compose_logs(ctx, profiles=list(args.profiles or []), follow=follow, tail=tail, verbose=args.verbose)
+        compose_logs(
+            ctx, profiles=list(args.profiles or []), follow=follow, tail=tail, verbose=args.verbose
+        )
         return 0
 
     if c == "down":
@@ -205,7 +221,14 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
         return 0
 
     if c == "rm-orphans":
-        compose_up(ctx, profiles=list(args.profiles or []), detach=True, build=False, remove_orphans=True, verbose=args.verbose)
+        compose_up(
+            ctx,
+            profiles=list(args.profiles or []),
+            detach=True,
+            build=False,
+            remove_orphans=True,
+            verbose=args.verbose,
+        )
         return 0
 
     raise CLIError(f"Unknown compose command: {c}", code=2)

@@ -1,0 +1,12 @@
+{
+  "status_code": 200,
+  "body": {
+    "schema_id": "proof_async",
+    "model": "fake-extract",
+    "data": {
+      "id": "1"
+    },
+    "cached": false,
+    "repair_attempted": false
+  }
+}

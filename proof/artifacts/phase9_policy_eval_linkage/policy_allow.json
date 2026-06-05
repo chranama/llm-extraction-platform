@@ -1,0 +1,47 @@
+{
+  "schema_version": "policy_decision_v2",
+  "generated_at": "2026-06-05T20:16:03Z",
+  "policy": "extract_enablement",
+  "pipeline": "extract_only",
+  "status": "allow",
+  "ok": true,
+  "enable_extract": true,
+  "generate_max_new_tokens_cap": null,
+  "contract_errors": 0,
+  "contract_warnings": 0,
+  "thresholds_profile": "extract/default",
+  "generate_thresholds_profile": null,
+  "eval_run_dir": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/eval_pass",
+  "eval_task": "extract",
+  "eval_run_id": "eval_pass",
+  "reasons": [],
+  "warnings": [
+    {
+      "code": "insufficient_sample_size",
+      "message": "n_total=2 below min_n_total=20; decision is low-confidence",
+      "context": {
+        "n_total": 2,
+        "min_n_total": 20
+      }
+    }
+  ],
+  "metrics": {
+    "n_total": 2,
+    "n_ok": 2,
+    "task": "extract",
+    "run_id": "eval_pass",
+    "run_dir": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/eval_pass",
+    "deployment_key": "async-proof--fake-extract",
+    "deployment": {
+      "provider": "fake",
+      "profile": "async-proof"
+    },
+    "http_5xx_rate": 0.0,
+    "timeout_rate": 0.0,
+    "non_200_rate": 0.0,
+    "schema_validity_rate": 99.0,
+    "schema_validity_rate__gate_source": "point",
+    "schema_validity_rate__gate_value": 99.0,
+    "field_exact_match_rate": {}
+  }
+}

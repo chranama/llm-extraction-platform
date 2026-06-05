@@ -1,0 +1,19 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=sum%28up%29",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {},
+          "value": [
+            1780690588.527,
+            "2"
+          ]
+        }
+      ]
+    }
+  }
+}

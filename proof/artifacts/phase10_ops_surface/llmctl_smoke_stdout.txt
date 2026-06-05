@@ -1,0 +1,71 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 586B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile.server
+#2 transferring dockerfile: 1.55kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim
+#3 DONE 0.2s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 1.60kB done
+#4 DONE 0.0s
+
+#5 [ 1/13] FROM docker.io/library/python:3.12-slim@sha256:090ba77e2958f6af52a5341f788b50b032dd4ca28377d2893dcf1ecbdfdfe203
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 96.64kB 0.0s done
+#6 DONE 0.0s
+
+#7 [ 2/13] RUN apt-get update && apt-get install -y --no-install-recommends     build-essential curl wget git ca-certificates     cmake pkg-config     libopenblas-dev     tini   && rm -rf /var/lib/apt/lists/*
+#7 CACHED
+
+#8 [ 8/13] RUN pip install --no-cache-dir /app/server
+#8 CACHED
+
+#9 [ 9/13] RUN pip install --no-cache-dir "llama-cpp-python>=0.2.90"
+#9 CACHED
+
+#10 [11/13] COPY server/migrations /app/server/migrations
+#10 CACHED
+
+#11 [ 6/13] COPY server/pyproject.toml /app/server/pyproject.toml
+#11 CACHED
+
+#12 [ 5/13] RUN pip install --no-cache-dir /app/contracts
+#12 CACHED
+
+#13 [12/13] COPY config /app/config
+#13 CACHED
+
+#14 [ 7/13] COPY server/src /app/server/src
+#14 CACHED
+
+#15 [ 3/13] WORKDIR /app
+#15 CACHED
+
+#16 [ 4/13] COPY contracts/ /app/contracts/
+#16 CACHED
+
+#17 [10/13] COPY server/alembic.ini /app/server/alembic.ini
+#17 CACHED
+
+#18 [13/13] COPY schemas /app/schemas
+#18 CACHED
+
+#19 exporting to image
+#19 exporting layers done
+#19 writing image sha256:d8e05ce064224c89accbd4cdef56ec95c44334b0a25be5e339d33673588537cc done
+#19 naming to docker.io/library/llmep-ops-surface-server done
+#19 DONE 0.0s
+
+#20 resolving provenance for metadata file
+#20 DONE 0.0s
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+reviewer smoke path running at http://127.0.0.1:18085
+inspect: docker compose ps / docker compose logs

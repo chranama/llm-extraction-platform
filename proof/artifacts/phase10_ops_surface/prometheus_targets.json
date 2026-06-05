@@ -1,0 +1,62 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/targets",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "activeTargets": [
+        {
+          "discoveredLabels": {
+            "__address__": "server:8000",
+            "__metrics_path__": "/metrics",
+            "__scheme__": "http",
+            "__scrape_interval__": "5s",
+            "__scrape_timeout__": "5s",
+            "job": "llm_server_container"
+          },
+          "labels": {
+            "instance": "server:8000",
+            "job": "llm_server_container"
+          },
+          "scrapePool": "llm_server_container",
+          "scrapeUrl": "http://server:8000/metrics",
+          "globalUrl": "http://server:8000/metrics",
+          "lastError": "",
+          "lastScrape": "2026-06-05T20:16:26.507363709Z",
+          "lastScrapeDuration": 0.005995625,
+          "health": "up",
+          "scrapeInterval": "5s",
+          "scrapeTimeout": "5s"
+        },
+        {
+          "discoveredLabels": {
+            "__address__": "prometheus:9090",
+            "__metrics_path__": "/metrics",
+            "__scheme__": "http",
+            "__scrape_interval__": "5s",
+            "__scrape_timeout__": "5s",
+            "job": "prometheus"
+          },
+          "labels": {
+            "instance": "prometheus:9090",
+            "job": "prometheus"
+          },
+          "scrapePool": "prometheus",
+          "scrapeUrl": "http://prometheus:9090/metrics",
+          "globalUrl": "http://prometheus:9090/metrics",
+          "lastError": "",
+          "lastScrape": "2026-06-05T20:16:28.416373085Z",
+          "lastScrapeDuration": 0.012048208,
+          "health": "up",
+          "scrapeInterval": "5s",
+          "scrapeTimeout": "5s"
+        }
+      ],
+      "droppedTargets": [],
+      "droppedTargetCounts": {
+        "llm_server_container": 0,
+        "prometheus": 0
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "status_code": 200,
-  "trace_id": "81af1dbe740044a5b3494d16084b2bbc",
+  "trace_id": "8a849fed8149548c00be9c74d07abf19",
   "body": {
     "schema_id": "proof_async",
     "model": "fake-extract",

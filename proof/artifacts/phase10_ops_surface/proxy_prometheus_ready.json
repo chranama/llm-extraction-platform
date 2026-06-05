@@ -1,0 +1,7 @@
+{
+  "url": "http://127.0.0.1:18089/prometheus/-/ready",
+  "status_code": 200,
+  "body": {
+    "raw": "Prometheus Server is Ready.\n"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=histogram_quantile%280.95%2C%20sum%20by%20%28le%2C%20route%2C%20model_id%29%20%28rate%28llm_api_request_latency_seconds_bucket%7Bjob%3D~%22llm-server-api-host%7Cllm_server_container%22%7D%5B5m%5D%29%29%29",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": []
+    }
+  }
+}

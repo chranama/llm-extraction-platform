@@ -1,0 +1,8 @@
+NAME                             IMAGE                      COMMAND                  SERVICE      CREATED          STATUS                    PORTS
+llmep-ops-surface-grafana-1      grafana/grafana:11.1.0     "/run.sh"                grafana      10 seconds ago   Up 9 seconds              0.0.0.0:18088->3000/tcp, [::]:18088->3000/tcp
+llmep-ops-surface-postgres-1     postgres:16-alpine         "docker-entrypoint.s…"   postgres     19 seconds ago   Up 19 seconds (healthy)   5432/tcp
+llmep-ops-surface-prometheus-1   prom/prometheus:v2.54.1    "/bin/prometheus --c…"   prometheus   10 seconds ago   Up 9 seconds              0.0.0.0:18087->9090/tcp, [::]:18087->9090/tcp
+llmep-ops-surface-proxy-1        nginx:1.27-alpine          "/docker-entrypoint.…"   proxy        10 seconds ago   Up 9 seconds              0.0.0.0:18089->80/tcp, [::]:18089->80/tcp
+llmep-ops-surface-redis-1        redis:7-alpine             "docker-entrypoint.s…"   redis        19 seconds ago   Up 19 seconds (healthy)   6379/tcp
+llmep-ops-surface-server-1       llmep-ops-surface-server   "/usr/bin/tini -- py…"   server       19 seconds ago   Up 14 seconds (healthy)   0.0.0.0:18085->8000/tcp, [::]:18085->8000/tcp
+llmep-ops-surface-ui-1           llmep-ops-surface-ui       "/docker-entrypoint.…"   ui           10 seconds ago   Up 9 seconds              0.0.0.0:18086->80/tcp, [::]:18086->80/tcp

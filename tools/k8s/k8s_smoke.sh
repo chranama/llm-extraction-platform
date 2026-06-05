@@ -8,6 +8,7 @@ REMOTE_PORT="${REMOTE_PORT:-8000}"
 API_BASE="http://localhost:${LOCAL_PORT}"
 API_KEY="${API_KEY:-}"
 PROOF_API_KEY="${PROOF_API_KEY:-kind-proof-key}"
+KUBECTL_CONTEXT="${KUBECTL_CONTEXT:-}"
 
 AUTH_HEADER=()
 if [[ -n "${API_KEY}" ]]; then
@@ -19,13 +20,21 @@ need kubectl
 need curl
 need python
 
+kubectl_cmd() {
+  if [[ -n "${KUBECTL_CONTEXT}" ]]; then
+    kubectl --context "${KUBECTL_CONTEXT}" "$@"
+  else
+    kubectl "$@"
+  fi
+}
+
 ensure_api_key() {
   if [[ -n "${API_KEY}" ]]; then
     return 0
   fi
 
   echo "Bootstrap local proof API key via postgres"
-  kubectl -n "${NAMESPACE}" exec deploy/postgres -- /bin/sh -lc \
+  kubectl_cmd -n "${NAMESPACE}" exec deploy/postgres -- /bin/sh -lc \
     "PGPASSWORD=llm psql -U llm -d llm -c \"INSERT INTO api_keys (key, active, quota_monthly, quota_used, created_at) VALUES ('${PROOF_API_KEY}', true, NULL, 0, now()) ON CONFLICT (key) DO UPDATE SET active = EXCLUDED.active;\"" >/dev/null
   API_KEY="${PROOF_API_KEY}"
   AUTH_HEADER=(-H "X-API-Key: ${API_KEY}")
@@ -34,7 +43,7 @@ ensure_api_key() {
 ensure_api_key
 
 echo "Port-forward svc/${API_SVC} ${LOCAL_PORT}:${REMOTE_PORT} (ns=${NAMESPACE})"
-kubectl -n "${NAMESPACE}" port-forward "svc/${API_SVC}" "${LOCAL_PORT}:${REMOTE_PORT}" >/tmp/k8s_pf.log 2>&1 &
+kubectl_cmd -n "${NAMESPACE}" port-forward "svc/${API_SVC}" "${LOCAL_PORT}:${REMOTE_PORT}" >/tmp/k8s_pf.log 2>&1 &
 pf_pid=$!
 trap 'kill ${pf_pid} >/dev/null 2>&1 || true' EXIT
 

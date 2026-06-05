@@ -1,0 +1,23 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=up%7Bjob%3D%22prometheus%22%7D",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "__name__": "up",
+            "instance": "prometheus:9090",
+            "job": "prometheus"
+          },
+          "value": [
+            1780690588.526,
+            "1"
+          ]
+        }
+      ]
+    }
+  }
+}

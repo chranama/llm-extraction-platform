@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:18088/api/search?type=dash-db",
+  "status_code": 200,
+  "body": [
+    {
+      "id": 1,
+      "uid": "llm-server-overview",
+      "title": "Gateway + Backend Overview",
+      "uri": "db/gateway-2b-backend-overview",
+      "url": "/d/llm-server-overview/gateway-2b-backend-overview",
+      "slug": "",
+      "type": "dash-db",
+      "tags": [
+        "gateway",
+        "llm",
+        "observability"
+      ],
+      "isStarred": false,
+      "sortMeta": 0
+    },
+    {
+      "id": 2,
+      "uid": "prom-full",
+      "title": "Prometheus \u2013 Full Overview",
+      "uri": "db/prometheus-e28093-full-overview",
+      "url": "/d/prom-full/prometheus-e28093-full-overview",
+      "slug": "",
+      "type": "dash-db",
+      "tags": [
+        "infrastructure",
+        "llm-server",
+        "prometheus"
+      ],
+      "isStarred": false,
+      "sortMeta": 0
+    }
+  ]
+}

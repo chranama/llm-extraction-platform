@@ -79,6 +79,9 @@ Important covered behavior includes:
 - readiness and health semantics
 - trace inspection
 - admin policy reloads
+- Prometheus scrape validation
+- Grafana dashboard provisioning and populated-query evidence
+- direct and proxied local ops-surface checks
 - failure and blocked behavior
 
 Tests should stay behavior-named. A reviewer should be able to infer the

@@ -1,0 +1,16 @@
+{
+  "status_code": 400,
+  "body": {
+    "code": "capability_not_supported",
+    "message": "Model 'fake-extract' does not support capability 'extract'.",
+    "extra": {
+      "model_id": "fake-extract",
+      "capability": "extract",
+      "model_capabilities": {
+        "generate": true,
+        "extract": false
+      }
+    },
+    "request_id": "8e97a224e34b93532cdcbc6f69575ec2"
+  }
+}

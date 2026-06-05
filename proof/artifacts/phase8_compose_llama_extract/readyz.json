@@ -1,0 +1,194 @@
+{
+  "status_code": 200,
+  "body": {
+    "status": "ready",
+    "db": "ok",
+    "redis": "ok",
+    "db_instance": "docker",
+    "model_load_mode": "lazy",
+    "model_readiness_mode": "generate",
+    "require_model_ready": false,
+    "model_loaded": false,
+    "model_error": null,
+    "loaded_model_id": null,
+    "llm": "loaded",
+    "runtime": {
+      "runtime_model_loader_present": true,
+      "models_config_loaded": true,
+      "registry_initialized": true,
+      "runtime_default_model_id": null
+    },
+    "default_model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+    "default_backend": "llamacpp",
+    "model": {
+      "required": false,
+      "status": "skipped",
+      "ok": true,
+      "details": {}
+    },
+    "policy": {
+      "ok": true,
+      "source_path": "/app/policy_out/local_extract_allow.json",
+      "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+      "enable_extract": true,
+      "generate_max_new_tokens_cap": null,
+      "error": null,
+      "raw": {
+        "schema_version": "policy_decision_v2",
+        "generated_at": "2026-06-05T00:00:00Z",
+        "policy": "extract_enablement",
+        "pipeline": "extract_only",
+        "status": "allow",
+        "ok": true,
+        "contract_errors": 0,
+        "reasons": [],
+        "warnings": [],
+        "enable_extract": true,
+        "thresholds_profile": "extract/default",
+        "thresholds_version": "local-test",
+        "eval_run_dir": "results/extract/demo_extract_docker_llama_pass",
+        "eval_task": "extract",
+        "eval_run_id": "local-compose-extract-allow",
+        "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+        "generate_max_new_tokens_cap": null,
+        "generate_thresholds_profile": null,
+        "metrics": {
+          "extract_gate": {
+            "enable_extract": true
+          }
+        },
+        "contract_warnings": 0
+      }
+    },
+    "generate_gate": {
+      "enabled": true,
+      "max_concurrent": 2,
+      "max_queue": 32,
+      "timeout_seconds": 30.0,
+      "in_flight_estimate": 0,
+      "queue_depth_estimate": 0
+    },
+    "assessed_gate": {
+      "ok": true,
+      "timestamp_utc": "2026-06-05T19:15:03Z",
+      "snapshot": {
+        "required": false,
+        "status": "allowed",
+        "selected_model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+        "selected_deployment_key": "compose-extract--smollm2-360m-q8",
+        "assessed": null,
+        "assessed_at_utc": null,
+        "reason": null,
+        "details": {},
+        "source": "models.yaml"
+      }
+    },
+    "deployment": {
+      "ok": true,
+      "timestamp_utc": "2026-06-05T19:15:03Z",
+      "deployment_key": "compose-extract--smollm2-360m-q8",
+      "identity": {
+        "service_name": null,
+        "service_version": null,
+        "git_sha": null,
+        "image_tag": null,
+        "build_time_utc": null
+      },
+      "profiles": {
+        "app_profile": "docker",
+        "models_profile_env": "compose-extract",
+        "models_profile_selected": "compose-extract"
+      },
+      "container": false,
+      "platform": {
+        "system": "Linux",
+        "release": "6.10.14-linuxkit",
+        "machine": "aarch64",
+        "python": "3.12.13"
+      },
+      "accelerators": {
+        "torch_present": true,
+        "cuda_available": false,
+        "cuda_device_count": 0,
+        "mps_available": false
+      },
+      "routing": {
+        "default_model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+        "default_backend": "llamacpp",
+        "backend_info": {
+          "ok": true,
+          "backend": "llamacpp",
+          "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+          "loaded": null,
+          "config": {
+            "server_url": "http://llama_server:8080",
+            "requested_model": "SmolLM2-360M-Instruct",
+            "timeout_seconds": 29.0
+          },
+          "runtime": {
+            "health": {
+              "status": "ok"
+            },
+            "models_raw": {
+              "models": [
+                {
+                  "name": "Q8_0.gguf",
+                  "model": "Q8_0.gguf",
+                  "modified_at": "",
+                  "size": "",
+                  "digest": "",
+                  "type": "model",
+                  "description": "",
+                  "tags": [
+                    ""
+                  ],
+                  "capabilities": [
+                    "completion"
+                  ],
+                  "parameters": "",
+                  "details": {
+                    "parent_model": "",
+                    "format": "gguf",
+                    "family": "",
+                    "families": [
+                      ""
+                    ],
+                    "parameter_size": "",
+                    "quantization_level": ""
+                  }
+                }
+              ],
+              "object": "list",
+              "data": [
+                {
+                  "id": "Q8_0.gguf",
+                  "object": "model",
+                  "created": 1780686903,
+                  "owned_by": "llamacpp",
+                  "meta": {
+                    "vocab_type": 2,
+                    "n_vocab": 49152,
+                    "n_ctx_train": 8192,
+                    "n_embd": 960,
+                    "n_params": 361821120,
+                    "size": 384618240
+                  }
+                }
+              ]
+            },
+            "owned_by": "llamacpp",
+            "model_meta": {
+              "vocab_type": 2,
+              "n_vocab": 49152,
+              "n_ctx_train": 8192,
+              "n_embd": 960,
+              "n_params": 361821120,
+              "size": 384618240
+            },
+            "active_model_id": "Q8_0.gguf"
+          }
+        }
+      }
+    }
+  }
+}

@@ -326,6 +326,35 @@ services:
     memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
 
   # ==========================
+  # Extract worker + llama-server
+  # Used by the promoted compose-extract path.
+  # ==========================
+  worker_llama:
+    <<: *server_base
+    profiles: ["worker-llama"]
+    command: ["python", "-m", "llm_server.worker.extract_jobs"]
+    environment:
+      <<: *server_env
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      MODELS_PROFILE: ${MODELS_PROFILE:-compose-extract}
+      LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://llama_server:8080}
+      DATABASE_URL: ${DATABASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      llama_server:
+        condition: service_healthy
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      - ../../config:/app/config:rw
+      - ../../policy_out:/app/policy_out:rw
+      - ../../slo_out:/app/slo_out:rw
+    mem_limit: ${SERVER_MEM_LIMIT:-12g}
+    memswap_limit: ${SERVER_MEMSWAP_LIMIT:-12g}
+
+  # ==========================
   # Server (CPU) + HOST llama-server Demo B (explicit profile)
   #
   # Purpose:
@@ -456,6 +485,23 @@ services:
       - ../observability/grafana/grafana/dashboards:/var/lib/grafana/dashboards
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
+
+  # ==========================
+  # Local edge proxy
+  # ==========================
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    profiles: ["proxy"]
+    volumes:
+      - ../proxy/nginx/nginx.compose.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${PROXY_PORT:-8088}:80"
+    depends_on:
+      - server
+      - ui
+      - prometheus
+      - grafana
 
   prometheus_host:
     image: prom/prometheus:v2.54.1

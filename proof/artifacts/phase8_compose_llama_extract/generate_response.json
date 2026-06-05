@@ -1,0 +1,12 @@
+{
+  "status_code": 200,
+  "body": {
+    "model": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+    "output": "I'm ready to assist you with your queries. What is the first question or",
+    "cached": true,
+    "requested_max_new_tokens": 16,
+    "effective_max_new_tokens": 16,
+    "policy_generate_max_new_tokens_cap": null,
+    "clamped": false
+  }
+}

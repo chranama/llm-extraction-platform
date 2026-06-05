@@ -65,13 +65,30 @@ Important code areas:
 
 Evaluation and SLO artifacts are produced outside the runtime request path. The
 policy package reads those artifacts and writes runtime decisions that the server
-can reload.
+can reload through the admin policy endpoints. The proof bundle includes an
+eval-to-policy path that shows passing and failing eval summaries producing
+different runtime extract behavior after admin reload.
 
 Important code areas:
 
 - `eval/src/llm_eval/`
 - `policy/src/llm_policy/`
 - `server/src/llm_server/io/policy_decisions.py`
+
+### Local Ops Surface
+
+The Compose ops path exposes the API, UI, Prometheus, and Grafana directly and
+through a local nginx proxy. Its evidence captures API scrape state and Grafana
+dashboard population so the observability surface is more than a reachability
+check. This is a local inspection surface, not a production ingress hardening
+claim.
+
+Important code areas:
+
+- `deploy/compose/docker-compose.yml`
+- `deploy/proxy/nginx/nginx.compose.conf`
+- `deploy/observability/`
+- `ui/`
 
 ## Design Boundaries
 

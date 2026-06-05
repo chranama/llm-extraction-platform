@@ -1,174 +1,324 @@
 # Runbook
 
-This guide covers the routine local operator flow: prepare the environment,
-start the system, verify it, inspect it while running, and shut it down.
+This runbook promotes a small set of supported runtime targets. The root
+`llmctl` commands start and verify the happy paths; normal tools such as
+`docker compose`, `kubectl`, `curl`, and the proof scripts remain the preferred
+inspection tools.
 
-Use [`operations.md`](operations.md) for runtime concepts and failure modes. Use
-this file when you want the commands in order.
+Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 
-## Default Local Path
+## Supported Runtime Targets
 
-The default local path runs the API server, Postgres, and Redis through Docker
-Compose using the repo-level `llmctl` command.
+| Target | Runtime Shape | Model Backend | What It Proves | What It Does Not Prove |
+|---|---|---|---|---|
+| Reviewer Smoke | API server plus local Compose infra | Fake deterministic backend | API startup, health/readiness, schemas, generate, sync extract, and basic auth/gating with low runtime variability | Real model quality or model-serving performance |
+| Compose Extract | API server, Postgres, Redis, worker, and llama-server in Docker Compose | CPU-only containerized `llama.cpp` serving SmolLM2 | Real model-backed generate/extract, sync extract, async extract, durable job state, policy/capability surfaces, and traceable runtime behavior | Accelerated inference, production throughput, GPU scheduling, or high availability |
+| External Model Runtime | Containerized API server calls a model runtime outside the server container | Host `llama.cpp` or Docker-managed model runtime | Production-relevant model-serving boundary and external backend integration | Fully containerized accelerated inference on Docker for Mac |
+| Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
+| Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
+| Admin/Trace | Host proof server with Postgres/Redis and async worker | Fake deterministic backend | Admin trace inspection for sync and async extract, including worker lineage | Distributed tracing export or external telemetry compliance |
+| UI/Observability/Proxy | Compose API, UI, Prometheus, Grafana, and nginx proxy | Fake deterministic backend | Direct and proxied access to API, UI, and observability surfaces | Production authentication, TLS, or cloud ingress behavior |
+| Evidence Validation | Saved proof artifacts and validation scripts | Depends on artifact group | Repo claims are backed by inspectable runtime evidence | Live production behavior unless regenerated against a live target |
 
-Use a local env override file for secrets and machine-specific model settings.
-The examples below use `.env.docker`; replace it with your local file when
-needed.
+## Prerequisites
 
-## Preflight
-
-Install the repo-level CLI and development dependencies:
+Common prerequisites:
 
 ```bash
 uv sync --extra dev
-```
-
-Confirm Docker is available:
-
-```bash
 docker info
 ```
 
-Validate the Compose render before starting services:
+For `compose-extract`, configure a local env override file. The default local
+file is `.env.docker`; it must include:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose config --profiles infra server
+API_KEY=<local-api-key>
+LLAMA_MODELS_DIR=/path/to/gguf-model-directory
+LLAMA_MODEL_FILE=/models/path/inside/mounted-directory.gguf
 ```
 
-## Start
+The model path is mounted into the `llama_server` container at `/models`.
+`LLAMA_N_GPU_LAYERS=0` is the supported default. This path demonstrates
+CPU-only, real-model extraction correctness, not accelerated inference.
 
-Start the CPU Docker runtime and apply database migrations:
+## Reviewer Smoke
+
+Run:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker dev dev-cpu
+uv run llmctl --project-name llmep --env-override-file .env.docker smoke
 ```
 
-This starts the `infra` and `server` Compose profiles, builds the server image
-when needed, and runs Alembic migrations inside the server container.
+This starts the API server with the fake `test` model profile, applies database
+migrations, seeds local API keys, and verifies:
 
-To start the UI after the API is running:
+- `/healthz`
+- `/readyz`
+- `/v1/schemas`
+- `/v1/schemas/sroie_receipt_v1`
+- `/v1/generate`
+- `/v1/extract`
+
+Inspect:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose up --profiles ui -d --remove-orphans
+docker compose -p llmep ps
+docker compose -p llmep logs --tail=200 server
 ```
 
-To start Prometheus and Grafana:
+Stop:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose up --profiles obs -d --remove-orphans
+uv run llmctl --project-name llmep --env-override-file .env.docker stop
 ```
 
-## Verify
+## Compose Extract
 
-Check running services:
+Run:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose ps
+uv run llmctl --project-name llmep --env-override-file .env.docker compose-extract
 ```
 
-Check liveness and readiness:
+This starts:
+
+- `postgres`
+- `redis`
+- `llama_server`
+- `server_llama`
+- `worker_llama`
+
+The path uses `config/models.yaml` profile `compose-extract`. The server talks
+to the `llama_server` service over Compose DNS at `http://llama_server:8080`.
+It also uses `policy_out/local_extract_allow.json` so the real-model extract
+path is intentionally open for this workflow. Keep `policy_out/latest.json`
+available for policy-deny/failure demonstrations; it is not the promoted
+Compose extract default.
+
+The command verifies:
+
+- `/healthz`
+- `/readyz`
+- `/v1/models/status`
+- `/v1/generate`
+- `/v1/extract`
+- `/v1/extract/jobs` with worker-backed completion
+
+Inspect:
 
 ```bash
-curl -fsS http://localhost:8000/healthz
-curl -fsS http://localhost:8000/readyz
-curl -fsS http://localhost:8000/v1/models/status
+docker compose -p llmep ps
+docker compose -p llmep logs --tail=200 server_llama
+docker compose -p llmep logs --tail=200 llama_server
+docker compose -p llmep logs --tail=200 worker_llama
 ```
 
-Run the Compose doctor:
+Manual sync extract probe:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker dev doctor
-```
-
-If an API key is configured, run a generation smoke check:
-
-```bash
+export API_BASE="http://localhost:8000"
 export API_KEY="<local-api-key>"
-curl -fsS -X POST "http://localhost:8000/v1/generate" \
+
+curl -fsS -X POST "${API_BASE}/v1/extract" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${API_KEY}" \
-  --data '{"prompt":"smoke test","max_new_tokens":16,"temperature":0.2}'
+  --data '{
+    "schema_id": "sroie_receipt_v1",
+    "text": "ACME STORE\n123 MAIN ST\nDATE: 2024-03-10\nTOTAL: $42.18",
+    "max_new_tokens": 512,
+    "temperature": 0.0,
+    "cache": false,
+    "repair": true
+  }' | python -m json.tool
 ```
 
-## Observe
-
-Follow service logs:
+Stop:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose logs --tail 200
+uv run llmctl --project-name llmep --env-override-file .env.docker stop
 ```
 
-Use `Ctrl-C` to stop following logs. This does not stop the running containers.
+## External Model Runtime
 
-Useful runtime surfaces:
+Use this path when the model runtime is running outside the server container,
+for example host `llama.cpp` or Docker Model Runner. This repo assumes that
+external runtime is already started and reachable at `LLAMA_SERVER_URL`; setup,
+acceleration, and lifecycle for that model server are intentionally external to
+this target.
 
-- API: `http://localhost:8000`
-- UI: `http://localhost:5173`
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3000`
-
-## Stop
-
-Stop the Compose project while preserving named volumes:
+Run:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose down
+uv run llmctl --project-name llmep --env-override-file .env.docker external-model
 ```
 
-Stop and remove named volumes when you need a clean database/cache state:
+This starts the containerized API server and routes model traffic through
+`LLAMA_SERVER_URL`, defaulting to `http://host.docker.internal:8080` for the
+host-routed llama path.
+
+This target proves an external model-serving boundary. It does not claim that
+the model runtime is containerized or accelerated inside the Compose stack. It
+is an operational target, not part of the canonical proof bundle, because the
+model runtime lifecycle is external to this repository.
+
+## Kubernetes Smoke
+
+Run:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose down --volumes
+uv run llmctl kind-smoke
 ```
 
-## Kubernetes Local Path
+This executes `proof/generate_k8s_kind_proof.py`. The script creates or reuses
+the `llm` kind cluster, builds and loads `llm-server:dev`, applies the
+`local-generate-only` overlay, runs smoke checks, and writes artifacts under
+`proof/artifacts/phase5_k8s_kind/`.
 
-The Kubernetes path is for local `kind` checks. It is separate from the default
-Docker Compose runtime.
-
-Start the local cluster and load the server image:
+Inspect manually:
 
 ```bash
-uv run llmctl k8s kind-up
-uv run llmctl k8s kind-build-server
+kubectl -n llm get all
+kubectl -n llm logs deployment/api --tail=200
 ```
 
-Apply the local generate-only overlay and wait for rollout:
-
-```bash
-uv run llmctl k8s apply-local-generate-only
-uv run llmctl k8s wait
-```
-
-Inspect status and logs:
-
-```bash
-uv run llmctl k8s status
-uv run llmctl k8s logs-api
-```
-
-Shut down the Kubernetes path:
+Tear down:
 
 ```bash
 uv run llmctl k8s delete-local-generate-only
 uv run llmctl k8s kind-down
 ```
 
-## Common Recovery Steps
+## Policy/Eval Linkage
 
-If readiness fails, check the `readyz` response first. It reports DB, Redis,
-model, policy, and deployment state.
-
-If the server cannot reach Postgres or Redis, restart the default Compose path:
+Run:
 
 ```bash
-uv run llmctl --project-name llmep --env-override-file .env.docker compose down
-uv run llmctl --project-name llmep --env-override-file .env.docker dev dev-cpu
+uv run llmctl policy-eval
 ```
 
-If model readiness fails, check the selected model profile and any local model
-paths in the env override file.
+This executes `proof/generate_policy_eval_linkage_proof.py`. The script writes
+small deterministic passing and failing extract eval summaries, runs the real
+policy CLI against both summaries, starts a proof server, and verifies:
 
-If policy-dependent routes are blocked unexpectedly, check
-`policy_out/latest.json` and reload policy through the admin surface after
-regenerating the policy artifact.
+- passing eval produces an allow policy
+- failing eval produces a deny policy
+- `/v1/admin/policy` exposes the active policy snapshot
+- `/v1/admin/policy/reload` reloads the policy artifact from disk
+- `/v1/extract` succeeds under the allow policy and is blocked under the deny policy
+
+Artifacts are written under
+`proof/artifacts/phase9_policy_eval_linkage/`.
+
+This path proves eval-artifact-to-policy-to-runtime linkage. It does not claim a
+full benchmark or dataset evaluation run.
+
+## Admin/Trace
+
+Run:
+
+```bash
+uv run llmctl admin-trace
+```
+
+This executes `proof/generate_trace_inspection_proof.py`. The script starts a
+proof server and worker, runs sync and async extract requests, fetches admin
+trace detail for both flows, and writes ordered trace artifacts under
+`proof/artifacts/phase7_trace_inspection/`.
+
+## UI/Observability/Proxy
+
+Run:
+
+```bash
+uv run llmctl ops-surface
+```
+
+This executes `proof/generate_ops_surface_proof.py`. The script starts the
+reviewer smoke API path, then starts the UI, Prometheus, Grafana, and local
+nginx proxy profiles. It verifies direct and proxied access to:
+
+- API health
+- UI index
+- Prometheus readiness
+- Grafana health
+- Prometheus API scrape target state
+- Grafana datasource and dashboard population
+
+Artifacts are written under `proof/artifacts/phase10_ops_surface/`.
+
+## Evidence Validation
+
+Validate saved artifacts:
+
+```bash
+uv run llmctl evidence
+```
+
+Regenerate the canonical bundle:
+
+```bash
+uv run llmctl evidence --regenerate
+```
+
+The canonical regeneration refreshes the local proof paths that do not require a
+machine-specific GGUF model. It validates the saved phase 8 artifact paths, but
+the phase 8 Compose llama proof is generated separately because it needs a local
+model file.
+
+Generate the Compose llama extract proof when the local GGUF model and Docker
+runtime are available:
+
+```bash
+python proof/generate_compose_llama_extract_proof.py
+```
+
+The Compose llama proof writes artifacts under
+`proof/artifacts/phase8_compose_llama_extract/`.
+
+## Doctor
+
+Inspect a running Compose stack:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker doctor
+```
+
+The doctor checks Compose rendering, port status, health/readiness endpoints,
+model status, schema availability, and an extract probe when possible.
+
+## Stop
+
+Stop the Compose project while preserving named volumes:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker stop
+```
+
+Stop and remove named volumes:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker stop --volumes
+```
+
+## Troubleshooting
+
+If `compose-extract` fails before startup, check `LLAMA_MODELS_DIR` and
+`LLAMA_MODEL_FILE`. The CLI validates that the host GGUF file exists before it
+starts Compose.
+
+If readiness fails, inspect:
+
+```bash
+curl -fsS http://localhost:8000/readyz | python -m json.tool
+docker compose -p llmep logs --tail=200 server_llama
+docker compose -p llmep logs --tail=200 llama_server
+```
+
+If sync extract succeeds but async extract stalls, inspect the worker:
+
+```bash
+docker compose -p llmep logs --tail=200 worker_llama
+curl -fsS http://localhost:8000/v1/models/status \
+  -H "X-API-Key: ${API_KEY}" | python -m json.tool
+```

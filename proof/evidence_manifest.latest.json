@@ -1,8 +1,8 @@
 {
   "proof_id": "llm-extract-canonical",
   "run_id": "canonical_latest",
-  "generated_at": "2026-03-14T15:56:40.078162+00:00",
-  "repo_commit": "f972c4d",
+  "generated_at": "2026-06-05T20:16:29.940154+00:00",
+  "repo_commit": "ee3494e",
   "status": "pass",
   "claims": [
     {
@@ -62,12 +62,66 @@
         "proof/artifacts/phase7_trace_inspection/trace_summary.json"
       ],
       "expected_signal": "Sync and async trace artifacts both exist, the async trace includes worker and status-poll events, and the proof summary passes all trace checks."
+    },
+    {
+      "claim_text": "The promoted Compose extract path runs model-backed generate, sync extract, and async extract with a containerized CPU llama.cpp backend.",
+      "verification_command": "python proof/generate_compose_llama_extract_proof.py",
+      "artifact_paths": [
+        "proof/artifacts/phase8_compose_llama_extract/compose_llama_extract_summary.json",
+        "proof/artifacts/phase8_compose_llama_extract/readyz.json",
+        "proof/artifacts/phase8_compose_llama_extract/models_status.json",
+        "proof/artifacts/phase8_compose_llama_extract/generate_response.json",
+        "proof/artifacts/phase8_compose_llama_extract/extract_response.json",
+        "proof/artifacts/phase8_compose_llama_extract/async_submit_response.json",
+        "proof/artifacts/phase8_compose_llama_extract/async_final_response.json"
+      ],
+      "expected_signal": "The Compose llama summary passes readiness, model status, generate, sync extract, and async extract checks."
+    },
+    {
+      "claim_text": "Eval artifacts drive policy decisions, and admin reload changes runtime extract behavior according to the active policy artifact.",
+      "verification_command": "python proof/generate_canonical_manifest.py",
+      "artifact_paths": [
+        "proof/artifacts/phase9_policy_eval_linkage/eval_pass/summary.json",
+        "proof/artifacts/phase9_policy_eval_linkage/eval_fail/summary.json",
+        "proof/artifacts/phase9_policy_eval_linkage/policy_allow.json",
+        "proof/artifacts/phase9_policy_eval_linkage/policy_deny.json",
+        "proof/artifacts/phase9_policy_eval_linkage/admin_policy_initial.json",
+        "proof/artifacts/phase9_policy_eval_linkage/admin_policy_reload.json",
+        "proof/artifacts/phase9_policy_eval_linkage/extract_allow_response.json",
+        "proof/artifacts/phase9_policy_eval_linkage/extract_deny_response.json",
+        "proof/artifacts/phase9_policy_eval_linkage/policy_eval_linkage_summary.json"
+      ],
+      "expected_signal": "Passing eval produces an allow policy and successful extract; failing eval produces a deny policy and blocked extract after admin reload."
+    },
+    {
+      "claim_text": "The local ops surface exposes API, UI, Prometheus, and Grafana directly and through a local edge proxy.",
+      "verification_command": "python proof/generate_canonical_manifest.py",
+      "artifact_paths": [
+        "proof/artifacts/phase10_ops_surface/direct_api_healthz.json",
+        "proof/artifacts/phase10_ops_surface/direct_ui_index.json",
+        "proof/artifacts/phase10_ops_surface/direct_prometheus_ready.json",
+        "proof/artifacts/phase10_ops_surface/direct_grafana_health.json",
+        "proof/artifacts/phase10_ops_surface/prometheus_targets.json",
+        "proof/artifacts/phase10_ops_surface/prometheus_query_up.json",
+        "proof/artifacts/phase10_ops_surface/grafana_datasources.json",
+        "proof/artifacts/phase10_ops_surface/grafana_dashboards.json",
+        "proof/artifacts/phase10_ops_surface/grafana_prometheus_proxy_query_up.json",
+        "proof/artifacts/phase10_ops_surface/dashboard_population_summary.json",
+        "proof/artifacts/phase10_ops_surface/proxy_api_healthz.json",
+        "proof/artifacts/phase10_ops_surface/proxy_ui_index.json",
+        "proof/artifacts/phase10_ops_surface/proxy_prometheus_ready.json",
+        "proof/artifacts/phase10_ops_surface/proxy_grafana_health.json",
+        "proof/artifacts/phase10_ops_surface/compose_ps.txt",
+        "proof/artifacts/phase10_ops_surface/ops_surface_summary.json"
+      ],
+      "expected_signal": "Direct and proxied API/UI/observability endpoints return successful health or index responses, Prometheus scrapes the API target, and provisioned Grafana dashboards have Prometheus-backed query data."
     }
   ],
   "diagnostics": {
     "notes": [
       "Canonical manifest generated from latest curated demo artifacts.",
-      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and Kubernetes/async/trace proof signals."
+      "Run proof/validate_evidence_manifest.py to enforce contract, file existence, and runtime proof signals.",
+      "Phase 8 Compose llama extract evidence is generated separately because it requires a configured local GGUF model."
     ]
   }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import re
 from typing import Any, Optional
@@ -47,6 +48,37 @@ def iter_json_objects(raw: str) -> list[dict[str, Any]]:
     return objs
 
 
+def _schema_tag_object_candidate(schema: dict[str, Any], raw: str) -> dict[str, Any] | None:
+    """
+    Recover a common small-model failure mode where JSON object fields are emitted
+    as XML-like tags despite explicit JSON delimiters.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+
+    props = schema.get("properties") or {}
+    if not isinstance(props, dict) or not props:
+        return None
+
+    payload = raw
+    block = re.search(r"<\s*JSON_OBJECT\s*>(.*?)<\s*/\s*JSON_OBJECT\s*>", raw, re.I | re.S)
+    if block:
+        payload = block.group(1)
+
+    obj: dict[str, Any] = {}
+    for name in props:
+        if not isinstance(name, str) or not name:
+            continue
+        pattern = rf"<\s*{re.escape(name)}\s*>(.*?)<\s*/\s*{re.escape(name)}\s*>"
+        match = re.search(pattern, payload, re.I | re.S)
+        if not match:
+            continue
+        value = html.unescape(match.group(1)).strip()
+        obj[name] = None if value.lower() == "null" else value
+
+    return obj or None
+
+
 def validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str, Any]:
     if raw_output is None:
         raise AppError(
@@ -59,6 +91,7 @@ def validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str
 
     # Prefer delimited JSON if present
     if _JSON_BEGIN in s and _JSON_END in s:
+        inner = ""
         try:
             inner = s.split(_JSON_BEGIN, 1)[1].split(_JSON_END, 1)[0].strip()
             inner = strip_wrapping_code_fences(inner)
@@ -79,7 +112,18 @@ def validate_first_matching(schema: dict[str, Any], raw_output: str) -> dict[str
         except Exception:
             pass
 
-    candidates = iter_json_objects(s)
+        tag_obj = _schema_tag_object_candidate(schema, inner)
+        if tag_obj is not None:
+            candidates = [tag_obj] + iter_json_objects(s)
+        else:
+            candidates = iter_json_objects(s)
+    else:
+        tag_obj = _schema_tag_object_candidate(schema, s)
+        if tag_obj is not None:
+            candidates = [tag_obj] + iter_json_objects(s)
+        else:
+            candidates = iter_json_objects(s)
+
     if not candidates:
         raise AppError(
             code="invalid_json",

@@ -1,0 +1,2 @@
+{"id": "1", "ok": true, "status_code": 200, "schema_valid": true, "deployment_key": "async-proof--fake-extract", "deployment": {"provider": "fake", "profile": "async-proof"}}
+{"id": "2", "ok": false, "status_code": 500, "schema_valid": false, "deployment_key": "async-proof--fake-extract", "deployment": {"provider": "fake", "profile": "async-proof"}}

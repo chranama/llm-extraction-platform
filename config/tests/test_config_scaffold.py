@@ -49,13 +49,20 @@ def test_compose_defaults_profiles_have_expected_keys() -> None:
     cfg = _read_yaml("config/compose-defaults.yaml")
     profiles = cfg["profiles"]
 
-    for name in ("docker", "host", "itest", "jobs"):
+    for name in ("docker", "host", "itest", "jobs", "reviewer-smoke", "compose-extract"):
         assert name in profiles
 
     assert {"APP_PROFILE", "MODELS_YAML", "MODELS_PROFILE"} <= set(profiles["docker"])
     assert {"APP_PROFILE", "MODELS_YAML", "MODELS_PROFILE"} <= set(profiles["host"])
     assert {"APP_PROFILE", "MODELS_YAML", "MODELS_PROFILE"} <= set(profiles["itest"])
     assert {"API_BASE_URL", "POLICY_OUT_PATH", "POLICY_THRESHOLDS_ROOT"} <= set(profiles["jobs"])
+    assert profiles["reviewer-smoke"]["MODELS_PROFILE"] == "test"
+    assert profiles["compose-extract"]["MODELS_PROFILE"] == "compose-extract"
+    assert profiles["compose-extract"]["LLAMA_N_GPU_LAYERS"] == "0"
+    assert (
+        profiles["compose-extract"]["POLICY_DECISION_PATH"]
+        == "/app/policy_out/local_extract_allow.json"
+    )
 
 
 def test_models_yaml_profiles_have_consistent_inventory() -> None:
@@ -68,9 +75,11 @@ def test_models_yaml_profiles_have_consistent_inventory() -> None:
         "docker-transformers",
         "host-llama",
         "docker-llama",
+        "compose-extract",
         "test",
     }
     assert required_profiles <= set(profiles)
+    assert profiles["test"]["defaults"]["backend"] == "fake"
 
     for name in required_profiles:
         entry = profiles[name]

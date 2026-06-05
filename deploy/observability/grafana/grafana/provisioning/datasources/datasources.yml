@@ -5,7 +5,7 @@ datasources:
     type: prometheus
     uid: Prometheus 
     access: proxy
-    url: http://prometheus:9090/prometheus
+    url: http://prometheus:9090
     isDefault: true
     editable: true
     jsonData:

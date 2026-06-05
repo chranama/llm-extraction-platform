@@ -52,3 +52,53 @@
   - `proof/artifacts/phase7_trace_inspection/sync_trace_detail.json`
   - `proof/artifacts/phase7_trace_inspection/trace_summary.json`
 - Validation signal: sync and async trace detail endpoints return coherent ordered events, and the async trace includes submission, worker, and status-poll lineage.
+
+## Proof 6: Compose llama extract
+- Claim: the promoted Compose extract target runs model-backed generate, sync extract, and async extract through a CPU containerized llama.cpp backend.
+- Command: `python proof/generate_compose_llama_extract_proof.py`
+- Artifacts:
+  - `proof/artifacts/phase8_compose_llama_extract/compose_llama_extract_summary.json`
+  - `proof/artifacts/phase8_compose_llama_extract/readyz.json`
+  - `proof/artifacts/phase8_compose_llama_extract/models_status.json`
+  - `proof/artifacts/phase8_compose_llama_extract/generate_response.json`
+  - `proof/artifacts/phase8_compose_llama_extract/extract_response.json`
+  - `proof/artifacts/phase8_compose_llama_extract/async_submit_response.json`
+  - `proof/artifacts/phase8_compose_llama_extract/async_final_response.json`
+- Validation signal: readiness, model status, generate, sync extract, and async extract checks all pass.
+
+## Proof 7: Policy/eval linkage
+- Claim: eval artifacts drive policy decisions, and admin reload changes runtime extract behavior according to the active policy artifact.
+- Command: `python proof/generate_canonical_manifest.py`
+- Artifacts:
+  - `proof/artifacts/phase9_policy_eval_linkage/eval_pass/summary.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/eval_fail/summary.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/policy_allow.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/policy_deny.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/admin_policy_initial.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/admin_policy_reload.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/extract_allow_response.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/extract_deny_response.json`
+  - `proof/artifacts/phase9_policy_eval_linkage/policy_eval_linkage_summary.json`
+- Validation signal: passing eval allows extract; failing eval blocks extract after admin policy reload.
+
+## Proof 8: UI and observability proxy
+- Claim: local API, UI, Prometheus, and Grafana surfaces are reachable directly and through the local edge proxy.
+- Command: `python proof/generate_canonical_manifest.py`
+- Artifacts:
+  - `proof/artifacts/phase10_ops_surface/direct_api_healthz.json`
+  - `proof/artifacts/phase10_ops_surface/direct_ui_index.json`
+  - `proof/artifacts/phase10_ops_surface/direct_prometheus_ready.json`
+  - `proof/artifacts/phase10_ops_surface/direct_grafana_health.json`
+  - `proof/artifacts/phase10_ops_surface/prometheus_targets.json`
+  - `proof/artifacts/phase10_ops_surface/prometheus_query_up.json`
+  - `proof/artifacts/phase10_ops_surface/grafana_datasources.json`
+  - `proof/artifacts/phase10_ops_surface/grafana_dashboards.json`
+  - `proof/artifacts/phase10_ops_surface/grafana_prometheus_proxy_query_up.json`
+  - `proof/artifacts/phase10_ops_surface/dashboard_population_summary.json`
+  - `proof/artifacts/phase10_ops_surface/proxy_api_healthz.json`
+  - `proof/artifacts/phase10_ops_surface/proxy_ui_index.json`
+  - `proof/artifacts/phase10_ops_surface/proxy_prometheus_ready.json`
+  - `proof/artifacts/phase10_ops_surface/proxy_grafana_health.json`
+  - `proof/artifacts/phase10_ops_surface/compose_ps.txt`
+  - `proof/artifacts/phase10_ops_surface/ops_surface_summary.json`
+- Validation signal: all direct/proxied endpoint checks pass, Prometheus reports the API scrape target up, and Grafana dashboards expose Prometheus-backed query data.

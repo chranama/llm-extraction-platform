@@ -10,6 +10,7 @@ from typing import Sequence
 import cli.commands.compose as compose_cmd
 import cli.commands.dev as dev_cmd
 import cli.commands.k8s as k8s_cmd
+import cli.commands.paths as paths_cmd
 from cli.errors import CLIError, die
 from cli.types import GlobalConfig
 from cli.utils.paths import find_repo_root
@@ -66,14 +67,18 @@ def _build_global_config(args: argparse.Namespace) -> GlobalConfig:
 
     # Option A: NO implicit .env import.
     # Only include a user env override when explicitly provided.
-    env_override_file = _resolve_optional_repo_path(repo_root, getattr(args, "env_override_file", None))
+    env_override_file = _resolve_optional_repo_path(
+        repo_root, getattr(args, "env_override_file", None)
+    )
 
     compose_yml = _resolve_repo_path(repo_root, args.compose_yml or DEFAULT_COMPOSE_YML)
     tools_dir = _resolve_repo_path(repo_root, args.tools_dir or DEFAULT_TOOLS_DIR)
     compose_doctor = _resolve_repo_path(repo_root, args.compose_doctor or DEFAULT_COMPOSE_DOCTOR)
     server_dir = _resolve_repo_path(repo_root, args.server_dir or DEFAULT_SERVER_DIR)
 
-    models_yaml = _resolve_repo_path(repo_root, getattr(args, "models_yaml", None) or DEFAULT_MODELS_YAML)
+    models_yaml = _resolve_repo_path(
+        repo_root, getattr(args, "models_yaml", None) or DEFAULT_MODELS_YAML
+    )
 
     return GlobalConfig(
         repo_root=repo_root,
@@ -123,12 +128,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project-name", default=os.getenv("LLMCTL_PROJECT_NAME", DEFAULT_PROJECT_NAME))
     p.add_argument("--compose-yml", default=os.getenv("LLMCTL_COMPOSE_YML", DEFAULT_COMPOSE_YML))
     p.add_argument("--tools-dir", default=os.getenv("LLMCTL_TOOLS_DIR", DEFAULT_TOOLS_DIR))
-    p.add_argument("--compose-doctor", default=os.getenv("LLMCTL_COMPOSE_DOCTOR", DEFAULT_COMPOSE_DOCTOR))
+    p.add_argument(
+        "--compose-doctor", default=os.getenv("LLMCTL_COMPOSE_DOCTOR", DEFAULT_COMPOSE_DOCTOR)
+    )
     p.add_argument("--server-dir", default=os.getenv("LLMCTL_SERVER_DIR", DEFAULT_SERVER_DIR))
 
     # Keep this around as a *host-path* convenience for tooling or future commands.
     # (Compose itself should not inherit it due to compose_runner denylist.)
-    p.add_argument("--models-yaml", dest="models_yaml", default=os.getenv("LLMCTL_MODELS_YAML", DEFAULT_MODELS_YAML))
+    p.add_argument(
+        "--models-yaml",
+        dest="models_yaml",
+        default=os.getenv("LLMCTL_MODELS_YAML", DEFAULT_MODELS_YAML),
+    )
 
     # Internal compose defaults (YAML + selected profile)
     p.add_argument(
@@ -152,9 +163,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pg-user", default=os.getenv("POSTGRES_USER", DEFAULT_PG_USER))
     p.add_argument("--pg-db", default=os.getenv("POSTGRES_DB", DEFAULT_PG_DB))
 
-    p.add_argument("--verbose", action="store_true", help="Print the exact commands being executed.")
+    p.add_argument(
+        "--verbose", action="store_true", help="Print the exact commands being executed."
+    )
 
     sub = p.add_subparsers(dest="cmd", required=True)
+    paths_cmd.register(sub)
     compose_cmd.register(sub)
     dev_cmd.register(sub)
     k8s_cmd.register(sub)

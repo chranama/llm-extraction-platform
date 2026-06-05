@@ -1,22 +1,22 @@
 {
   "status_code": 200,
   "body": {
-    "trace_id": "81af1dbe740044a5b3494d16084b2bbc",
+    "trace_id": "8a849fed8149548c00be9c74d07abf19",
     "status": "completed",
     "root_route": "/v1/extract",
     "request_kind": "sync_extract",
     "job_id": null,
     "model_id": "fake-extract",
-    "started_at": "2026-03-14T15:53:39.038003Z",
-    "finished_at": "2026-03-14T15:53:39.176641Z",
+    "started_at": "2026-06-05T20:16:00.209020Z",
+    "finished_at": "2026-06-05T20:16:00.548393Z",
     "events": [
       {
-        "created_at": "2026-03-14T15:53:39.038003Z",
+        "created_at": "2026-06-05T20:16:00.209020Z",
         "event_name": "extract.accepted",
         "route": "/v1/extract",
         "stage": "start",
         "status": "accepted",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": null,
         "details": {
@@ -27,12 +27,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.046674Z",
+        "created_at": "2026-06-05T20:16:00.216825Z",
         "event_name": "extract.model_resolved",
         "route": "/v1/extract",
         "stage": "resolve_model",
         "status": "ok",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -40,12 +40,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.051466Z",
+        "created_at": "2026-06-05T20:16:00.221738Z",
         "event_name": "extract.cache_lookup",
         "route": "/v1/extract",
         "stage": "cache_read",
         "status": "miss",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -54,12 +54,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.055948Z",
+        "created_at": "2026-06-05T20:16:00.225112Z",
         "event_name": "extract.generate_completed",
         "route": "/v1/extract",
         "stage": "model_generate",
         "status": "ok",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -69,12 +69,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.059070Z",
+        "created_at": "2026-06-05T20:16:00.228345Z",
         "event_name": "extract.validation_completed",
         "route": "/v1/extract",
         "stage": "validate_output",
         "status": "ok",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -83,12 +83,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.155989Z",
+        "created_at": "2026-06-05T20:16:00.536591Z",
         "event_name": "extract.cache_written",
         "route": "/v1/extract",
         "stage": "cache_write",
         "status": "ok",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -96,12 +96,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.171177Z",
+        "created_at": "2026-06-05T20:16:00.545069Z",
         "event_name": "extract.logged",
         "route": "/v1/extract",
         "stage": "log_uncached",
         "status": "ok",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {
@@ -109,12 +109,12 @@
         }
       },
       {
-        "created_at": "2026-03-14T15:53:39.176641Z",
+        "created_at": "2026-06-05T20:16:00.548393Z",
         "event_name": "extract.completed",
         "route": "/v1/extract",
         "stage": "complete",
         "status": "completed",
-        "request_id": "81af1dbe740044a5b3494d16084b2bbc",
+        "request_id": "8a849fed8149548c00be9c74d07abf19",
         "job_id": null,
         "model_id": "fake-extract",
         "details": {

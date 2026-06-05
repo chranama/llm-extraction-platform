@@ -1,0 +1,19 @@
+{
+  "proof_phase": "phase8_compose_llama_extract",
+  "generated_at": "2026-06-05T19:15:04.855532+00:00",
+  "status": "pass",
+  "compose_project": "llmep-phase8",
+  "api_base": "http://127.0.0.1:18083",
+  "model_backend": "containerized llama.cpp",
+  "model_profile": "compose-extract",
+  "model_runtime": "SmolLM2-360M-Instruct GGUF via llama-server",
+  "acceleration": "cpu",
+  "checks": {
+    "readyz": true,
+    "models_status": true,
+    "generate": true,
+    "extract": true,
+    "async_extract": true
+  },
+  "resolved_model": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF"
+}

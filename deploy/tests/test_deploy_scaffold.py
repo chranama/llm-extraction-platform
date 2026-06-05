@@ -4,7 +4,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -25,9 +24,12 @@ def test_compose_manifest_has_expected_core_services() -> None:
         "eval",
         "policy",
         "ui",
+        "proxy",
         "llama_server",
+        "worker_llama",
     }
     assert required <= set(services)
+    assert (REPO_ROOT / "deploy/proxy/nginx/nginx.compose.conf").exists()
 
 
 def test_compose_build_dockerfiles_exist() -> None:

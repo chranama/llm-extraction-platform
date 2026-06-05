@@ -1,0 +1,37 @@
+{
+  "schema_version": "eval_run_summary_v2",
+  "generated_at": "2026-06-05T20:16:02.907285+00:00",
+  "task": "extract",
+  "run_id": "eval_fail",
+  "run_dir": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/eval_fail",
+  "passed": false,
+  "metrics": {
+    "extract_gate": {
+      "passed": false
+    },
+    "n_total": 2,
+    "n_ok": 1,
+    "schema_validity_rate": 60.0,
+    "non_200_rate": 10.0,
+    "http_5xx_rate": 5.0,
+    "timeout_rate": 5.0
+  },
+  "model_id": "fake-extract",
+  "schema_id": "proof_async",
+  "thresholds_profile": "extract/default",
+  "thresholds_version": "proof",
+  "deployment_key": "async-proof--fake-extract",
+  "deployment": {
+    "provider": "fake",
+    "profile": "async-proof"
+  },
+  "counts": {
+    "examples_total": 2,
+    "examples_ok": 1,
+    "examples_failed": 1
+  },
+  "warnings": [],
+  "notes": {
+    "fixture": "phase9_policy_eval_linkage"
+  }
+}

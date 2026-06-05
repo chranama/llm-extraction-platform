@@ -1,0 +1,296 @@
+{
+  "url": "http://127.0.0.1:18088/api/dashboards/uid/llm-server-overview",
+  "status_code": 200,
+  "body": {
+    "meta": {
+      "type": "db",
+      "canSave": true,
+      "canEdit": true,
+      "canAdmin": true,
+      "canStar": true,
+      "canDelete": true,
+      "slug": "gateway-2b-backend-overview",
+      "url": "/d/llm-server-overview/gateway-2b-backend-overview",
+      "expires": "0001-01-01T00:00:00Z",
+      "created": "2026-06-05T20:16:20Z",
+      "updated": "2026-06-05T20:16:20Z",
+      "updatedBy": "Anonymous",
+      "createdBy": "Anonymous",
+      "version": 1,
+      "hasAcl": false,
+      "isFolder": false,
+      "folderId": 0,
+      "folderUid": "",
+      "folderTitle": "General",
+      "folderUrl": "",
+      "provisioned": true,
+      "provisionedExternalId": "llm-server-overview.json",
+      "annotationsPermissions": {
+        "dashboard": {
+          "canAdd": true,
+          "canEdit": true,
+          "canDelete": true
+        },
+        "organization": {
+          "canAdd": true,
+          "canEdit": true,
+          "canDelete": true
+        }
+      }
+    },
+    "dashboard": {
+      "id": 1,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            }
+          },
+          "targets": [
+            {
+              "expr": "count(up{job=~\"llm-server-api-host|llm_server_container|llm-server-gateway-host\"} == 1)",
+              "refId": "A"
+            }
+          ],
+          "title": "Observed Targets",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 9,
+            "x": 6,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (route, method) (rate(gateway_requests_total{job=~\"llm-server-gateway-host\"}[5m]))",
+              "legendFormat": "{{method}} {{route}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Gateway Request Rate (req/s)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 9,
+            "x": 15,
+            "y": 0
+          },
+          "id": 3,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, route) (rate(gateway_request_duration_seconds_bucket{job=~\"llm-server-gateway-host\"}[5m])))",
+              "legendFormat": "{{route}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Gateway Latency p95 (s)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 4
+          },
+          "id": 4,
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (code) (rate(gateway_edge_errors_total{job=~\"llm-server-gateway-host\"}[5m]))",
+              "legendFormat": "{{code}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Gateway Edge Errors (rate)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 5,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (route, model_id) (rate(llm_api_request_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+              "legendFormat": "{{route}} [{{model_id}}]",
+              "refId": "A"
+            }
+          ],
+          "title": "Backend API Request Rate (req/s)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "id": 6,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, route, model_id) (rate(llm_api_request_latency_seconds_bucket{job=~\"llm-server-api-host|llm_server_container\"}[5m])))",
+              "legendFormat": "{{route}} [{{model_id}}]",
+              "refId": "A"
+            }
+          ],
+          "title": "Backend API Latency p95 (s)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (schema_id, model_id) (rate(llm_extraction_requests_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+              "legendFormat": "{{schema_id}} [{{model_id}}]",
+              "refId": "A"
+            }
+          ],
+          "title": "Extraction Request Rate (req/s)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "Prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "id": 8,
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum by (stage) (rate(llm_extraction_validation_failures_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+              "legendFormat": "validation {{stage}}",
+              "refId": "A"
+            },
+            {
+              "expr": "sum by (outcome) (rate(llm_extraction_repair_total{job=~\"llm-server-api-host|llm_server_container\"}[5m]))",
+              "legendFormat": "repair {{outcome}}",
+              "refId": "B"
+            }
+          ],
+          "title": "Validation Failures and Repairs (rate)",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "tags": [
+        "llm",
+        "gateway",
+        "observability"
+      ],
+      "templating": {
+        "list": []
+      },
+      "timezone": "browser",
+      "title": "Gateway + Backend Overview",
+      "uid": "llm-server-overview",
+      "version": 1
+    }
+  }
+}

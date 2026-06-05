@@ -1,0 +1,25 @@
+ llmep-ops-surface-server  Built
+ llmep-ops-surface-ui  Built
+ Volume "llmep-ops-surface_grafana_data"  Creating
+ Volume "llmep-ops-surface_grafana_data"  Created
+ Container llmep-ops-surface-grafana-1  Creating
+ Container llmep-ops-surface-prometheus-1  Creating
+ Container llmep-ops-surface-ui-1  Creating
+ Container llmep-ops-surface-redis-1  Running
+ Container llmep-ops-surface-postgres-1  Running
+ Container llmep-ops-surface-server-1  Running
+ Container llmep-ops-surface-grafana-1  Created
+ Container llmep-ops-surface-prometheus-1  Created
+ Container llmep-ops-surface-ui-1  Created
+ Container llmep-ops-surface-proxy-1  Creating
+ Container llmep-ops-surface-proxy-1  Created
+ Container llmep-ops-surface-grafana-1  Starting
+ Container llmep-ops-surface-ui-1  Starting
+ Container llmep-ops-surface-prometheus-1  Starting
+ Container llmep-ops-surface-postgres-1  Waiting
+ Container llmep-ops-surface-ui-1  Started
+ Container llmep-ops-surface-prometheus-1  Started
+ Container llmep-ops-surface-grafana-1  Started
+ Container llmep-ops-surface-postgres-1  Healthy
+ Container llmep-ops-surface-proxy-1  Starting
+ Container llmep-ops-surface-proxy-1  Started

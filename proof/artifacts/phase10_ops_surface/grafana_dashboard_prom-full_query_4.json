@@ -1,0 +1,11 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=sum%20by%20%28job%29%20%28rate%28prometheus_target_scrapes_total%7Bscrape_job%3D~%22%24job%22%2Cresult%3D%22success%22%7D%5B5m%5D%29%29",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": []
+    }
+  }
+}

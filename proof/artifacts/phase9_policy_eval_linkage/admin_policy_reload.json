@@ -1,0 +1,103 @@
+{
+  "status_code": 200,
+  "body": {
+    "ok": false,
+    "model_id": null,
+    "enable_extract": false,
+    "generate_max_new_tokens_cap": null,
+    "source_path": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/runtime_policy.json",
+    "error": null,
+    "raw": {
+      "schema_version": "policy_decision_v2",
+      "generated_at": "2026-06-05T20:16:03Z",
+      "policy": "extract_enablement",
+      "pipeline": "extract_only",
+      "status": "deny",
+      "ok": false,
+      "enable_extract": false,
+      "generate_max_new_tokens_cap": null,
+      "contract_errors": 0,
+      "contract_warnings": 0,
+      "thresholds_profile": "extract/default",
+      "generate_thresholds_profile": null,
+      "eval_run_dir": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/eval_fail",
+      "eval_task": "extract",
+      "eval_run_id": "eval_fail",
+      "reasons": [
+        {
+          "code": "system_unhealthy",
+          "message": "http_5xx_rate=5.000% exceeds budget max_http_5xx_rate=1.000%",
+          "context": {
+            "metric": "http_5xx_rate",
+            "current_pct": 5.0,
+            "max_pct": 1.0,
+            "counts": null
+          }
+        },
+        {
+          "code": "system_unhealthy",
+          "message": "timeout_rate=5.000% exceeds budget max_timeout_rate=1.000%",
+          "context": {
+            "metric": "timeout_rate",
+            "current_pct": 5.0,
+            "max_pct": 1.0,
+            "counts": null
+          }
+        },
+        {
+          "code": "system_unhealthy",
+          "message": "non_200_rate=10.000% exceeds budget max_non_200_rate=5.000%",
+          "context": {
+            "metric": "non_200_rate",
+            "current_pct": 10.0,
+            "max_pct": 5.0,
+            "counts": null
+          }
+        },
+        {
+          "code": "schema_validity_too_low",
+          "message": "schema_validity_rate(point)=60.000% < min=90.000%",
+          "context": {
+            "metric": "schema_validity_rate",
+            "source": "point",
+            "current_pct": 60.0,
+            "min_pct": 90.0,
+            "point_pct": 60.0,
+            "ci95_low_pct": null,
+            "n_total": 2,
+            "min_n_for_point_estimate": 200
+          }
+        }
+      ],
+      "warnings": [
+        {
+          "code": "insufficient_sample_size",
+          "message": "n_total=2 below min_n_total=20; decision is low-confidence",
+          "context": {
+            "n_total": 2,
+            "min_n_total": 20
+          }
+        }
+      ],
+      "metrics": {
+        "n_total": 2,
+        "n_ok": 1,
+        "task": "extract",
+        "run_id": "eval_fail",
+        "run_dir": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/phase9_policy_eval_linkage/eval_fail",
+        "deployment_key": "async-proof--fake-extract",
+        "deployment": {
+          "provider": "fake",
+          "profile": "async-proof"
+        },
+        "http_5xx_rate": 5.0,
+        "timeout_rate": 5.0,
+        "non_200_rate": 10.0,
+        "schema_validity_rate": 60.0,
+        "schema_validity_rate__gate_source": "point",
+        "schema_validity_rate__gate_value": 60.0,
+        "field_exact_match_rate": {}
+      }
+    }
+  }
+}

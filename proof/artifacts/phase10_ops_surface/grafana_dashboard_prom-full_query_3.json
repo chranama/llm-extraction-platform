@@ -1,0 +1,30 @@
+{
+  "url": "http://127.0.0.1:18087/api/v1/query?query=sum%20by%20%28job%29%20%28up%29",
+  "status_code": 200,
+  "body": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "job": "llm_server_container"
+          },
+          "value": [
+            1780690588.529,
+            "1"
+          ]
+        },
+        {
+          "metric": {
+            "job": "prometheus"
+          },
+          "value": [
+            1780690588.529,
+            "1"
+          ]
+        }
+      ]
+    }
+  }
+}

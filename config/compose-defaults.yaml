@@ -11,6 +11,8 @@
 #   itest   -> integration-test infra + server_itest wiring
 #   jobs    -> eval/policy containers defaults (API_BASE_URL, policy paths)
 #   llama   -> llama.cpp server defaults (model file + tuning + service URL + pinned build/image ref)
+#   reviewer-smoke  -> fake backend for fast API/contract smoke checks
+#   compose-extract -> containerized llama.cpp SmolLM2 extract path
 #
 # Notes:
 # - MODELS_YAML points to the profiled models file (config/models.yaml)
@@ -150,3 +152,27 @@ profiles:
   #   llmctl compose --defaults-profile docker+llama+models-llama ...
   models-llama:
     MODELS_PROFILE: "llama-server"
+
+  reviewer-smoke:
+    APP_PROFILE: "test"
+    MODELS_PROFILE: "test"
+    MODEL_LOAD_MODE: "lazy"
+    REQUIRE_MODEL_READY: "0"
+    MODEL_WARMUP: "0"
+    REDIS_ENABLED: "0"
+    SERVER_MEM_LIMIT: "4g"
+    SERVER_MEMSWAP_LIMIT: "4g"
+    CONTAINER_MEMORY_BYTES: "4294967296"
+
+  compose-extract:
+    APP_PROFILE: "docker"
+    MODELS_PROFILE: "compose-extract"
+    MODEL_LOAD_MODE: "lazy"
+    REQUIRE_MODEL_READY: "1"
+    MODEL_WARMUP: "0"
+    REDIS_ENABLED: "1"
+    POLICY_DECISION_PATH: "/app/policy_out/local_extract_allow.json"
+    LLAMA_SERVER_URL: "http://llama_server:8080"
+    LLAMA_N_GPU_LAYERS: "0"
+    LLAMA_TEMP: "0.0"
+    LLAMA_TOP_P: "1.0"

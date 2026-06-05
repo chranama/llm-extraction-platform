@@ -1,0 +1,6 @@
+{
+  "returncode": 0,
+  "stdout": "",
+  "stderr": "warning: `VIRTUAL_ENV=.venv` does not match the project environment path `policy/.venv` and will be ignored; use `--active` to target the active environment instead\n",
+  "expected_returncode": 0
+}

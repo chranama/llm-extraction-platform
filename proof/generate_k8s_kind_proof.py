@@ -16,12 +16,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = ROOT / "proof" / "artifacts" / "phase5_k8s_kind"
 KIND_CLUSTER = "llm"
+KUBECTL_CONTEXT = f"kind-{KIND_CLUSTER}"
 NAMESPACE = "llm"
 LOCAL_PORT = 18080
 REMOTE_PORT = 8000
 API_BASE = f"http://127.0.0.1:{LOCAL_PORT}"
 SERVICE_NAME = "api"
 MIN_DOCKER_FREE_BYTES = 8 * 1024 * 1024 * 1024
+PROOF_API_KEY = "kind-proof-key"
 
 
 def fail(message: str) -> None:
@@ -55,6 +57,10 @@ def run(
     )
 
 
+def kubectl_args(*args: str) -> list[str]:
+    return ["kubectl", "--context", KUBECTL_CONTEXT, *args]
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -75,6 +81,14 @@ def ensure_docker_storage_headroom() -> None:
     docker_root = root_result.stdout.strip()
     if root_result.returncode != 0 or not docker_root:
         fail("unable to determine DockerRootDir from docker info")
+
+    if not Path(docker_root).exists():
+        log_step(
+            "docker storage preflight skipped: "
+            f"DockerRootDir {docker_root!r} is not visible on the host "
+            "(common with Docker Desktop VM-backed storage)"
+        )
+        return
 
     usage = shutil.disk_usage(docker_root)
     if usage.free < MIN_DOCKER_FREE_BYTES:
@@ -104,10 +118,18 @@ def render_overlay(overlay: str, output_path: Path) -> None:
     fail(f"unable to render overlay: {overlay}")
 
 
-def http_request(method: str, path: str, body: bytes | None = None) -> tuple[int, bytes]:
+def http_request(
+    method: str,
+    path: str,
+    body: bytes | None = None,
+    *,
+    api_key: str | None = None,
+) -> tuple[int, bytes]:
     req = urllib.request.Request(f"{API_BASE}{path}", data=body, method=method)
     if body is not None:
         req.add_header("Content-Type", "application/json")
+    if api_key:
+        req.add_header("X-API-Key", api_key)
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, resp.read()
@@ -121,12 +143,13 @@ def http_request(method: str, path: str, body: bytes | None = None) -> tuple[int
 def port_forward():
     proc = subprocess.Popen(
         [
-            "kubectl",
-            "-n",
-            NAMESPACE,
-            "port-forward",
-            f"svc/{SERVICE_NAME}",
-            f"{LOCAL_PORT}:{REMOTE_PORT}",
+            *kubectl_args(
+                "-n",
+                NAMESPACE,
+                "port-forward",
+                f"svc/{SERVICE_NAME}",
+                f"{LOCAL_PORT}:{REMOTE_PORT}",
+            ),
         ],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
@@ -194,59 +217,55 @@ def generate_k8s_kind_proof() -> None:
     run(["kind", "load", "docker-image", "llm-server:dev", "--name", KIND_CLUSTER])
     log_step("resetting local-generate-only overlay resources")
     run(
-        [
-            "kubectl",
+        kubectl_args(
             "delete",
             "-k",
             str(ROOT / "deploy" / "k8s" / "overlays" / "local-generate-only"),
             "--ignore-not-found",
-        ],
+        ),
         check=False,
     )
     log_step("applying local-generate-only overlay")
     run(
-        [
-            "kubectl",
+        kubectl_args(
             "apply",
             "-k",
             str(ROOT / "deploy" / "k8s" / "overlays" / "local-generate-only"),
-        ]
+        )
     )
 
     log_step("waiting for db-migrate job completion")
     migrate_wait = run(
-        [
-            "kubectl",
+        kubectl_args(
             "-n",
             NAMESPACE,
             "wait",
             "--for=condition=complete",
             "job/db-migrate",
             "--timeout=240s",
-        ]
+        )
     )
     write_text(ARTIFACT_DIR / "db_migrate_job_status.txt", migrate_wait.stdout)
 
     log_step("waiting for api deployment rollout")
     rollout = run(
-        [
-            "kubectl",
+        kubectl_args(
             "-n",
             NAMESPACE,
             "rollout",
             "status",
             "deployment/api",
             "--timeout=240s",
-        ]
+        )
     )
     write_text(ARTIFACT_DIR / "server_rollout_status.txt", rollout.stdout)
     write_text(
         ARTIFACT_DIR / "kubectl_get_pods.txt",
-        run(["kubectl", "-n", NAMESPACE, "get", "pods", "-o", "wide"]).stdout,
+        run(kubectl_args("-n", NAMESPACE, "get", "pods", "-o", "wide")).stdout,
     )
     write_text(
         ARTIFACT_DIR / "kubectl_get_svc.txt",
-        run(["kubectl", "-n", NAMESPACE, "get", "svc"]).stdout,
+        run(kubectl_args("-n", NAMESPACE, "get", "svc")).stdout,
     )
 
     log_step("running Kubernetes smoke checks")
@@ -258,6 +277,8 @@ def generate_k8s_kind_proof() -> None:
             "API_SVC": SERVICE_NAME,
             "LOCAL_PORT": str(LOCAL_PORT),
             "REMOTE_PORT": str(REMOTE_PORT),
+            "KUBECTL_CONTEXT": KUBECTL_CONTEXT,
+            "PROOF_API_KEY": PROOF_API_KEY,
         },
     )
     write_text(ARTIFACT_DIR / "k8s_smoke.log", smoke.stdout)
@@ -276,11 +297,12 @@ def generate_k8s_kind_proof() -> None:
     log_step("verifying live service via port-forward")
     with port_forward():
         health_code, _ = http_request("GET", "/healthz")
-        models_code, models_body = http_request("GET", "/v1/models")
+        models_code, models_body = http_request("GET", "/v1/models", api_key=PROOF_API_KEY)
         extract_code, _ = http_request(
             "POST",
             "/v1/extract",
             body=b'{"schema_id":"invoice_v1","text":"probe","cache":false,"repair":false}',
+            api_key=PROOF_API_KEY,
         )
 
     if health_code != 200:

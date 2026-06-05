@@ -1,7 +1,9 @@
 # Operations
 
-This repository supports local host, compose, and Kubernetes-oriented workflows.
-Some paths are lightweight validation paths; others require local infrastructure.
+This repository supports local host, Compose, and Kubernetes-oriented workflows.
+The promoted local runtime targets are documented in the runbook. Some paths are
+lightweight validation paths; the Compose extract target requires a local GGUF
+model and runs CPU-only containerized `llama.cpp`.
 
 For ordered start, verification, log inspection, and shutdown commands, use
 [`runbook.md`](runbook.md).
@@ -16,7 +18,17 @@ Common requirements:
 - Redis and Postgres for async extraction and integration workflows
 - `kind` and Kubernetes tooling for local cluster checks
 
-Model-backed runtime paths also require a configured local model profile.
+Model-backed runtime paths also require a configured local model profile. The
+supported Compose extract profile is `compose-extract`; it uses
+`policy_out/local_extract_allow.json` as the promoted local allow-policy
+fixture. Deny decisions remain useful for policy demonstrations, but they are
+not the default happy path.
+
+The external model runtime path assumes the model server is already running and
+reachable from the API container. This repo verifies the server boundary; it
+does not own lifecycle or acceleration for that external runtime. Treat it as an
+operational target rather than a canonical proof-backed target unless a separate
+external runtime proof is generated.
 
 ## Health And Readiness
 
@@ -33,7 +45,7 @@ Relevant code:
 
 ## Local Runtime
 
-The root CLI exposes repo-level workflows through `llmctl`.
+The root CLI exposes curated repo-level workflows through `llmctl`.
 
 Example compose inspection command:
 
@@ -69,7 +81,11 @@ Useful surfaces:
 - health/readiness endpoints for runtime state
 - admin logs and trace detail endpoints
 - Prometheus metrics from the server
+- UI and local proxy surfaces for manual inspection
 - generated trace artifacts under `proof/artifacts/phase7_trace_inspection/`
+- policy/eval linkage artifacts under `proof/artifacts/phase9_policy_eval_linkage/`
+- ops-surface artifacts under `proof/artifacts/phase10_ops_surface/`
+  including Prometheus scrape state and Grafana dashboard population
 - CI failure bundles uploaded by workflow jobs
 
 Common failure areas:

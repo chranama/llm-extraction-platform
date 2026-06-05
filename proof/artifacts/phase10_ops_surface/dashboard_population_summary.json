@@ -1,0 +1,45 @@
+{
+  "grafana_reachable": true,
+  "prometheus_datasource_present": true,
+  "dashboards_count": 2,
+  "dashboards_with_panels": 2,
+  "dashboards_with_query_data": 2,
+  "panels_count": 19,
+  "api_prometheus_target_up": true,
+  "prometheus_query_up_has_data": true,
+  "grafana_datasource_proxy_query_has_data": true,
+  "dashboards": [
+    {
+      "uid": "llm-server-overview",
+      "title": "Gateway + Backend Overview",
+      "panels_count": 8,
+      "queries_checked": 8,
+      "queries_with_data": 1
+    },
+    {
+      "uid": "prom-full",
+      "title": "Prometheus \u2013 Full Overview",
+      "panels_count": 11,
+      "queries_checked": 8,
+      "queries_with_data": 5
+    }
+  ],
+  "query_artifacts": [
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_1.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_2.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_3.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_4.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_5.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_6.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_7.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_llm-server-overview_query_8.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_1.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_2.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_3.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_4.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_5.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_6.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_7.json",
+    "proof/artifacts/phase10_ops_surface/grafana_dashboard_prom-full_query_8.json"
+  ]
+}

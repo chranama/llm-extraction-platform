@@ -411,7 +411,7 @@ profiles:
         deployment_key: docker-llama--smollm2-360m-q8
         backend_constraints: { llamacpp_model_selector: "fixed" }
         llamacpp:
-          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://llama_server:8080}
+          server_url: ${LLAMA_SERVER_URL_SMOLLM2_360M:-http://host.docker.internal:8080}
           timeout_seconds: 30
           model_name: "SmolLM2-360M-Instruct"
         capabilities: { generate: true, extract: false }
@@ -427,7 +427,7 @@ profiles:
   test:
     default_model: fake
     defaults:
-      backend: transformers
+      backend: fake
       load_mode: lazy
       capabilities: { generate: true, extract: true }
       readiness_mode: "off"
@@ -445,10 +445,68 @@ profiles:
 
     models:
       - id: fake
-        backend: transformers
+        backend: fake
         load_mode: lazy
         capabilities: { generate: true, extract: true }
         readiness_mode: "off"
         deployment_key: test-fake
+        remote:
+          output_text: '{"company":"ACME STORE","address":"123 MAIN ST","date":"2024-03-10","total":"$42.18"}'
         assessment: { assessed: false }
         notes: "Fake model for integration tests"
+
+
+  # ==========================================================
+  # COMPOSE EXTRACT + llama.cpp
+  # ==========================================================
+  compose-extract:
+    default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+    defaults:
+      backend: llamacpp
+      load_mode: lazy
+      readiness_mode: probe
+      deployment_key: compose-extract--smollm2-360m-q8
+      deployment:
+        profile_id: compose-extract
+        models_profile: compose-extract
+        expected:
+          in_docker: true
+          accelerator: "cpu"
+          precision: "int8"
+      capabilities: { generate: true, extract: true }
+      assessment:
+        lane: compose-extract
+        policy_schema: "policy_decision_v2"
+        require_for_extract: false
+        assessed: true
+      backend_constraints:
+        llamacpp_model_selector: "fixed"
+      llamacpp:
+        server_url: ${LLAMA_SERVER_URL:-http://llama_server:8080}
+        timeout_seconds: 60
+        connect_timeout_seconds: 5
+        default_temperature: 0.0
+        default_top_p: 1.0
+
+    models:
+      - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: compose-extract--smollm2-360m-q8
+        backend_constraints: { llamacpp_model_selector: "fixed" }
+        llamacpp:
+          server_url: ${LLAMA_SERVER_URL:-http://llama_server:8080}
+          timeout_seconds: 60
+          connect_timeout_seconds: 5
+          model_name: "SmolLM2-360M-Instruct"
+          default_temperature: 0.0
+          default_top_p: 1.0
+        capabilities: { generate: true, extract: true }
+        assessment:
+          assessed: true
+          status: allowed
+          assessed_by: local_compose_extract_path
+        deployment:
+          expected: { in_docker: true, accelerator: "cpu", precision: "int8" }
+        notes: "Compose extract path: CPU-only containerized llama.cpp SmolLM2 runtime."

@@ -48,6 +48,60 @@ def test_validate_first_matching_prefers_delimited_json(monkeypatch):
     assert out == {"ok": True}
 
 
+def test_validate_first_matching_recovers_schema_tags_from_llamacpp_output():
+    from llm_server.services.extract_support.constants import _JSON_BEGIN, _JSON_END
+    import llm_server.services.extract_support.json_parse as ex
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "company": {"type": ["string", "null"]},
+            "address": {"type": ["string", "null"]},
+            "date": {"type": ["string", "null"], "pattern": ".*\\d{1,4}.*"},
+            "total": {"type": ["string", "null"], "pattern": ".*\\d.*"},
+        },
+        "required": ["company", "date", "total"],
+    }
+    raw = (
+        f"{_JSON_BEGIN}\n"
+        "<JSON_OBJECT>\n"
+        "<company>ACME STORE</company>\n"
+        "<address>123 MAIN ST</address>\n"
+        "<date>2024-03-10</date>\n"
+        "<total>$42.18</total>\n"
+        "<additionalProperties>false</additionalProperties>\n"
+        "</JSON_OBJECT>\n"
+        f"{_JSON_END}"
+    )
+
+    out = ex.validate_first_matching(schema, raw)
+
+    assert out == {
+        "company": "ACME STORE",
+        "address": "123 MAIN ST",
+        "date": "2024-03-10",
+        "total": "$42.18",
+    }
+
+
+def test_validate_first_matching_schema_tags_still_require_schema_conformance():
+    from llm_server.services.extract_support.constants import _JSON_BEGIN, _JSON_END
+    import llm_server.services.extract_support.json_parse as ex
+
+    schema = {
+        "type": "object",
+        "properties": {"total": {"type": "string", "pattern": ".*\\d.*"}},
+        "required": ["total"],
+    }
+    raw = f"{_JSON_BEGIN}\n<JSON_OBJECT><total>free</total></JSON_OBJECT>\n{_JSON_END}"
+
+    with pytest.raises(ex.AppError) as e:
+        ex.validate_first_matching(schema, raw)
+
+    assert e.value.code == "schema_validation_failed"
+
+
 def test_validate_first_matching_raises_invalid_json_when_no_objects(monkeypatch):
     import llm_server.services.extract_support.json_parse as ex
 

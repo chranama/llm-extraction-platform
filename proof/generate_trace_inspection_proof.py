@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import atexit
 import shutil
 import socket
 import subprocess
@@ -37,14 +38,24 @@ def fail(message: str) -> None:
 def run(
     args: list[str], *, env: dict[str, str] | None = None, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    result = subprocess.run(
         args,
         cwd=ROOT,
         capture_output=True,
         text=True,
-        check=check,
+        check=False,
         env=env,
     )
+    if check and result.returncode != 0:
+        fail(
+            "command failed: {cmd}\nreturncode={code}\nstdout:\n{stdout}\nstderr:\n{stderr}".format(
+                cmd=" ".join(args),
+                code=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        )
+    return result
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -99,6 +110,28 @@ def wait_http(path: str, *, api_key: str = USER_API_KEY, timeout_seconds: float 
             return
         time.sleep(0.5)
     fail(f"timed out waiting for {path}")
+
+
+def wait_postgres(env: dict[str, str], timeout_seconds: float = 60.0) -> None:
+    db_url = env["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
+    code = (
+        "import asyncio\n"
+        "import asyncpg\n"
+        f"DATABASE_URL={db_url!r}\n"
+        "async def main():\n"
+        "    conn = await asyncpg.connect(DATABASE_URL)\n"
+        "    await conn.close()\n"
+        "asyncio.run(main())\n"
+    )
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        result = run(
+            ["uv", "run", "--project", "server", "python", "-c", code], env=env, check=False
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1)
+    fail("timed out waiting for Postgres readiness")
 
 
 def compose_env() -> dict[str, str]:
@@ -224,9 +257,15 @@ def generate_trace_inspection_proof() -> None:
     cenv = compose_env()
     penv = proof_env()
 
+    def cleanup_compose() -> None:
+        run(compose_cmd("down", "--remove-orphans", "-v"), env=cenv, check=False)
+
+    atexit.register(cleanup_compose)
+
     run(compose_cmd("up", "-d", "postgres_host", "redis_host"), env=cenv)
     wait_tcp("127.0.0.1", int(POSTGRES_PORT))
     wait_tcp("127.0.0.1", int(REDIS_PORT))
+    wait_postgres(penv)
 
     run(
         [
@@ -381,6 +420,8 @@ def generate_trace_inspection_proof() -> None:
     ):
         fail(f"trace proof summary check failed: {summary}")
     write_json(ARTIFACT_DIR / "trace_summary.json", summary)
+    cleanup_compose()
+    atexit.unregister(cleanup_compose)
 
 
 if __name__ == "__main__":

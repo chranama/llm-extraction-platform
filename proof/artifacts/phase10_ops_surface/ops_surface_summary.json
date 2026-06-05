@@ -1,0 +1,27 @@
+{
+  "proof_phase": "phase10_ops_surface",
+  "generated_at": "2026-06-05T20:16:28.730203+00:00",
+  "status": "pass",
+  "compose_project": "llmep-ops-surface",
+  "ports": {
+    "api": "18085",
+    "ui": "18086",
+    "prometheus": "18087",
+    "grafana": "18088",
+    "proxy": "18089"
+  },
+  "checks": {
+    "direct_api": true,
+    "direct_ui": true,
+    "direct_prometheus": true,
+    "direct_grafana": true,
+    "proxy_api": true,
+    "proxy_ui": true,
+    "proxy_prometheus": true,
+    "proxy_grafana": true,
+    "prometheus_api_target_up": true,
+    "prometheus_query_up": true,
+    "grafana_datasource": true,
+    "grafana_dashboard_population": true
+  }
+}

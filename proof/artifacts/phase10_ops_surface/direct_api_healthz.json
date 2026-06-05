@@ -1,0 +1,7 @@
+{
+  "url": "http://127.0.0.1:18085/healthz",
+  "status_code": 200,
+  "body": {
+    "status": "ok"
+  }
+}

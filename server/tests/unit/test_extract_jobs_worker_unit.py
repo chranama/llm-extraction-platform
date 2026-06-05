@@ -4,8 +4,10 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 import llm_server.application.process_extract_job as process_jobs_app
+from llm_server.services.extract_jobs import RedisExtractJobQueue
 
 
 class _FakeSession:
@@ -26,6 +28,11 @@ class _FakeSessionContext:
 class _FakeQueue:
     async def dequeue(self, timeout_seconds: int = 0):
         return "job-1"
+
+
+class _TimeoutRedis:
+    async def brpop(self, *_args, **_kwargs):
+        raise RedisTimeoutError("timeout")
 
 
 def _job():
@@ -195,3 +202,10 @@ async def test_process_extract_job_once_continues_worker_trace(monkeypatch: pyte
         "extract_job.execution_started",
         "extract_job.completed",
     ]
+
+
+@pytest.mark.anyio
+async def test_redis_extract_queue_timeout_returns_none() -> None:
+    queue = RedisExtractJobQueue(_TimeoutRedis())
+
+    assert await queue.dequeue(timeout_seconds=1) is None

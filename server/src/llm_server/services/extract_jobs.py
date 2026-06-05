@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from redis.exceptions import TimeoutError as RedisTimeoutError
 import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -46,7 +47,10 @@ class RedisExtractJobQueue:
         await self._redis.lpush(self._queue_key, job_id)
 
     async def dequeue(self, timeout_seconds: int = 0) -> str | None:
-        item = await self._redis.brpop(self._queue_key, timeout=timeout_seconds)
+        try:
+            item = await self._redis.brpop(self._queue_key, timeout=timeout_seconds)
+        except (RedisTimeoutError, asyncio.TimeoutError):
+            return None
         if item is None:
             return None
         if isinstance(item, (list, tuple)) and len(item) == 2:

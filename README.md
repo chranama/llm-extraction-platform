@@ -36,8 +36,10 @@ inspecting, and shutting down the platform:
 
 - [Runbook](docs/runbook.md)
 
-It covers the API server, Postgres, Redis, optional UI, observability services,
-health checks, smoke requests, logs, and cleanup.
+It covers the supported reviewer smoke, Compose extract, external model,
+Kubernetes smoke, policy/eval linkage, admin/trace, ops-surface, and
+evidence-validation paths. The promoted real-model local path uses CPU-only
+containerized `llama.cpp` for model-backed extraction.
 
 ## Documentation
 
@@ -58,7 +60,8 @@ workflows. It includes API contracts, runtime policy behavior, local deployment
 assets, test coverage, and generated artifacts.
 
 It does not claim production-scale GPU scheduling, autoscaling under real
-traffic, external distributed tracing compliance, or high-availability operation.
+traffic, full benchmark evaluation coverage, external distributed tracing
+compliance, or high-availability operation.
 
 ## License
 
