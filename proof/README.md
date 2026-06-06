@@ -20,7 +20,7 @@ This directory contains the latest saved runtime evidence bundle and validation 
 
 The joint LLMEP plus `inference-serving-gateway` workflow is started from
 `tools/joint/inference_gateway_stack.sh` and writes optional artifacts under
-`artifacts/joint_gateway/latest/`.
+`artifacts/joint_gateway/`.
 
 ## Regenerate
 
@@ -72,3 +72,12 @@ Joint gateway evidence shows sync and async extraction through the companion
 edge gateway with request identity, trace identity, metrics, admin traces, and
 optional OTel export. It uses a deterministic fake model profile and does not
 claim real-model quality or cloud deployment behavior.
+
+Joint workflow artifact groups include:
+
+- `joint_gateway/latest/`: deterministic compatibility proof
+- `joint_gateway/observability_latest/`: deterministic proof with OTel evidence
+- `joint_gateway/edge_controls_latest/`: gateway route/limit/error controls
+- `joint_gateway/llama_extract_latest/`: real model-backed CPU llama.cpp extract
+- `joint_gateway/containerized_latest/`: local all-container Compose stack
+- `joint_gateway/kind_smoke_latest/`: local Kubernetes-shaped smoke proof

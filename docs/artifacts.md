@@ -64,9 +64,20 @@ captures logs, and writes `phase8_compose_llama_extract/`.
 - `phase10_ops_surface/`: direct and proxied API, UI, Prometheus, Grafana, and
   Compose status outputs, including Prometheus scrape state and Grafana
   dashboard population.
-- `joint_gateway/latest/`: sync and async extract through the companion gateway,
-  request and trace identity propagation, gateway/backend metrics, admin trace
-  inspection, optional OTel traces, and process logs from the joint local run.
+- `joint_gateway/latest/`: compatibility deterministic gateway proof.
+- `joint_gateway/observability_latest/`: sync and async extract through the
+  companion gateway, request and trace identity propagation, gateway/backend
+  metrics, admin trace inspection, OTel traces, and process logs from the joint
+  host run.
+- `joint_gateway/edge_controls_latest/`: gateway-owned route policy,
+  unsupported route, request-size rejection, backend auth pass-through, and
+  metrics artifacts.
+- `joint_gateway/llama_extract_latest/`: real model-backed sync and async
+  extraction through the gateway using CPU-only containerized `llama.cpp`.
+- `joint_gateway/containerized_latest/`: LLMEP API, LLMEP worker, gateway,
+  Postgres, and Redis running together on one local Compose network.
+- `joint_gateway/kind_smoke_latest/`: Kubernetes-shaped joint deployment proof
+  copied from the gateway repository's local kind workflow.
 
 ## Scope Boundaries
 
@@ -87,9 +98,22 @@ claim production TLS, identity, or ingress hardening. Its Prometheus and Grafana
 artifacts prove local scrape/dashboard wiring, not production observability
 operations.
 
-`joint_gateway/latest/` demonstrates a local edge/backend integration with a
-deterministic model profile. It does not claim real-model extraction quality,
-cloud networking, TLS, production identity, or AWS deployment.
+`joint_gateway/latest/` and `joint_gateway/observability_latest/` demonstrate
+local edge/backend integration with a deterministic model profile. They do not
+claim real-model extraction quality, cloud networking, TLS, production identity,
+or AWS deployment.
+
+`joint_gateway/llama_extract_latest/` demonstrates real model-backed extraction
+through the gateway with CPU-only `llama.cpp`. It does not claim accelerated
+inference or production throughput.
+
+`joint_gateway/containerized_latest/` demonstrates local Compose service
+networking across LLMEP and the gateway. It does not claim Kubernetes or cloud
+readiness.
+
+`joint_gateway/kind_smoke_latest/` demonstrates Kubernetes-shaped local
+deployability. It does not claim AWS ingress, TLS, high availability, or managed
+cloud operation.
 
 Generated artifacts should stay close to the behavior they support. If a new
 artifact does not clarify current runtime behavior, it should not be added to the

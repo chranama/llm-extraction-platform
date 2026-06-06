@@ -1,0 +1,37 @@
+# HELP gateway_edge_errors_total Total edge-owned rejections and errors emitted by the gateway.
+# TYPE gateway_edge_errors_total counter
+gateway_edge_errors_total{code="request_too_large"} 1
+# HELP gateway_request_duration_seconds Latency for gateway-handled HTTP requests.
+# TYPE gateway_request_duration_seconds histogram
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.005"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.01"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.025"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.05"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.1"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.25"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="1"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="2.5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="10"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="+Inf"} 1
+gateway_request_duration_seconds_sum{method="GET",route="healthz"} 1.3708e-05
+gateway_request_duration_seconds_count{method="GET",route="healthz"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.005"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.01"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.025"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.05"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.1"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.25"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="1"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="2.5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="10"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="+Inf"} 1
+gateway_request_duration_seconds_sum{method="POST",route="extract"} 8.3542e-05
+gateway_request_duration_seconds_count{method="POST",route="extract"} 1
+# HELP gateway_requests_total Total HTTP requests handled by the gateway.
+# TYPE gateway_requests_total counter
+gateway_requests_total{method="GET",route="healthz",status="200"} 1
+gateway_requests_total{method="POST",route="extract",status="413"} 1

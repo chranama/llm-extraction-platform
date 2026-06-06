@@ -1,0 +1,34 @@
+{
+  "mode": "joint_edge_controls",
+  "checks": {
+    "readyz_passes": true,
+    "allowed_extract_succeeds": true,
+    "invalid_api_key_reaches_backend_auth": true,
+    "unsupported_generate_is_gateway_owned": true,
+    "extract_route_disabled_by_gateway": true,
+    "extract_jobs_route_disabled_by_gateway": true,
+    "oversized_extract_rejected_by_gateway": true,
+    "gateway_metrics_captured": true
+  },
+  "artifacts": {
+    "base_readyz": "base_readyz.body.json",
+    "base_extract_allowed": "base_extract_allowed.body.json",
+    "base_invalid_api_key": "base_invalid_api_key.body.json",
+    "base_unsupported_generate": "base_unsupported_generate.body.json",
+    "disabled_extract": "disabled_extract.body.json",
+    "disabled_extract_jobs": "disabled_extract_jobs.body.json",
+    "oversized_extract": "oversized_extract.body.json",
+    "base_gateway_metrics": "base_gateway.metrics.txt",
+    "disabled_gateway_metrics": "disabled_gateway.metrics.txt",
+    "oversized_gateway_metrics": "oversized_gateway.metrics.txt"
+  },
+  "case_status_codes": {
+    "base_extract_allowed": 200,
+    "base_invalid_api_key": 401,
+    "base_readyz": 200,
+    "base_unsupported_generate": 404,
+    "disabled_extract": 403,
+    "disabled_extract_jobs": 403,
+    "oversized_extract": 413
+  }
+}

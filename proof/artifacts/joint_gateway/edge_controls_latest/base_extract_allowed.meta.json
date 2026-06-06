@@ -1,0 +1,6 @@
+{
+  "name": "base_extract_allowed",
+  "method": "POST",
+  "url": "http://127.0.0.1:18091/v1/extract",
+  "status_code": 200
+}

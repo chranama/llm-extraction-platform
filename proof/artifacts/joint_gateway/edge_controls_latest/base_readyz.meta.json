@@ -1,0 +1,6 @@
+{
+  "name": "base_readyz",
+  "method": "GET",
+  "url": "http://127.0.0.1:18091/readyz",
+  "status_code": 200
+}

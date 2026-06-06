@@ -1,0 +1,117 @@
+# HELP gateway_edge_errors_total Total edge-owned rejections and errors emitted by the gateway.
+# TYPE gateway_edge_errors_total counter
+gateway_edge_errors_total{code="unsupported_route"} 1
+# HELP gateway_request_duration_seconds Latency for gateway-handled HTTP requests.
+# TYPE gateway_request_duration_seconds histogram
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.005"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.01"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.025"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.05"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.1"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.25"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="0.5"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="1"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="2.5"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="5"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="10"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="healthz",le="+Inf"} 2
+gateway_request_duration_seconds_sum{method="GET",route="healthz"} 8.2583e-05
+gateway_request_duration_seconds_count{method="GET",route="healthz"} 2
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.005"} 0
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.01"} 0
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.025"} 0
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.05"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.1"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.25"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="0.5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="1"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="2.5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="5"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="10"} 1
+gateway_request_duration_seconds_bucket{method="GET",route="readyz",le="+Inf"} 1
+gateway_request_duration_seconds_sum{method="GET",route="readyz"} 0.047449541
+gateway_request_duration_seconds_count{method="GET",route="readyz"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.005"} 0
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.01"} 0
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.025"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.05"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.1"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.25"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="0.5"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="1"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="2.5"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="5"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="10"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="extract",le="+Inf"} 2
+gateway_request_duration_seconds_sum{method="POST",route="extract"} 0.206332541
+gateway_request_duration_seconds_count{method="POST",route="extract"} 2
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.005"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.01"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.025"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.05"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.1"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.25"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="0.5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="1"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="2.5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="5"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="10"} 1
+gateway_request_duration_seconds_bucket{method="POST",route="unsupported_route",le="+Inf"} 1
+gateway_request_duration_seconds_sum{method="POST",route="unsupported_route"} 0.000143791
+gateway_request_duration_seconds_count{method="POST",route="unsupported_route"} 1
+# HELP gateway_requests_total Total HTTP requests handled by the gateway.
+# TYPE gateway_requests_total counter
+gateway_requests_total{method="GET",route="healthz",status="200"} 2
+gateway_requests_total{method="GET",route="readyz",status="200"} 1
+gateway_requests_total{method="POST",route="extract",status="200"} 1
+gateway_requests_total{method="POST",route="extract",status="401"} 1
+gateway_requests_total{method="POST",route="unsupported_route",status="404"} 1
+# HELP gateway_upstream_request_duration_seconds Latency for upstream requests made by the gateway.
+# TYPE gateway_upstream_request_duration_seconds histogram
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.005"} 0
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.01"} 0
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.025"} 0
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.05"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.1"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.25"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="0.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="1"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="2.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="10"} 1
+gateway_upstream_request_duration_seconds_bucket{method="GET",result="200",route="readyz",le="+Inf"} 1
+gateway_upstream_request_duration_seconds_sum{method="GET",result="200",route="readyz"} 0.047353417
+gateway_upstream_request_duration_seconds_count{method="GET",result="200",route="readyz"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.005"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.01"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.025"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.05"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.1"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.25"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="0.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="1"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="2.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="10"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="200",route="extract",le="+Inf"} 1
+gateway_upstream_request_duration_seconds_sum{method="POST",result="200",route="extract"} 0.194015
+gateway_upstream_request_duration_seconds_count{method="POST",result="200",route="extract"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.005"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.01"} 0
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.025"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.05"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.1"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.25"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="0.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="1"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="2.5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="5"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="10"} 1
+gateway_upstream_request_duration_seconds_bucket{method="POST",result="401",route="extract",le="+Inf"} 1
+gateway_upstream_request_duration_seconds_sum{method="POST",result="401",route="extract"} 0.012223667
+gateway_upstream_request_duration_seconds_count{method="POST",result="401",route="extract"} 1
+# HELP gateway_upstream_requests_total Total upstream requests attempted by the gateway.
+# TYPE gateway_upstream_requests_total counter
+gateway_upstream_requests_total{method="GET",result="200",route="readyz"} 1
+gateway_upstream_requests_total{method="POST",result="200",route="extract"} 1
+gateway_upstream_requests_total{method="POST",result="401",route="extract"} 1

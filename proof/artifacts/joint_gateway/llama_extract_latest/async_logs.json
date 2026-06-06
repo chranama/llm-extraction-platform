@@ -1,0 +1,27 @@
+{
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
+  "items": [
+    {
+      "id": 5,
+      "created_at": "2026-06-06T18:08:04.432030Z",
+      "api_key": "<redacted>",
+      "request_id": "integration-obs-request-2",
+      "trace_id": "integration-obs-trace-2",
+      "job_id": "971dc2edfcc14a77a4427612af38a962",
+      "route": "/v1/extract/jobs/worker",
+      "client_host": null,
+      "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF",
+      "status_code": 200,
+      "cached": false,
+      "error_code": null,
+      "error_stage": null,
+      "latency_ms": null,
+      "prompt_tokens": 379,
+      "completion_tokens": 43,
+      "prompt": "Vendor: ACME\\nTotal: 10.00",
+      "output": "{\"company\": \"ACME\", \"date\": \"2024-01-01\", \"total\": \"$10.00\"}"
+    }
+  ]
+}

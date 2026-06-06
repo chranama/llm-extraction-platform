@@ -1,0 +1,67 @@
+# deploy/compose/docker-compose.gateway.yml
+#
+# Joint LLMEP + inference-serving-gateway overlay.
+#
+# Use this with deploy/compose/docker-compose.yml. It contributes:
+# - gateway: Go edge gateway built from the sibling repository.
+# - joint_worker: generic async extract worker for fake-backend containerized proof.
+
+services:
+  gateway:
+    profiles: ["gateway"]
+    build:
+      context: ${ISG_REPO_ROOT:-../inference-serving-gateway}
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      GATEWAY_LISTEN_ADDR: ":8080"
+      GATEWAY_UPSTREAM_BASE_URL: ${GATEWAY_UPSTREAM_BASE_URL:-http://server:8000}
+      GATEWAY_REQUEST_TIMEOUT: ${GATEWAY_REQUEST_TIMEOUT:-30s}
+      GATEWAY_ENABLE_METRICS: ${GATEWAY_ENABLE_METRICS:-true}
+      GATEWAY_ALLOW_EXTRACT: ${GATEWAY_ALLOW_EXTRACT:-true}
+      GATEWAY_ALLOW_EXTRACT_JOBS: ${GATEWAY_ALLOW_EXTRACT_JOBS:-true}
+      GATEWAY_ALLOW_JOB_STATUS: ${GATEWAY_ALLOW_JOB_STATUS:-true}
+      GATEWAY_MAX_BODY_BYTES: ${GATEWAY_MAX_BODY_BYTES:-1048576}
+      GATEWAY_CONCURRENCY_LIMIT: ${GATEWAY_CONCURRENCY_LIMIT:-64}
+      GATEWAY_RATE_LIMIT_PER_SECOND: ${GATEWAY_RATE_LIMIT_PER_SECOND:-0}
+      GATEWAY_RATE_LIMIT_BURST: ${GATEWAY_RATE_LIMIT_BURST:-1}
+      GATEWAY_OTEL_ENABLED: ${GATEWAY_OTEL_ENABLED:-false}
+      GATEWAY_OTEL_SERVICE_NAME: ${GATEWAY_OTEL_SERVICE_NAME:-inference-serving-gateway}
+      GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT: ${GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      - "${JOINT_GATEWAY_PORT:-18091}:8080"
+    depends_on:
+      server:
+        condition: service_healthy
+
+  joint_worker:
+    profiles: ["joint-worker"]
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.server
+    restart: "no"
+    command: ["python", "-m", "llm_server.worker.extract_jobs", "--poll-timeout-seconds", "1"]
+    environment:
+      APP_ROOT: "/app"
+      APP_CONFIG_PATH: "/app/config/server.yaml"
+      APP_PROFILE: ${APP_PROFILE:-docker}
+      MODELS_PROFILE: ${MODELS_PROFILE:-test}
+      MODELS_YAML: ${MODELS_YAML:-/app/config/models.yaml}
+      SCHEMAS_DIR: ${SCHEMAS_DIR:-/app/schemas/model_output}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://llm:llm@postgres:5432/llm}
+      REDIS_ENABLED: ${REDIS_ENABLED:-1}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      EDGE_MODE: ${EDGE_MODE:-behind_gateway}
+      POLICY_DECISION_PATH: ${POLICY_DECISION_PATH:-/app/policy_out/latest.json}
+      OTEL_ENABLED: ${OTEL_ENABLED:-0}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-extraction-platform-worker}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ../../config:/app/config:rw
+      - ../../policy_out:/app/policy_out:rw
+      - ../../slo_out:/app/slo_out:rw

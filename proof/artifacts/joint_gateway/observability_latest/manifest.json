@@ -1,0 +1,168 @@
+{
+  "mode": "llm_extraction_platform_observability_pack",
+  "checks": {
+    "sync_request_id_preserved": true,
+    "async_submit_request_id_preserved": true,
+    "async_poll_request_id_preserved": true,
+    "sync_response_trace_id_preserved": true,
+    "async_submit_response_trace_id_preserved": true,
+    "async_submit_body_trace_id_preserved": true,
+    "async_poll_response_trace_id_preserved": true,
+    "async_poll_body_trace_id_preserved": true,
+    "sync_trace_detail_present": true,
+    "async_trace_detail_present": true,
+    "sync_trace_has_completion": true,
+    "async_trace_has_worker_claim": true,
+    "async_trace_has_status_poll": true,
+    "async_trace_has_completion": true,
+    "sync_execution_logs_present": true,
+    "sync_execution_logs_match_trace_id": true,
+    "async_execution_logs_present": true,
+    "async_execution_logs_match_trace_and_job_id": true,
+    "gateway_metrics_include_requests_total": true,
+    "gateway_metrics_include_upstream_total": true,
+    "backend_metrics_include_api_requests_total": true,
+    "backend_metrics_include_extraction_requests_total": true,
+    "sync_otel_trace_present": true,
+    "sync_otel_trace_has_gateway_service": true,
+    "sync_otel_trace_has_backend_service": true,
+    "async_otel_trace_present": true,
+    "async_otel_trace_has_gateway_service": true,
+    "async_otel_trace_has_backend_service": true,
+    "async_otel_trace_has_worker_service": true
+  },
+  "ids": {
+    "sync_request_id": "integration-obs-request-1",
+    "async_submit_request_id": "integration-obs-request-2",
+    "async_poll_request_id": "integration-obs-request-3",
+    "async_job_id": "f21edae588ec4053aca119b197af6364"
+  },
+  "artifacts": {
+    "gateway_metrics": "gateway.metrics.txt",
+    "backend_metrics": "backend.metrics.txt",
+    "sync_extract_headers": "extract.headers",
+    "sync_extract_body": "extract.body.json",
+    "async_submit_headers": "extract_jobs.headers",
+    "async_submit_body": "extract_jobs.body.json",
+    "async_status_headers": "job_status.headers",
+    "async_status_body": "job_status.body.json",
+    "sync_trace_detail": "sync_trace_detail.json",
+    "async_trace_detail": "async_trace_detail.json",
+    "sync_logs": "sync_logs.json",
+    "async_logs": "async_logs.json",
+    "async_poll_logs": "async_poll_logs.json",
+    "gateway_log": "gateway.log",
+    "sync_otel_trace": "sync_otel_trace.json",
+    "async_otel_trace": "async_otel_trace.json"
+  },
+  "expected_trace_ids": {
+    "sync": "integration-obs-trace-1",
+    "async": "integration-obs-trace-2"
+  },
+  "observed_response_trace_ids": {
+    "sync_header": "integration-obs-trace-1",
+    "async_submit_header": "integration-obs-trace-2",
+    "async_submit_body": "integration-obs-trace-2",
+    "async_poll_header": "integration-obs-trace-2",
+    "async_poll_body": "integration-obs-trace-2"
+  },
+  "execution_log_query_contract": {
+    "sync_logs": {
+      "trace_id": "integration-obs-trace-1"
+    },
+    "async_logs": {
+      "trace_id": "integration-obs-trace-2",
+      "job_id": "f21edae588ec4053aca119b197af6364"
+    },
+    "async_poll_logs": {
+      "request_id": "integration-obs-request-3",
+      "expectation": "observation_only_may_be_empty"
+    }
+  },
+  "surface_semantics": {
+    "admin_logs": "inference_execution_only",
+    "poll_request_visibility": [
+      "gateway access logs",
+      "backend access logs",
+      "backend trace events"
+    ],
+    "poll_request_not_required_in": [
+      "/v1/admin/logs"
+    ]
+  },
+  "otel_semantics": {
+    "enabled": true,
+    "application_trace_id_role": "logical_operation_identity",
+    "otel_trace_id_role": "transport_level_distributed_trace_identity",
+    "span_attributes": [
+      "llm.request_id",
+      "llm.trace_id",
+      "llm.job_id"
+    ],
+    "async_poll_model": "separate_request_traces_with_shared_application_trace_and_job_identity",
+    "sync_services": [
+      "inference-serving-gateway",
+      "llm-extraction-platform"
+    ],
+    "async_services": [
+      "inference-serving-gateway",
+      "llm-extraction-platform",
+      "llm-extraction-platform-worker"
+    ]
+  },
+  "observations": {
+    "async_poll_log_total": 0
+  },
+  "sync_event_names": [
+    "extract.accepted",
+    "extract.model_resolved",
+    "extract.cache_lookup",
+    "extract.generate_completed",
+    "extract.validation_completed",
+    "extract.cache_written",
+    "extract.logged",
+    "extract.completed",
+    "extract.accepted",
+    "extract.model_resolved",
+    "extract.cache_lookup",
+    "extract.generate_completed",
+    "extract.validation_completed",
+    "extract.cache_written",
+    "extract.logged",
+    "extract.completed"
+  ],
+  "async_event_names": [
+    "extract_job.submitted",
+    "extract_job.persisted",
+    "extract_job.queued",
+    "extract_job.worker_claimed",
+    "extract_job.execution_started",
+    "extract.accepted",
+    "extract.model_resolved",
+    "extract.cache_lookup",
+    "extract.generate_completed",
+    "extract.validation_completed",
+    "extract_job.status_polled",
+    "extract.cache_written",
+    "extract.logged",
+    "extract.completed",
+    "extract_job.completed",
+    "extract_job.status_polled",
+    "extract_job.submitted",
+    "extract_job.persisted",
+    "extract_job.queued",
+    "extract_job.worker_claimed",
+    "extract_job.execution_started",
+    "extract.accepted",
+    "extract.model_resolved",
+    "extract.cache_lookup",
+    "extract.generate_completed",
+    "extract.validation_completed",
+    "extract_job.status_polled",
+    "extract.cache_written",
+    "extract.logged",
+    "extract.completed",
+    "extract_job.completed",
+    "extract_job.status_polled"
+  ]
+}

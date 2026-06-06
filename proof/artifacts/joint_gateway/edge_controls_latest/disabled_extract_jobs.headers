@@ -1,0 +1,6 @@
+HTTP/1.1 403 Forbidden
+Content-Type: application/json
+X-Request-Id: 41f8ebf4-2c3d-4b86-8743-3ec092f01787
+X-Trace-Id: 550f9715-a95f-40df-9709-79617f2f000f
+Date: Sat, 06 Jun 2026 18:02:53 GMT
+Content-Length: 142

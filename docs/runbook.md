@@ -15,6 +15,10 @@ Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 | Compose Extract | API server, Postgres, Redis, worker, and llama-server in Docker Compose | CPU-only containerized `llama.cpp` serving SmolLM2 | Real model-backed generate/extract, sync extract, async extract, durable job state, policy/capability surfaces, and traceable runtime behavior | Accelerated inference, production throughput, GPU scheduling, or high availability |
 | External Model Runtime | Containerized API server calls a model runtime outside the server container | Host `llama.cpp` or Docker-managed model runtime | Production-relevant model-serving boundary and external backend integration | Fully containerized accelerated inference on Docker for Mac |
 | Joint Inference Gateway | Host API server and worker, Compose infra, and sibling Go gateway | Fake deterministic backend | Backend behavior behind an inference edge service, sync and async extract forwarding, request identity, traces, and metrics across both services | Real model quality, `/v1/generate` through the gateway, AWS deployment, TLS, or production ingress |
+| Joint Live Llama Extract | LLMEP Compose extract stack with sibling Go gateway | CPU-only containerized `llama.cpp` | Real model-backed sync and async extraction through the gateway | Accelerated inference, production throughput, or cloud model serving |
+| Joint Edge Controls | Host API server and worker with restarted gateway variants | Fake deterministic backend | Gateway-owned route policy, unsupported route, body-size rejection, backend auth pass-through, and metrics | Real model behavior or load testing |
+| Joint Containerized Stack | LLMEP API/worker containers, gateway container, and Compose infra | Fake deterministic backend | Same local Compose network for backend, worker, gateway, Postgres, and Redis | Real model quality or production orchestration |
+| Joint Kind Smoke | Local kind deployment using LLMEP and gateway resources | Fake deterministic backend | Kubernetes-shaped deployability plus gateway/backend/worker proof artifacts | Cloud ingress, AWS, TLS, or production HA |
 | Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
 | Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
 | Admin/Trace | Host proof server with Postgres/Redis and async worker | Fake deterministic backend | Admin trace inspection for sync and async extract, including worker lineage | Distributed tracing export or external telemetry compliance |
@@ -216,9 +220,21 @@ tools/joint/inference_gateway_stack.sh down
 Use `tools/joint/inference_gateway_stack.sh verify` to run startup, proof
 generation, and shutdown as one sequence.
 
-The default workflow uses the deterministic `gateway-proof` model profile. It
-proves sync and async extract through the gateway, request and trace identity
-propagation, gateway/backend metrics, admin traces, and optional OTel export.
+Named joint workflows:
+
+```bash
+tools/joint/inference_gateway_stack.sh verify-observability
+tools/joint/inference_gateway_stack.sh verify-edge-controls
+tools/joint/inference_gateway_stack.sh verify-llama
+tools/joint/inference_gateway_stack.sh verify-containerized
+tools/joint/inference_gateway_stack.sh verify-kind
+```
+
+The default workflow uses the deterministic `gateway-proof` model profile.
+`verify-llama` uses the promoted CPU-only Compose extract path with
+containerized `llama.cpp`. `verify-containerized` runs LLMEP and the gateway as
+containers on one Compose network. `verify-kind` runs the Kubernetes-shaped
+local path and leaves the kind cluster intact while deleting applied resources.
 
 See [Inference Gateway Integration](inference-gateway-integration.md) for the
 runtime shape, supported capability set, overrides, and artifact inventory.

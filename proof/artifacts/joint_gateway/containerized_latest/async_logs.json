@@ -1,0 +1,27 @@
+{
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
+  "items": [
+    {
+      "id": 2,
+      "created_at": "2026-06-06T18:07:25.837535Z",
+      "api_key": "<redacted>",
+      "request_id": "integration-obs-request-2",
+      "trace_id": "integration-obs-trace-2",
+      "job_id": "df45a2fbbcbb4c0fb187d717a5411e18",
+      "route": "/v1/extract/jobs/worker",
+      "client_host": null,
+      "model_id": "fake",
+      "status_code": 200,
+      "cached": false,
+      "error_code": null,
+      "error_stage": null,
+      "latency_ms": null,
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "prompt": "Vendor: ACME\\nTotal: 10.00",
+      "output": "{\"company\": \"ACME STORE\", \"address\": \"123 MAIN ST\", \"date\": \"2024-03-10\", \"total\": \"$42.18\"}"
+    }
+  ]
+}

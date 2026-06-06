@@ -1,0 +1,10 @@
+{
+  "mode": "joint_kind_smoke",
+  "source": "inference-serving-gateway/proof/run_kind_stack.sh",
+  "artifact_root": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/joint_gateway/kind_smoke_latest",
+  "observability_manifest": "observability_latest/manifest.json",
+  "checks": {
+    "observability_manifest_present": true,
+    "jaeger_services_present": true
+  }
+}

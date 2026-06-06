@@ -1,0 +1,6 @@
+NAME                                       IMAGE                                    COMMAND                  SERVICE        CREATED          STATUS                    PORTS
+llmep_joint_containerized-gateway-1        llmep_joint_containerized-gateway        "gateway"                gateway        3 seconds ago    Up 1 second               0.0.0.0:18291->8080/tcp, [::]:18291->8080/tcp
+llmep_joint_containerized-joint_worker-1   llmep_joint_containerized-joint_worker   "/usr/bin/tini -- py…"   joint_worker   3 seconds ago    Up 2 seconds              8000/tcp
+llmep_joint_containerized-postgres-1       postgres:16-alpine                       "docker-entrypoint.s…"   postgres       18 seconds ago   Up 17 seconds (healthy)   5432/tcp
+llmep_joint_containerized-redis-1          redis:7-alpine                           "docker-entrypoint.s…"   redis          18 seconds ago   Up 17 seconds (healthy)   6379/tcp
+llmep_joint_containerized-server-1         llmep_joint_containerized-server         "/usr/bin/tini -- py…"   server         18 seconds ago   Up 12 seconds (healthy)   0.0.0.0:18290->8000/tcp, [::]:18290->8000/tcp

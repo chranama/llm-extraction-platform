@@ -41,6 +41,11 @@ x-server-env: &server_env
 
   CONTAINER_MEMORY_BYTES: ${CONTAINER_MEMORY_BYTES:-}
 
+  EDGE_MODE: ${EDGE_MODE:-}
+  OTEL_ENABLED: ${OTEL_ENABLED:-0}
+  OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-llm-extraction-platform}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
   # llama-server wiring (Option A external llama.cpp)
   # ✅ Default to in-compose llama_server service (works for Demo A)
   LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://llama_server:8080}
