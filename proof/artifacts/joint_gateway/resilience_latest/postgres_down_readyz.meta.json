@@ -1,0 +1,6 @@
+{
+  "name": "postgres_down_readyz",
+  "method": "GET",
+  "url": "http://127.0.0.1:18491/readyz",
+  "status_code": 503
+}

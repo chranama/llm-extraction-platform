@@ -1,0 +1,7 @@
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+Date: Sat, 06 Jun 2026 19:00:39 GMT
+Server: uvicorn
+X-Request-Id: resilience-redis-down-submit-request
+X-Trace-Id: resilience-redis-down-trace
+Content-Length: 229

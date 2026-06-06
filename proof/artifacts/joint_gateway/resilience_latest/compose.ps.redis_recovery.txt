@@ -1,0 +1,6 @@
+NAME                                    IMAGE                                 COMMAND                  SERVICE        CREATED          STATUS                            PORTS
+llmep_joint_resilience-gateway-1        llmep_joint_resilience-gateway        "gateway"                gateway        24 seconds ago   Up 17 seconds                     0.0.0.0:18491->8080/tcp, [::]:18491->8080/tcp
+llmep_joint_resilience-joint_worker-1   llmep_joint_resilience-joint_worker   "/usr/bin/tini -- py…"   joint_worker   24 seconds ago   Up 2 seconds                      8000/tcp
+llmep_joint_resilience-postgres-1       postgres:16-alpine                    "docker-entrypoint.s…"   postgres       34 seconds ago   Up 33 seconds (healthy)           5432/tcp
+llmep_joint_resilience-redis-1          redis:7-alpine                        "docker-entrypoint.s…"   redis          34 seconds ago   Up 3 seconds (health: starting)   6379/tcp
+llmep_joint_resilience-server-1         llmep_joint_resilience-server         "/usr/bin/tini -- py…"   server         33 seconds ago   Up 2 seconds (health: starting)   0.0.0.0:18490->8000/tcp, [::]:18490->8000/tcp

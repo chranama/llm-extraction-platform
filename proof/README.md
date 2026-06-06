@@ -82,4 +82,6 @@ Joint workflow artifact groups include:
 - `joint_gateway/containerized_latest/`: local all-container Compose stack
 - `joint_gateway/containerized_llama_latest/`: local all-container Compose stack
   with CPU llama.cpp extract
+- `joint_gateway/resilience_latest/`: local component interruption and recovery
+  proof for the containerized joint stack
 - `joint_gateway/kind_smoke_latest/`: local Kubernetes-shaped smoke proof

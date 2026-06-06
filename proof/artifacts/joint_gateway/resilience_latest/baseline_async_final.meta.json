@@ -1,0 +1,6 @@
+{
+  "name": "baseline_async_final",
+  "method": "GET",
+  "url": "http://127.0.0.1:18491/v1/extract/jobs/822d126dfa874b6a924da4af7c80ccc8",
+  "status_code": 200
+}

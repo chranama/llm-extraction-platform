@@ -1,0 +1,6 @@
+{
+  "name": "worker_down_async_submit",
+  "method": "POST",
+  "url": "http://127.0.0.1:18491/v1/extract/jobs",
+  "status_code": 202
+}

@@ -1,0 +1,6 @@
+HTTP/1.1 504 Gateway Timeout
+Content-Type: application/json
+X-Request-Id: resilience-api-paused-request
+X-Trace-Id: resilience-api-paused-trace
+Date: Sat, 06 Jun 2026 19:00:29 GMT
+Content-Length: 122

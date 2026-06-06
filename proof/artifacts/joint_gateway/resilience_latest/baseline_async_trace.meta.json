@@ -1,0 +1,6 @@
+{
+  "name": "baseline_async_trace",
+  "method": "GET",
+  "url": "http://127.0.0.1:18490/v1/admin/traces/resilience-baseline-async-trace",
+  "status_code": 200
+}

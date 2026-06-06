@@ -57,6 +57,7 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_LLAMA_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/llama_extract_latest}"
 : "${JOINT_CONTAINER_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_latest}"
 : "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_llama_latest}"
+: "${JOINT_RESILIENCE_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/resilience_latest}"
 : "${JOINT_KIND_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/kind_smoke_latest}"
 : "${JOINT_OTEL_EXPORTER_OTLP_ENDPOINT:=http://127.0.0.1:${JOINT_OTEL_COLLECTOR_PORT}/v1/traces}"
 : "${JOINT_BACKEND_OTEL_SERVICE_NAME:=llm-extraction-platform}"
@@ -94,6 +95,11 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_CONTAINER_LLAMA_API_KEY:=}"
 : "${JOINT_CONTAINER_LLAMA_ADMIN_API_KEY:=}"
 
+: "${JOINT_RESILIENCE_PROJECT_NAME:=llmep_joint_resilience}"
+: "${JOINT_RESILIENCE_API_PORT:=18490}"
+: "${JOINT_RESILIENCE_GATEWAY_PORT:=18491}"
+: "${JOINT_RESILIENCE_GATEWAY_TIMEOUT:=1s}"
+
 : "${JOINT_KIND_CLUSTER:=llm}"
 
 usage() {
@@ -111,6 +117,7 @@ Usage:
   tools/joint/inference_gateway_stack.sh verify-llama
   tools/joint/inference_gateway_stack.sh verify-containerized
   tools/joint/inference_gateway_stack.sh verify-containerized-llama
+  tools/joint/inference_gateway_stack.sh verify-resilience
   tools/joint/inference_gateway_stack.sh verify-kind
 
 Supported shape:
@@ -506,6 +513,36 @@ compose_containerized_llama() {
       "$@"
 }
 
+compose_resilience() {
+  env \
+    API_KEY="${JOINT_PROOF_USER_KEY}" \
+    ADMIN_API_KEY="${JOINT_PROOF_ADMIN_KEY}" \
+    API_PORT="${JOINT_RESILIENCE_API_PORT}" \
+    JOINT_GATEWAY_PORT="${JOINT_RESILIENCE_GATEWAY_PORT}" \
+    ISG_REPO_ROOT="${ISG_REPO_ROOT}" \
+    APP_PROFILE="docker" \
+    MODELS_PROFILE="test" \
+    EDGE_MODE="behind_gateway" \
+    REDIS_ENABLED="1" \
+    DATABASE_URL="postgresql+asyncpg://llm:llm@postgres:5432/llm" \
+    REDIS_URL="redis://redis:6379/0" \
+    MODELS_YAML="/app/config/models.yaml" \
+    SCHEMAS_DIR="/app/schemas/model_output" \
+    POLICY_DECISION_PATH="/app/policy_out/latest.json" \
+    CONTAINER_MEMORY_BYTES="4294967296" \
+    OTEL_ENABLED="0" \
+    GATEWAY_REQUEST_TIMEOUT="${JOINT_RESILIENCE_GATEWAY_TIMEOUT}" \
+    COMPOSE_PROJECT_NAME="${JOINT_RESILIENCE_PROJECT_NAME}" \
+    docker compose \
+      -f "${COMPOSE_FILE}" \
+      -f "${GATEWAY_COMPOSE_FILE}" \
+      --profile infra \
+      --profile server \
+      --profile joint-worker \
+      --profile gateway \
+      "$@"
+}
+
 is_pid_running() {
   local pid_file="$1"
   if [[ ! -f "${pid_file}" ]]; then
@@ -883,6 +920,8 @@ capture_request() {
   local api_key="$5"
   local request_body="${6:-}"
   local request_file="${7:-}"
+  local request_id="${8:-}"
+  local trace_id="${9:-}"
 
   local headers="${artifact_dir}/${name}.headers"
   local body="${artifact_dir}/${name}.body.json"
@@ -892,6 +931,12 @@ capture_request() {
 
   if [[ -n "${api_key}" ]]; then
     args+=(-H "X-API-Key: ${api_key}")
+  fi
+  if [[ -n "${request_id}" ]]; then
+    args+=(-H "X-Request-ID: ${request_id}")
+  fi
+  if [[ -n "${trace_id}" ]]; then
+    args+=(-H "X-Trace-ID: ${trace_id}")
   fi
   if [[ -n "${request_body}" || -n "${request_file}" ]]; then
     args+=(-H "Content-Type: application/json")
@@ -917,6 +962,36 @@ payload = {
     "status_code": int(sys.argv[5] or "0"),
 }
 path.write_text(json.dumps(payload, indent=2) + "\n")
+PY
+}
+
+json_field() {
+  local path="$1"
+  local field="$2"
+  python3 - <<'PY' "${path}" "${field}"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+field = sys.argv[2]
+try:
+    value = json.loads(path.read_text())
+except Exception:
+    print("")
+    raise SystemExit(0)
+for part in field.split("."):
+    if isinstance(value, dict):
+        value = value.get(part)
+    else:
+        value = None
+        break
+if value is None:
+    print("")
+elif isinstance(value, (dict, list)):
+    print(json.dumps(value))
+else:
+    print(value)
 PY
 }
 
@@ -1294,6 +1369,25 @@ EOF
   compose_containerized exec -T postgres psql -U llm -d llm -v ON_ERROR_STOP=1 -c "${sql}"
 }
 
+seed_resilience_keys() {
+  local sql
+  sql=$(
+    cat <<EOF
+INSERT INTO roles (name, created_at) VALUES ('admin', now())
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name;
+INSERT INTO roles (name, created_at) VALUES ('standard', now())
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name;
+INSERT INTO api_keys (key, active, quota_monthly, quota_used, created_at, role_id)
+SELECT '${JOINT_PROOF_USER_KEY}', true, NULL, 0, now(), id FROM roles WHERE name = 'standard'
+ON CONFLICT (key) DO UPDATE SET active = EXCLUDED.active, role_id = EXCLUDED.role_id;
+INSERT INTO api_keys (key, active, quota_monthly, quota_used, created_at, role_id)
+SELECT '${JOINT_PROOF_ADMIN_KEY}', true, NULL, 0, now(), id FROM roles WHERE name = 'admin'
+ON CONFLICT (key) DO UPDATE SET active = EXCLUDED.active, role_id = EXCLUDED.role_id;
+EOF
+  )
+  compose_resilience exec -T postgres psql -U llm -d llm -v ON_ERROR_STOP=1 -c "${sql}"
+}
+
 seed_containerized_llama_keys() {
   local api_key admin_key
   api_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "API_KEY")"
@@ -1371,6 +1465,12 @@ cmd_down_containerized() {
   fi
 }
 
+cmd_down_resilience() {
+  if command -v docker >/dev/null 2>&1; then
+    compose_resilience down --remove-orphans --volumes || true
+  fi
+}
+
 cmd_down_containerized_llama() {
   if command -v docker >/dev/null 2>&1 && [[ -f "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" ]]; then
     compose_containerized_llama down --remove-orphans --volumes || true
@@ -1424,6 +1524,543 @@ manifest["artifacts"]["compose_logs"] = "compose.logs.txt"
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 PY
   echo "Joint containerized artifacts: ${JOINT_CONTAINER_ARTIFACT_DIR}"
+}
+
+resilience_backend_url() {
+  printf 'http://127.0.0.1:%s\n' "${JOINT_RESILIENCE_API_PORT}"
+}
+
+resilience_gateway_url() {
+  printf 'http://127.0.0.1:%s\n' "${JOINT_RESILIENCE_GATEWAY_PORT}"
+}
+
+resilience_extract_payload() {
+  python3 - <<'PY'
+import json
+
+print(
+    json.dumps(
+        {
+            "schema_id": "sroie_receipt_v1",
+            "text": "Vendor: ACME\nTotal: 10.00",
+            "cache": False,
+            "repair": True,
+        }
+    )
+)
+PY
+}
+
+capture_resilience_state() {
+  local artifact_dir="$1"
+  local phase="$2"
+  compose_resilience ps >"${artifact_dir}/compose.ps.${phase}.txt" 2>&1 || true
+}
+
+capture_resilience_logs() {
+  local artifact_dir="$1"
+  compose_resilience logs --no-color --tail=200 server joint_worker gateway postgres redis \
+    >"${artifact_dir}/compose.logs.txt" 2>&1 || true
+}
+
+capture_resilience_metrics() {
+  local artifact_dir="$1"
+  local phase="$2"
+  curl -sS "$(resilience_gateway_url)/metrics" >"${artifact_dir}/gateway.metrics.${phase}.txt" 2>&1 || true
+  curl -sS "$(resilience_backend_url)/metrics" >"${artifact_dir}/backend.metrics.${phase}.txt" 2>&1 || true
+}
+
+capture_resilience_trace() {
+  local artifact_dir="$1"
+  local name="$2"
+  local trace_id="$3"
+  capture_request \
+    "${artifact_dir}" \
+    "${name}" \
+    "GET" \
+    "$(resilience_backend_url)/v1/admin/traces/${trace_id}" \
+    "${JOINT_PROOF_ADMIN_KEY}"
+}
+
+poll_resilience_job_until_terminal() {
+  local artifact_dir="$1"
+  local name="$2"
+  local job_id="$3"
+  local request_id="$4"
+  local trace_id="$5"
+  local attempts="${6:-80}"
+  local status=""
+
+  if [[ -z "${job_id}" ]]; then
+    python3 - <<'PY' "${artifact_dir}" "${name}" "${request_id}" "${trace_id}"
+import json
+import sys
+from pathlib import Path
+
+artifact_dir = Path(sys.argv[1])
+name = sys.argv[2]
+request_id = sys.argv[3]
+trace_id = sys.argv[4]
+(artifact_dir / f"{name}.body.json").write_text(
+    json.dumps(
+        {
+            "status": "missing_job_id",
+            "request_id": request_id,
+            "trace_id": trace_id,
+        },
+        indent=2,
+    )
+    + "\n"
+)
+(artifact_dir / f"{name}.headers").write_text("")
+(artifact_dir / f"{name}.meta.json").write_text(
+    json.dumps(
+        {
+            "name": name,
+            "method": "GET",
+            "url": "",
+            "status_code": 0,
+        },
+        indent=2,
+    )
+    + "\n"
+)
+PY
+    return 0
+  fi
+
+  for _ in $(seq 1 "${attempts}"); do
+    capture_request \
+      "${artifact_dir}" \
+      "${name}" \
+      "GET" \
+      "$(resilience_gateway_url)/v1/extract/jobs/${job_id}" \
+      "${JOINT_PROOF_USER_KEY}" \
+      "" \
+      "" \
+      "${request_id}" \
+      "${trace_id}"
+    status="$(json_field "${artifact_dir}/${name}.body.json" "status")"
+    if [[ "${status}" == "succeeded" || "${status}" == "failed" ]]; then
+      break
+    fi
+    sleep 0.25
+  done
+}
+
+wait_resilience_postgres() {
+  for _ in $(seq 1 80); do
+    if compose_resilience exec -T postgres pg_isready -U llm -d llm >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "Timed out waiting for resilience Postgres" >&2
+  return 1
+}
+
+wait_resilience_redis() {
+  for _ in $(seq 1 80); do
+    if compose_resilience exec -T redis redis-cli ping >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  echo "Timed out waiting for resilience Redis" >&2
+  return 1
+}
+
+write_resilience_manifest() {
+  local artifact_dir="$1"
+  python3 - <<'PY' "${artifact_dir}" "${JOINT_RESILIENCE_GATEWAY_TIMEOUT}"
+import json
+import sys
+from pathlib import Path
+
+artifact_dir = Path(sys.argv[1])
+gateway_timeout = sys.argv[2]
+
+
+def read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def meta(name: str) -> dict:
+    return read_json(artifact_dir / f"{name}.meta.json")
+
+
+def body(name: str) -> dict:
+    return read_json(artifact_dir / f"{name}.body.json")
+
+
+def status(name: str) -> int:
+    value = meta(name).get("status_code")
+    return value if isinstance(value, int) else 0
+
+
+def error_code(name: str) -> str:
+    error = body(name).get("error")
+    if isinstance(error, dict):
+        return str(error.get("code") or "")
+    return ""
+
+
+def job_status(name: str) -> str:
+    return str(body(name).get("status") or "")
+
+
+def trace_completed(name: str) -> bool:
+    return body(name).get("status") == "completed"
+
+
+def text(name: str) -> str:
+    path = artifact_dir / name
+    return path.read_text(errors="replace") if path.exists() else ""
+
+
+gateway_final_metrics = text("gateway.metrics.final.txt")
+backend_final_metrics = text("backend.metrics.final.txt")
+
+checks = {
+    "baseline_sync_extract_succeeds": status("baseline_sync_extract") == 200,
+    "baseline_async_extract_succeeds": (
+        status("baseline_async_final") == 200
+        and job_status("baseline_async_final") == "succeeded"
+    ),
+    "backend_timeout_is_bounded": (
+        status("api_paused_extract") == 504
+        and error_code("api_paused_extract") == "upstream_timeout"
+    ),
+    "backend_unavailable_is_bounded": (
+        status("api_down_readyz") == 503
+        and error_code("api_down_readyz") == "upstream_unavailable"
+        and status("api_down_extract") == 503
+        and error_code("api_down_extract") == "upstream_unavailable"
+    ),
+    "backend_recovery_succeeds": status("api_recovery_extract") == 200,
+    "worker_failure_preserves_job_state": (
+        status("worker_down_async_submit") == 202
+        and status("worker_down_job_status") == 200
+        and job_status("worker_down_job_status") in {"queued", "running"}
+    ),
+    "worker_recovery_completes_job": (
+        status("worker_recovery_job_status") == 200
+        and job_status("worker_recovery_job_status") == "succeeded"
+    ),
+    "redis_failure_is_observable": (
+        status("redis_down_readyz") != 200
+        or status("redis_down_async_submit") != 202
+    ),
+    "redis_recovery_succeeds": (
+        status("redis_recovery_readyz") == 200
+        and status("redis_recovery_extract") == 200
+    ),
+    "postgres_failure_is_observable": (
+        status("postgres_down_readyz") != 200
+        or status("postgres_down_extract") != 200
+    ),
+    "postgres_recovery_succeeds": (
+        status("postgres_recovery_readyz") == 200
+        and status("postgres_recovery_extract") == 200
+    ),
+    "gateway_metrics_capture_failures": (
+        'result="timeout"' in gateway_final_metrics
+        and 'result="unavailable"' in gateway_final_metrics
+        and 'status="503"' in gateway_final_metrics
+        and 'status="504"' in gateway_final_metrics
+    ),
+    "backend_metrics_capture_recovery": "llm_api_request_total" in backend_final_metrics,
+    "traces_capture_recovery_flow": (
+        trace_completed("api_recovery_trace")
+        and trace_completed("worker_recovery_trace")
+    ),
+}
+
+artifacts = {
+    "baseline_sync_extract": "baseline_sync_extract.body.json",
+    "baseline_async_submit": "baseline_async_submit.body.json",
+    "baseline_async_final": "baseline_async_final.body.json",
+    "api_paused_extract": "api_paused_extract.body.json",
+    "api_down_readyz": "api_down_readyz.body.json",
+    "api_down_extract": "api_down_extract.body.json",
+    "api_recovery_extract": "api_recovery_extract.body.json",
+    "worker_down_async_submit": "worker_down_async_submit.body.json",
+    "worker_down_job_status": "worker_down_job_status.body.json",
+    "worker_recovery_job_status": "worker_recovery_job_status.body.json",
+    "redis_down_readyz": "redis_down_readyz.body.json",
+    "redis_down_async_submit": "redis_down_async_submit.body.json",
+    "redis_recovery_readyz": "redis_recovery_readyz.body.json",
+    "redis_recovery_extract": "redis_recovery_extract.body.json",
+    "postgres_down_readyz": "postgres_down_readyz.body.json",
+    "postgres_down_extract": "postgres_down_extract.body.json",
+    "postgres_recovery_readyz": "postgres_recovery_readyz.body.json",
+    "postgres_recovery_extract": "postgres_recovery_extract.body.json",
+    "gateway_metrics_final": "gateway.metrics.final.txt",
+    "backend_metrics_final": "backend.metrics.final.txt",
+    "compose_logs": "compose.logs.txt",
+}
+
+manifest = {
+    "mode": "joint_resilience",
+    "runtime": {
+        "backend": "containerized LLMEP fake backend",
+        "worker": "containerized LLMEP async worker",
+        "gateway": "containerized inference-serving-gateway",
+        "database": "containerized Postgres",
+        "queue": "containerized Redis",
+        "gateway_timeout": gateway_timeout,
+    },
+    "checks": checks,
+    "artifacts": artifacts,
+    "case_status_codes": {
+        path.stem.removesuffix(".meta"): read_json(path).get("status_code")
+        for path in sorted(artifact_dir.glob("*.meta.json"))
+    },
+}
+(artifact_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+summary = ["# Joint Resilience Proof", ""]
+summary.append(
+    "This proof captures bounded degradation and operator-driven recovery for the local "
+    "containerized LLMEP plus inference-serving-gateway stack."
+)
+summary.append("")
+summary.append("Checks:")
+for name, ok in checks.items():
+    summary.append(f"- {name}: {'pass' if ok else 'fail'}")
+summary.append("")
+summary.append(
+    "Scope: local resilience evidence only. This does not claim HA, autoscaling, "
+    "zero downtime, cloud failover, or production incident response."
+)
+(artifact_dir / "summary.md").write_text("\n".join(summary) + "\n")
+
+failed = [name for name, ok in checks.items() if not ok]
+if failed:
+    raise SystemExit(f"resilience checks failed: {failed}")
+PY
+}
+
+cmd_verify_resilience() {
+  need_cmd docker
+  need_cmd curl
+  ensure_docker_ready
+  need_file "${GATEWAY_COMPOSE_FILE}"
+  clear_artifact_dir "${JOINT_RESILIENCE_ARTIFACT_DIR}"
+
+  local artifact_dir="${JOINT_RESILIENCE_ARTIFACT_DIR}"
+  local payload
+  payload="$(resilience_extract_payload)"
+
+  trap cmd_down_resilience EXIT
+
+  compose_resilience up -d --build --remove-orphans postgres redis server
+  wait_for_url "$(resilience_backend_url)/healthz" 180
+  compose_resilience exec -T server python -m alembic -c /app/server/alembic.ini upgrade head
+  seed_resilience_keys
+  compose_resilience up -d --build --remove-orphans joint_worker gateway
+  wait_for_url "$(resilience_gateway_url)/healthz" 120
+  wait_for_url "$(resilience_gateway_url)/readyz" 180
+  capture_resilience_state "${artifact_dir}" "baseline"
+
+  capture_request "${artifact_dir}" "baseline_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "baseline_sync_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-baseline-sync-request" \
+    "resilience-baseline-sync-trace"
+  capture_request \
+    "${artifact_dir}" \
+    "baseline_async_submit" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract/jobs" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-baseline-async-submit-request" \
+    "resilience-baseline-async-trace"
+  local baseline_job_id
+  baseline_job_id="$(json_field "${artifact_dir}/baseline_async_submit.body.json" "job_id")"
+  poll_resilience_job_until_terminal \
+    "${artifact_dir}" \
+    "baseline_async_final" \
+    "${baseline_job_id}" \
+    "resilience-baseline-async-poll-request" \
+    "resilience-baseline-async-trace"
+  capture_resilience_trace "${artifact_dir}" "baseline_sync_trace" "resilience-baseline-sync-trace"
+  capture_resilience_trace "${artifact_dir}" "baseline_async_trace" "resilience-baseline-async-trace"
+  capture_resilience_metrics "${artifact_dir}" "baseline"
+
+  compose_resilience pause server
+  sleep 0.5
+  capture_request \
+    "${artifact_dir}" \
+    "api_paused_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-api-paused-request" \
+    "resilience-api-paused-trace"
+  capture_resilience_state "${artifact_dir}" "api_paused"
+  compose_resilience unpause server
+  wait_for_url "$(resilience_gateway_url)/readyz" 180
+
+  compose_resilience stop server
+  sleep 1
+  capture_request "${artifact_dir}" "api_down_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "api_down_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-api-down-request" \
+    "resilience-api-down-trace"
+  capture_resilience_state "${artifact_dir}" "api_down"
+  compose_resilience start server
+  wait_for_url "$(resilience_backend_url)/healthz" 180
+  wait_for_url "$(resilience_gateway_url)/readyz" 180
+  capture_request \
+    "${artifact_dir}" \
+    "api_recovery_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-api-recovery-request" \
+    "resilience-api-recovery-trace"
+  capture_resilience_trace "${artifact_dir}" "api_recovery_trace" "resilience-api-recovery-trace"
+  capture_resilience_state "${artifact_dir}" "api_recovery"
+
+  compose_resilience stop joint_worker
+  sleep 0.5
+  capture_request \
+    "${artifact_dir}" \
+    "worker_down_async_submit" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract/jobs" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-worker-down-submit-request" \
+    "resilience-worker-recovery-trace"
+  local worker_job_id
+  worker_job_id="$(json_field "${artifact_dir}/worker_down_async_submit.body.json" "job_id")"
+  sleep 0.5
+  if [[ -z "${worker_job_id}" ]]; then
+    poll_resilience_job_until_terminal \
+      "${artifact_dir}" \
+      "worker_down_job_status" \
+      "${worker_job_id}" \
+      "resilience-worker-down-poll-request" \
+      "resilience-worker-recovery-trace" \
+      1
+  else
+    capture_request \
+      "${artifact_dir}" \
+      "worker_down_job_status" \
+      "GET" \
+      "$(resilience_gateway_url)/v1/extract/jobs/${worker_job_id}" \
+      "${JOINT_PROOF_USER_KEY}" \
+      "" \
+      "" \
+      "resilience-worker-down-poll-request" \
+      "resilience-worker-recovery-trace"
+  fi
+  capture_resilience_state "${artifact_dir}" "worker_down"
+  compose_resilience start joint_worker
+  poll_resilience_job_until_terminal \
+    "${artifact_dir}" \
+    "worker_recovery_job_status" \
+    "${worker_job_id}" \
+    "resilience-worker-recovery-poll-request" \
+    "resilience-worker-recovery-trace" \
+    120
+  capture_resilience_trace "${artifact_dir}" "worker_recovery_trace" "resilience-worker-recovery-trace"
+  capture_resilience_state "${artifact_dir}" "worker_recovery"
+
+  compose_resilience stop redis
+  sleep 1
+  capture_request "${artifact_dir}" "redis_down_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "redis_down_async_submit" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract/jobs" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-redis-down-submit-request" \
+    "resilience-redis-down-trace"
+  capture_resilience_state "${artifact_dir}" "redis_down"
+  compose_resilience start redis
+  wait_resilience_redis
+  compose_resilience restart server joint_worker
+  wait_for_url "$(resilience_backend_url)/healthz" 180
+  wait_for_url "$(resilience_gateway_url)/readyz" 180
+  capture_request "${artifact_dir}" "redis_recovery_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "redis_recovery_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-redis-recovery-request" \
+    "resilience-redis-recovery-trace"
+  capture_resilience_state "${artifact_dir}" "redis_recovery"
+
+  compose_resilience stop postgres
+  sleep 1
+  capture_request "${artifact_dir}" "postgres_down_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "postgres_down_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-postgres-down-request" \
+    "resilience-postgres-down-trace"
+  capture_resilience_state "${artifact_dir}" "postgres_down"
+  compose_resilience start postgres
+  wait_resilience_postgres
+  compose_resilience restart server joint_worker
+  wait_for_url "$(resilience_backend_url)/healthz" 180
+  wait_for_url "$(resilience_gateway_url)/readyz" 180
+  capture_request "${artifact_dir}" "postgres_recovery_readyz" "GET" "$(resilience_gateway_url)/readyz" ""
+  capture_request \
+    "${artifact_dir}" \
+    "postgres_recovery_extract" \
+    "POST" \
+    "$(resilience_gateway_url)/v1/extract" \
+    "${JOINT_PROOF_USER_KEY}" \
+    "${payload}" \
+    "" \
+    "resilience-postgres-recovery-request" \
+    "resilience-postgres-recovery-trace"
+  capture_resilience_state "${artifact_dir}" "postgres_recovery"
+
+  capture_resilience_metrics "${artifact_dir}" "final"
+  capture_resilience_logs "${artifact_dir}"
+  write_resilience_manifest "${artifact_dir}"
+  clean_artifacts "${artifact_dir}"
+  echo "Joint resilience artifacts: ${artifact_dir}"
 }
 
 cmd_verify_containerized_llama() {
@@ -1550,6 +2187,7 @@ main() {
     verify-llama) shift; cmd_verify_llama "$@" ;;
     verify-containerized) shift; cmd_verify_containerized "$@" ;;
     verify-containerized-llama) shift; cmd_verify_containerized_llama "$@" ;;
+    verify-resilience) shift; cmd_verify_resilience "$@" ;;
     verify-kind) shift; cmd_verify_kind "$@" ;;
     ""|-h|--help|help) usage ;;
     *)

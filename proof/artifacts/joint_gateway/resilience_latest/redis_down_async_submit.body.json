@@ -1,0 +1,1 @@
+{"code":"internal_error","message":"An unexpected error occurred","extra":{"stage":"unhandled_exception","path":"/v1/extract/jobs","method":"POST","exc_type":"ConnectionError"},"request_id":"resilience-redis-down-submit-request"}

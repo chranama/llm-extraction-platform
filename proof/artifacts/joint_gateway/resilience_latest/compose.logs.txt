@@ -1,0 +1,352 @@
+gateway-1  | {"time":"2026-06-06T19:00:26.31265838Z","level":"INFO","msg":"otel bootstrap disabled","service_name":"inference-serving-gateway"}
+gateway-1  | {"time":"2026-06-06T19:00:26.315252797Z","level":"INFO","msg":"gateway starting","listen_addr":":8080","upstream_base_url":"http://server:8000","otel_enabled":false,"otel_service_name":"inference-serving-gateway"}
+redis-1    | 1:C 06 Jun 2026 19:00:10.128 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1    | 1:C 06 Jun 2026 19:00:10.128 * Redis version=7.4.8, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1    | 1:C 06 Jun 2026 19:00:10.128 * Configuration loaded
+redis-1    | 1:M 06 Jun 2026 19:00:10.128 * monotonic clock: POSIX clock_gettime
+redis-1    | 1:M 06 Jun 2026 19:00:10.129 * Running mode=standalone, port=6379.
+redis-1    | 1:M 06 Jun 2026 19:00:10.129 * Server initialized
+redis-1    | 1:M 06 Jun 2026 19:00:10.129 * Ready to accept connections tcp
+redis-1    | 1:signal-handler (1780772438) Received SIGTERM scheduling shutdown...
+redis-1    | 1:M 06 Jun 2026 19:00:38.791 * User requested shutdown...
+redis-1    | 1:M 06 Jun 2026 19:00:38.791 # Redis is now ready to exit, bye bye...
+redis-1    | 1:C 06 Jun 2026 19:00:40.308 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1    | 1:C 06 Jun 2026 19:00:40.308 * Redis version=7.4.8, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1    | 1:C 06 Jun 2026 19:00:40.308 * Configuration loaded
+redis-1    | 1:M 06 Jun 2026 19:00:40.308 * monotonic clock: POSIX clock_gettime
+gateway-1  | {"time":"2026-06-06T19:00:26.564176089Z","level":"INFO","msg":"gateway request","request_id":"7c2f79e4-8e84-4548-a4cc-df07348de7dc","trace_id":"01b8e408-bc51-40e6-ac39-d7d7e9454f4d","route":"healthz","method":"GET","status_code":200,"latency_ms":0,"bytes_written":16,"upstream_host":"server:8000"}
+redis-1    | 1:M 06 Jun 2026 19:00:40.309 * Running mode=standalone, port=6379.
+redis-1    | 1:M 06 Jun 2026 19:00:40.309 * Server initialized
+redis-1    | 1:M 06 Jun 2026 19:00:40.309 * Ready to accept connections tcp
+gateway-1  | {"time":"2026-06-06T19:00:26.608071631Z","level":"INFO","msg":"gateway request","request_id":"97c99b85-492f-4196-a199-ca80c8a4e14c","trace_id":"1bfe3e03-d835-465f-bc4b-ed0d061b0187","route":"readyz","method":"GET","status_code":200,"latency_ms":21,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:26.725575339Z","level":"INFO","msg":"gateway request","request_id":"87bc93ac-d1d8-4e33-bc00-ff67130529cd","trace_id":"b060515b-c91f-4201-9e2e-dd1a8d440e3a","route":"readyz","method":"GET","status_code":200,"latency_ms":3,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:26.944480839Z","level":"INFO","msg":"gateway request","request_id":"resilience-baseline-sync-request","trace_id":"resilience-baseline-sync-trace","route":"extract","method":"POST","status_code":200,"latency_ms":184,"bytes_written":180,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:27.009541297Z","level":"INFO","msg":"gateway request","request_id":"resilience-baseline-async-submit-request","trace_id":"resilience-baseline-async-trace","route":"extract_jobs","method":"POST","status_code":202,"latency_ms":18,"bytes_written":266,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:27.096231714Z","level":"INFO","msg":"gateway request","request_id":"resilience-baseline-async-poll-request","trace_id":"resilience-baseline-async-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":21,"bytes_written":335,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:27.437227048Z","level":"INFO","msg":"gateway request","request_id":"resilience-baseline-async-poll-request","trace_id":"resilience-baseline-async-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":14,"bytes_written":450,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:27.615500423Z","level":"INFO","msg":"gateway request","request_id":"f2e31da7-4dc5-4293-94dd-91700321ab54","trace_id":"06479b61-d22e-444f-9ab9-12f4ee793a00","route":"metrics","method":"GET","status_code":200,"latency_ms":6,"bytes_written":12830,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:29.270136007Z","level":"INFO","msg":"gateway request","request_id":"resilience-api-paused-request","trace_id":"resilience-api-paused-trace","route":"extract","method":"POST","status_code":504,"latency_ms":1005,"bytes_written":122,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:29.53885634Z","level":"INFO","msg":"gateway request","request_id":"8c3c501c-bf22-4e57-9e05-40a7e3462907","trace_id":"c2291080-939d-4f3d-a610-73c3f6d675ea","route":"readyz","method":"GET","status_code":200,"latency_ms":3,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:31.037087716Z","level":"INFO","msg":"gateway request","request_id":"22490465-212c-462d-8237-2ff2e7545a2d","trace_id":"88f3ad30-8342-4b62-961e-792dde98a521","route":"readyz","method":"GET","status_code":503,"latency_ms":10,"bytes_written":138,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:31.088866341Z","level":"INFO","msg":"gateway request","request_id":"resilience-api-down-request","trace_id":"resilience-api-down-trace","route":"extract","method":"POST","status_code":503,"latency_ms":4,"bytes_written":121,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:33.883899342Z","level":"INFO","msg":"gateway request","request_id":"c1b7156e-77da-4df1-8411-2ca748805345","trace_id":"14f48755-be3f-4143-a365-4c7b616145cd","route":"readyz","method":"GET","status_code":200,"latency_ms":27,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:34.047670759Z","level":"INFO","msg":"gateway request","request_id":"resilience-api-recovery-request","trace_id":"resilience-api-recovery-trace","route":"extract","method":"POST","status_code":200,"latency_ms":152,"bytes_written":180,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:34.999088426Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-down-submit-request","trace_id":"resilience-worker-recovery-trace","route":"extract_jobs","method":"POST","status_code":202,"latency_ms":24,"bytes_written":267,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:35.64237926Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-down-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":42,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:36.487177385Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":8,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:36.813340052Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":6,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:37.163423594Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":18,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:37.508343594Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":6,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:37.836184011Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":6,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:38.163883761Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":6,"bytes_written":305,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:38.48989722Z","level":"INFO","msg":"gateway request","request_id":"resilience-worker-recovery-poll-request","trace_id":"resilience-worker-recovery-trace","route":"job_status","method":"GET","status_code":200,"latency_ms":5,"bytes_written":451,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:39.933441762Z","level":"INFO","msg":"gateway request","request_id":"9e97d405-886b-45d2-b63f-da0c9231a40b","trace_id":"72c423c7-e9b1-414c-ba38-81c8a454d61f","route":"readyz","method":"GET","status_code":503,"latency_ms":13,"bytes_written":138,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:40.015637762Z","level":"INFO","msg":"gateway request","request_id":"resilience-redis-down-submit-request","trace_id":"resilience-redis-down-trace","route":"extract_jobs","method":"POST","status_code":500,"latency_ms":23,"bytes_written":229,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:43.080284847Z","level":"INFO","msg":"gateway request","request_id":"efd2809a-97e1-49d5-a7ce-2b499d546387","trace_id":"1effad7f-0a0e-4339-9e33-0c06bf3da063","route":"readyz","method":"GET","status_code":200,"latency_ms":46,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:43.09770518Z","level":"INFO","msg":"gateway request","request_id":"8b244c7f-d920-4b15-bf8f-67b3e20f9d94","trace_id":"94be1ffc-a54a-43ba-8b53-81fcc54ed42c","route":"readyz","method":"GET","status_code":200,"latency_ms":2,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:43.35074843Z","level":"INFO","msg":"gateway request","request_id":"resilience-redis-recovery-request","trace_id":"resilience-redis-recovery-trace","route":"extract","method":"POST","status_code":200,"latency_ms":215,"bytes_written":180,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:44.753602542Z","level":"INFO","msg":"gateway request","request_id":"c50922c1-c6bc-407e-9372-00430994c994","trace_id":"bb0ec06e-fe7f-40d8-b8af-e1b631d11249","route":"readyz","method":"GET","status_code":503,"latency_ms":13,"bytes_written":138,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:44.818639167Z","level":"INFO","msg":"gateway request","request_id":"resilience-postgres-down-request","trace_id":"resilience-postgres-down-trace","route":"extract","method":"POST","status_code":500,"latency_ms":16,"bytes_written":213,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:47.974255543Z","level":"INFO","msg":"gateway request","request_id":"db4c9397-c904-4629-a60e-06e9d6ac2c63","trace_id":"c21d84b2-4def-43a5-8437-193168b56f17","route":"readyz","method":"GET","status_code":200,"latency_ms":44,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:47.990469168Z","level":"INFO","msg":"gateway request","request_id":"36944145-32a8-4583-be24-4db117b40d16","trace_id":"b1d0d799-c183-4793-9c8f-616660d46828","route":"readyz","method":"GET","status_code":200,"latency_ms":2,"bytes_written":19,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:48.215222835Z","level":"INFO","msg":"gateway request","request_id":"resilience-postgres-recovery-request","trace_id":"resilience-postgres-recovery-trace","route":"extract","method":"POST","status_code":200,"latency_ms":182,"bytes_written":180,"upstream_host":"server:8000"}
+gateway-1  | {"time":"2026-06-06T19:00:48.368256835Z","level":"INFO","msg":"gateway request","request_id":"780b7fa5-c7f4-4fcb-929f-ca346b00455a","trace_id":"380d6ba3-0141-42ca-9b2a-f753e922485d","route":"metrics","method":"GET","status_code":200,"latency_ms":0,"bytes_written":24113,"upstream_host":"server:8000"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.712036+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.713134+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.713175+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=unknown redis_enabled=True model_load_mode=lazy"}
+postgres-1      | The files belonging to this database system will be owned by user "postgres".
+postgres-1      | This user must also own the server process.
+postgres-1      |
+postgres-1      | The database cluster will be initialized with locale "en_US.utf8".
+postgres-1      | The default database encoding has accordingly been set to "UTF8".
+postgres-1      | The default text search configuration will be set to "english".
+postgres-1      |
+postgres-1      | Data page checksums are disabled.
+server-1        | {"ts": "2026-06-06T19:00:17.587485+00:00", "level": "info", "logger": "uvicorn.error", "message": "Started server process [7]"}
+server-1        | {"ts": "2026-06-06T19:00:17.587536+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application startup."}
+server-1        | {"ts": "2026-06-06T19:00:17.587639+00:00", "level": "info", "logger": "llm_server.limits", "message": "limits_init"}
+server-1        | {"ts": "2026-06-06T19:00:17.587723+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+server-1        | {"ts": "2026-06-06T19:00:17.588782+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+server-1        | {"ts": "2026-06-06T19:00:17.588817+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+server-1        | {"ts": "2026-06-06T19:00:17.588844+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+server-1        | {"ts": "2026-06-06T19:00:17.603527+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:17.617228+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:17.618976+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application startup complete."}
+server-1        | {"ts": "2026-06-06T19:00:17.619335+00:00", "level": "info", "logger": "uvicorn.error", "message": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"}
+server-1        | {"ts": "2026-06-06T19:00:17.664099+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "87074240aec0d90a6ba7ed96f3d7005f", "trace_id": "87074240aec0d90a6ba7ed96f3d7005f", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 0.6711483001708984, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:17.664330+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:58395 - \"GET /healthz HTTP/1.1\" 200"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.713201+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.727956+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:21.741905+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:27.184554+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 401 Unauthorized\""}
+server-1        | {"ts": "2026-06-06T19:00:25.828415+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "0dc94a08fbfcc07373522ac09447f79a", "trace_id": "0dc94a08fbfcc07373522ac09447f79a", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 35.77136993408203, "client_ip": "127.0.0.1", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:25.828751+00:00", "level": "info", "logger": "uvicorn.access", "message": "127.0.0.1:39140 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:26.606102+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "fa717f32d4fec6ca5c5b3c80f35bf896", "trace_id": "fa717f32d4fec6ca5c5b3c80f35bf896", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 2.290964126586914, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:26.606477+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:26.724803+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "88f8756587f5e322b2bfcf8a176fbff6", "trace_id": "88f8756587f5e322b2bfcf8a176fbff6", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 1.9710063934326172, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:26.725110+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:26.932239+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+server-1        | {"ts": "2026-06-06T19:00:26.943643+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-baseline-sync-request", "trace_id": "resilience-baseline-sync-trace", "method": "POST", "path": "/v1/extract", "status_code": 200, "latency_ms": 182.2502613067627, "client_ip": "172.20.0.6", "route": "/v1/extract", "model_id": "fake", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:26.943959+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"POST /v1/extract HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:27.009001+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-baseline-async-submit-request", "trace_id": "resilience-baseline-async-trace", "method": "POST", "path": "/v1/extract/jobs", "status_code": 202, "latency_ms": 17.375946044921875, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.009295+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"POST /v1/extract/jobs HTTP/1.1\" 202"}
+server-1        | {"ts": "2026-06-06T19:00:27.095770+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-baseline-async-poll-request", "trace_id": "resilience-baseline-async-trace", "method": "GET", "path": "/v1/extract/jobs/822d126dfa874b6a924da4af7c80ccc8", "status_code": 200, "latency_ms": 20.714998245239258, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.096010+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"GET /v1/extract/jobs/822d126dfa874b6a924da4af7c80ccc8 HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:27.436577+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-baseline-async-poll-request", "trace_id": "resilience-baseline-async-trace", "method": "GET", "path": "/v1/extract/jobs/822d126dfa874b6a924da4af7c80ccc8", "status_code": 200, "latency_ms": 12.922525405883789, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.436912+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:48318 - \"GET /v1/extract/jobs/822d126dfa874b6a924da4af7c80ccc8 HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:27.536049+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "f9daebc6ff2f8944120538f325f10cce", "trace_id": "f9daebc6ff2f8944120538f325f10cce", "method": "GET", "path": "/v1/admin/traces/resilience-baseline-sync-trace", "status_code": 200, "latency_ms": 8.15725326538086, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.536421+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:49935 - \"GET /v1/admin/traces/resilience-baseline-sync-trace HTTP/1.1\" 200"}
+postgres-1      |
+postgres-1      | fixing permissions on existing directory /var/lib/postgresql/data ... ok
+postgres-1      | creating subdirectories ... ok
+postgres-1      | selecting dynamic shared memory implementation ... posix
+postgres-1      | selecting default max_connections ... 100
+postgres-1      | selecting default shared_buffers ... 128MB
+postgres-1      | selecting default time zone ... UTC
+joint_worker-1  | {"ts": "2026-06-06T19:00:27.199025+00:00", "level": "info", "logger": "llm_server.application.process_extract_job", "message": "extract_job_done", "request_id": "resilience-baseline-async-submit-request", "trace_id": "resilience-baseline-async-trace", "job_id": "822d126dfa874b6a924da4af7c80ccc8", "route": "/v1/extract/jobs/worker", "model_id": "fake"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.259539+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.260499+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.260543+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=unknown redis_enabled=True model_load_mode=lazy"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.260567+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.274099+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.287736+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.462331+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 401 Unauthorized\""}
+postgres-1      | creating configuration files ... ok
+postgres-1      | running bootstrap script ... ok
+postgres-1      | sh: locale: not found
+postgres-1      | 2026-06-06 19:00:10.322 UTC [35] WARNING:  no usable system locales were found
+postgres-1      | performing post-bootstrap initialization ... ok
+postgres-1      | initdb: warning: enabling "trust" authentication for local connections
+postgres-1      | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+postgres-1      | syncing data to disk ... ok
+joint_worker-1  | {"ts": "2026-06-06T19:00:38.475257+00:00", "level": "info", "logger": "llm_server.application.process_extract_job", "message": "extract_job_done", "request_id": "resilience-worker-down-submit-request", "trace_id": "resilience-worker-recovery-trace", "job_id": "a5e72245879b48ae969c719234d9610f", "route": "/v1/extract/jobs/worker", "model_id": "fake"}
+joint_worker-1  | Traceback (most recent call last):
+joint_worker-1  |   File "<frozen runpy>", line 198, in _run_module_as_main
+joint_worker-1  |   File "<frozen runpy>", line 88, in _run_code
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/llm_server/worker/extract_jobs.py", line 57, in <module>
+postgres-1      |
+postgres-1      |
+postgres-1      | Success. You can now start the database server using:
+postgres-1      |
+postgres-1      |     pg_ctl -D /var/lib/postgresql/data -l logfile start
+postgres-1      |
+postgres-1      | waiting for server to start....2026-06-06 19:00:10.538 UTC [41] LOG:  starting PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1      | 2026-06-06 19:00:10.538 UTC [41] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1      | 2026-06-06 19:00:10.540 UTC [44] LOG:  database system was shut down at 2026-06-06 19:00:10 UTC
+postgres-1      | 2026-06-06 19:00:10.541 UTC [41] LOG:  database system is ready to accept connections
+server-1        | {"ts": "2026-06-06T19:00:27.575792+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "9312af2d733b7df52f4c6d446bbaaf8b", "trace_id": "9312af2d733b7df52f4c6d446bbaaf8b", "method": "GET", "path": "/v1/admin/traces/resilience-baseline-async-trace", "status_code": 200, "latency_ms": 5.162477493286133, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.576165+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:49291 - \"GET /v1/admin/traces/resilience-baseline-async-trace HTTP/1.1\" 200"}
+postgres-1      |  done
+postgres-1      | server started
+postgres-1      | CREATE DATABASE
+server-1        | {"ts": "2026-06-06T19:00:27.627578+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "5c324b13b93ac00014c39739659631d3", "trace_id": "5c324b13b93ac00014c39739659631d3", "method": "GET", "path": "/metrics", "status_code": 200, "latency_ms": 3.1304359436035156, "client_ip": "192.168.65.1", "route": "/metrics", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:27.627784+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:16210 - \"GET /metrics HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:29.523483+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-api-paused-request", "trace_id": "resilience-api-paused-trace", "method": "POST", "path": "/v1/extract", "status_code": 400, "latency_ms": 8.367061614990234, "client_ip": "172.20.0.6", "route": "/v1/extract", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:29.538301+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "fb9a4ab321238552a8d43a70cc4e0e98", "trace_id": "fb9a4ab321238552a8d43a70cc4e0e98", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 1.8150806427001953, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+postgres-1      |
+postgres-1      |
+postgres-1      | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+postgres-1      |
+postgres-1      | waiting for server to shut down....2026-06-06 19:00:10.661 UTC [41] LOG:  received fast shutdown request
+server-1        | {"ts": "2026-06-06T19:00:29.538575+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52588 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:29.717490+00:00", "level": "info", "logger": "uvicorn.error", "message": "Shutting down"}
+server-1        | {"ts": "2026-06-06T19:00:29.817842+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application shutdown."}
+postgres-1      | 2026-06-06 19:00:10.661 UTC [41] LOG:  aborting any active transactions
+postgres-1      | 2026-06-06 19:00:10.662 UTC [41] LOG:  background worker "logical replication launcher" (PID 47) exited with exit code 1
+postgres-1      | 2026-06-06 19:00:10.663 UTC [42] LOG:  shutting down
+server-1        | {"ts": "2026-06-06T19:00:29.818223+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application shutdown complete."}
+server-1        | {"ts": "2026-06-06T19:00:29.818308+00:00", "level": "info", "logger": "uvicorn.error", "message": "Finished server process [7]"}
+server-1        | {"ts": "2026-06-06T19:00:33.798916+00:00", "level": "info", "logger": "uvicorn.error", "message": "Started server process [7]"}
+server-1        | {"ts": "2026-06-06T19:00:33.798972+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application startup."}
+server-1        | {"ts": "2026-06-06T19:00:33.799082+00:00", "level": "info", "logger": "llm_server.limits", "message": "limits_init"}
+joint_worker-1  |     main()
+postgres-1      | 2026-06-06 19:00:10.663 UTC [42] LOG:  checkpoint starting: shutdown immediate
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/llm_server/worker/extract_jobs.py", line 51, in main
+joint_worker-1  |     asyncio.run(
+joint_worker-1  |   File "/usr/local/lib/python3.12/asyncio/runners.py", line 195, in run
+joint_worker-1  |     return runner.run(main)
+joint_worker-1  |            ^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/asyncio/runners.py", line 118, in run
+joint_worker-1  |     return self._loop.run_until_complete(task)
+joint_worker-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+joint_worker-1  |     return future.result()
+postgres-1      | 2026-06-06 19:00:10.681 UTC [42] LOG:  checkpoint complete: wrote 926 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.006 s, sync=0.012 s, total=0.019 s; sync files=301, longest=0.004 s, average=0.001 s; distance=4272 kB, estimate=4272 kB; lsn=0/191E8E8, redo lsn=0/191E8E8
+postgres-1      | 2026-06-06 19:00:10.684 UTC [41] LOG:  database system is shut down
+postgres-1      |  done
+postgres-1      | server stopped
+postgres-1      |
+postgres-1      | PostgreSQL init process complete; ready for start up.
+postgres-1      |
+postgres-1      | 2026-06-06 19:00:10.776 UTC [1] LOG:  starting PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1      | 2026-06-06 19:00:10.776 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1      | 2026-06-06 19:00:10.776 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+joint_worker-1  |            ^^^^^^^^^^^^^^^
+postgres-1      | 2026-06-06 19:00:10.776 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+postgres-1      | 2026-06-06 19:00:10.778 UTC [57] LOG:  database system was shut down at 2026-06-06 19:00:10 UTC
+server-1        | {"ts": "2026-06-06T19:00:33.799158+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+server-1        | {"ts": "2026-06-06T19:00:33.800077+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+server-1        | {"ts": "2026-06-06T19:00:33.800116+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+server-1        | {"ts": "2026-06-06T19:00:33.800142+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+server-1        | {"ts": "2026-06-06T19:00:33.814216+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:33.827803+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/llm_server/worker/extract_jobs.py", line 28, in run_worker
+server-1        | {"ts": "2026-06-06T19:00:33.829423+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application startup complete."}
+server-1        | {"ts": "2026-06-06T19:00:33.829780+00:00", "level": "info", "logger": "uvicorn.error", "message": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"}
+joint_worker-1  |     result = await process_extract_job_once(
+joint_worker-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/llm_server/application/process_extract_job.py", line 119, in process_extract_job_once
+joint_worker-1  |     job_id = await queue.dequeue(timeout_seconds=timeout_seconds)
+server-1        | {"ts": "2026-06-06T19:00:33.843256+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "b02f66e3b1c2a19240c618062aceb0ac", "trace_id": "b02f66e3b1c2a19240c618062aceb0ac", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 0.5373954772949219, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:33.843504+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:31316 - \"GET /healthz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:33.883276+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "f8064f1e225e6b3174aa7f6cd68b8c69", "trace_id": "f8064f1e225e6b3174aa7f6cd68b8c69", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 26.207685470581055, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:33.883630+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /readyz HTTP/1.1\" 200"}
+joint_worker-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/llm_server/services/extract_jobs.py", line 51, in dequeue
+joint_worker-1  |     item = await self._redis.brpop(self._queue_key, timeout=timeout_seconds)
+joint_worker-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/client.py", line 839, in execute_command
+joint_worker-1  |     result = await conn.retry.call_with_retry(
+joint_worker-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+postgres-1      | 2026-06-06 19:00:10.780 UTC [1] LOG:  database system is ready to accept connections
+postgres-1      | 2026-06-06 19:00:43.573 UTC [1] LOG:  received fast shutdown request
+postgres-1      | 2026-06-06 19:00:43.574 UTC [1] LOG:  aborting any active transactions
+server-1        | {"ts": "2026-06-06T19:00:34.037214+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+server-1        | {"ts": "2026-06-06T19:00:34.047095+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-api-recovery-request", "trace_id": "resilience-api-recovery-trace", "method": "POST", "path": "/v1/extract", "status_code": 200, "latency_ms": 151.12614631652832, "client_ip": "172.20.0.6", "route": "/v1/extract", "model_id": "fake", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:34.047396+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"POST /v1/extract HTTP/1.1\" 200"}
+postgres-1      | 2026-06-06 19:00:43.574 UTC [120] FATAL:  terminating connection due to administrator command
+postgres-1      | 2026-06-06 19:00:43.575 UTC [1] LOG:  background worker "logical replication launcher" (PID 60) exited with exit code 1
+postgres-1      | 2026-06-06 19:00:43.576 UTC [55] LOG:  shutting down
+postgres-1      | 2026-06-06 19:00:43.576 UTC [55] LOG:  checkpoint starting: shutdown immediate
+postgres-1      | 2026-06-06 19:00:43.587 UTC [55] LOG:  checkpoint complete: wrote 207 buffers (1.3%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.007 s, total=0.012 s; sync files=138, longest=0.004 s, average=0.001 s; distance=699 kB, estimate=699 kB; lsn=0/19CD868, redo lsn=0/19CD868
+postgres-1      | 2026-06-06 19:00:43.589 UTC [1] LOG:  database system is shut down
+postgres-1      |
+postgres-1      | PostgreSQL Database directory appears to contain a database; Skipping initialization
+postgres-1      |
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/retry.py", line 81, in call_with_retry
+joint_worker-1  |     raise error
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/retry.py", line 69, in call_with_retry
+server-1        | {"ts": "2026-06-06T19:00:34.110472+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "1ff5248c1fd5ee2b51b4994093f8b431", "trace_id": "1ff5248c1fd5ee2b51b4994093f8b431", "method": "GET", "path": "/v1/admin/traces/resilience-api-recovery-trace", "status_code": 200, "latency_ms": 9.12785530090332, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:34.110867+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:44680 - \"GET /v1/admin/traces/resilience-api-recovery-trace HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:34.998241+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-down-submit-request", "trace_id": "resilience-worker-recovery-trace", "method": "POST", "path": "/v1/extract/jobs", "status_code": 202, "latency_ms": 21.77119255065918, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:34.998667+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"POST /v1/extract/jobs HTTP/1.1\" 202"}
+server-1        | {"ts": "2026-06-06T19:00:35.641802+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-down-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 40.05885124206543, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:35.642122+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:36.486715+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 8.090734481811523, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:36.486966+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:36.812923+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 5.613088607788086, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:36.813126+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:37.160321+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 14.589071273803711, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+joint_worker-1  |     return await do()
+joint_worker-1  |            ^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/client.py", line 780, in _send_command_parse_response
+server-1        | {"ts": "2026-06-06T19:00:37.160510+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+joint_worker-1  |     return await self.parse_response(conn, command_name, **options)
+joint_worker-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/client.py", line 881, in parse_response
+joint_worker-1  |     response = await connection.read_response()
+joint_worker-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+postgres-1      | 2026-06-06 19:00:45.140 UTC [1] LOG:  starting PostgreSQL 16.13 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+postgres-1      | 2026-06-06 19:00:45.140 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+postgres-1      | 2026-06-06 19:00:45.140 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+postgres-1      | 2026-06-06 19:00:45.140 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/asyncio/connection.py", line 755, in read_response
+server-1        | {"ts": "2026-06-06T19:00:37.507948+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 5.549907684326172, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+joint_worker-1  |     response = await self._parser.read_response(
+joint_worker-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+server-1        | {"ts": "2026-06-06T19:00:37.508159+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:37.835725+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 5.925655364990234, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+postgres-1      | 2026-06-06 19:00:45.142 UTC [29] LOG:  database system was shut down at 2026-06-06 19:00:43 UTC
+postgres-1      | 2026-06-06 19:00:45.144 UTC [1] LOG:  database system is ready to accept connections
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/_parsers/resp3.py", line 185, in read_response
+joint_worker-1  |     response = await self._read_response(
+joint_worker-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/_parsers/resp3.py", line 197, in _read_response
+joint_worker-1  |     raw = await self._readline()
+joint_worker-1  |           ^^^^^^^^^^^^^^^^^^^^^^
+joint_worker-1  |   File "/usr/local/lib/python3.12/site-packages/redis/_parsers/base.py", line 580, in _readline
+joint_worker-1  |     raise ConnectionError(SERVER_CLOSED_CONNECTION_ERROR)
+joint_worker-1  | redis.exceptions.ConnectionError: Connection closed by server.
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.528060+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.529038+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.529079+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=unknown redis_enabled=True model_load_mode=lazy"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.529103+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.543490+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:42.557497+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.379553+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.380529+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.380565+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=unknown redis_enabled=True model_load_mode=lazy"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.380583+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.395199+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+joint_worker-1  | {"ts": "2026-06-06T19:00:47.409119+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:37.835958+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:38.163493+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 5.339622497558594, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:38.163700+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:38.489516+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-worker-recovery-poll-request", "trace_id": "resilience-worker-recovery-trace", "method": "GET", "path": "/v1/extract/jobs/a5e72245879b48ae969c719234d9610f", "status_code": 200, "latency_ms": 4.685640335083008, "client_ip": "172.20.0.6", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:38.489728+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /v1/extract/jobs/a5e72245879b48ae969c719234d9610f HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:38.559334+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "1c6e0d31df6b1b89484c6be95a8a7762", "trace_id": "1c6e0d31df6b1b89484c6be95a8a7762", "method": "GET", "path": "/v1/admin/traces/resilience-worker-recovery-trace", "status_code": 200, "latency_ms": 4.476785659790039, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:38.559607+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:51358 - \"GET /v1/admin/traces/resilience-worker-recovery-trace HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:39.930867+00:00", "level": "error", "logger": "llm_server.core.health_checks", "message": "Redis check failed", "error_type": "ConnectionError", "error_message": "Error -2 connecting to redis:6379. Name or service not known."}
+server-1        | {"ts": "2026-06-06T19:00:39.931695+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "20f1b3f2523d1b98a217cab1459858f4", "trace_id": "20f1b3f2523d1b98a217cab1459858f4", "method": "GET", "path": "/readyz", "status_code": 503, "latency_ms": 10.777950286865234, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:39.932915+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"GET /readyz HTTP/1.1\" 503"}
+server-1        | {"ts": "2026-06-06T19:00:40.010527+00:00", "level": "error", "logger": "llm_server.error", "message": "request_error", "request_id": "resilience-redis-down-submit-request", "trace_id": "resilience-redis-down-trace", "method": "POST", "path": "/v1/extract/jobs", "latency_ms": 16.897916793823242, "client_ip": "172.20.0.6", "model_id": "unknown", "cached": false, "error_type": "ConnectionError", "error_message": "Error -2 connecting to redis:6379. Name or service not known."}
+server-1        | {"ts": "2026-06-06T19:00:40.011056+00:00", "level": "error", "logger": "llm.errors", "message": "unhandled_exception path=/v1/extract/jobs", "error_type": "ConnectionError", "error_message": "Error -2 connecting to redis:6379. Name or service not known."}
+server-1        | {"ts": "2026-06-06T19:00:40.015106+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:52600 - \"POST /v1/extract/jobs HTTP/1.1\" 500"}
+server-1        | {"ts": "2026-06-06T19:00:40.015192+00:00", "level": "error", "logger": "uvicorn.error", "message": "Exception in ASGI application\n", "error_type": "ConnectionError", "error_message": "Error -2 connecting to redis:6379. Name or service not known."}
+server-1        | {"ts": "2026-06-06T19:00:40.512266+00:00", "level": "info", "logger": "uvicorn.error", "message": "Shutting down"}
+server-1        | {"ts": "2026-06-06T19:00:40.613494+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application shutdown."}
+server-1        | {"ts": "2026-06-06T19:00:40.613796+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application shutdown complete."}
+server-1        | {"ts": "2026-06-06T19:00:40.613847+00:00", "level": "info", "logger": "uvicorn.error", "message": "Finished server process [7]"}
+server-1        | {"ts": "2026-06-06T19:00:42.795366+00:00", "level": "info", "logger": "uvicorn.error", "message": "Started server process [6]"}
+server-1        | {"ts": "2026-06-06T19:00:42.795441+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application startup."}
+server-1        | {"ts": "2026-06-06T19:00:42.795571+00:00", "level": "info", "logger": "llm_server.limits", "message": "limits_init"}
+server-1        | {"ts": "2026-06-06T19:00:42.795651+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+server-1        | {"ts": "2026-06-06T19:00:42.796743+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+server-1        | {"ts": "2026-06-06T19:00:42.796790+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+server-1        | {"ts": "2026-06-06T19:00:42.796810+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+server-1        | {"ts": "2026-06-06T19:00:42.811273+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:42.825146+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:42.827257+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application startup complete."}
+server-1        | {"ts": "2026-06-06T19:00:42.827665+00:00", "level": "info", "logger": "uvicorn.error", "message": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"}
+server-1        | {"ts": "2026-06-06T19:00:43.013869+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "6bebdb9832301d0761d426f1553937ea", "trace_id": "6bebdb9832301d0761d426f1553937ea", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 1.41143798828125, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:43.014316+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:16749 - \"GET /healthz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:43.079570+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "ba832087e1a2cf5a3e0328f450e8e468", "trace_id": "ba832087e1a2cf5a3e0328f450e8e468", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 44.21877861022949, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:43.079972+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53724 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:43.097209+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "5597342e14f5f68dd1d458a3bb8a9fd2", "trace_id": "5597342e14f5f68dd1d458a3bb8a9fd2", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 1.756906509399414, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:43.097504+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53724 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:43.338743+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+server-1        | {"ts": "2026-06-06T19:00:43.350123+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-redis-recovery-request", "trace_id": "resilience-redis-recovery-trace", "method": "POST", "path": "/v1/extract", "status_code": 200, "latency_ms": 214.60390090942383, "client_ip": "172.20.0.6", "route": "/v1/extract", "model_id": "fake", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:43.350483+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53724 - \"POST /v1/extract HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:44.751467+00:00", "level": "error", "logger": "llm_server.core.health_checks", "message": "DB check failed", "error_type": "gaierror", "error_message": "[Errno -2] Name or service not known"}
+server-1        | {"ts": "2026-06-06T19:00:44.752706+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "76bafacd6db36948f26e18cac53f5bfa", "trace_id": "76bafacd6db36948f26e18cac53f5bfa", "method": "GET", "path": "/readyz", "status_code": 503, "latency_ms": 11.110544204711914, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:44.753151+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53724 - \"GET /readyz HTTP/1.1\" 503"}
+server-1        | {"ts": "2026-06-06T19:00:44.809408+00:00", "level": "error", "logger": "llm_server.error", "message": "request_error", "request_id": "resilience-postgres-down-request", "trace_id": "resilience-postgres-down-trace", "method": "POST", "path": "/v1/extract", "latency_ms": 6.345033645629883, "client_ip": "172.20.0.6", "model_id": "unknown", "cached": false, "error_type": "gaierror", "error_message": "[Errno -2] Name or service not known"}
+server-1        | {"ts": "2026-06-06T19:00:44.810242+00:00", "level": "error", "logger": "llm.errors", "message": "unhandled_exception path=/v1/extract", "error_type": "gaierror", "error_message": "[Errno -2] Name or service not known"}
+server-1        | {"ts": "2026-06-06T19:00:44.818132+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53724 - \"POST /v1/extract HTTP/1.1\" 500"}
+server-1        | {"ts": "2026-06-06T19:00:44.818219+00:00", "level": "error", "logger": "uvicorn.error", "message": "Exception in ASGI application\n", "error_type": "gaierror", "error_message": "[Errno -2] Name or service not known"}
+server-1        | {"ts": "2026-06-06T19:00:45.361740+00:00", "level": "info", "logger": "uvicorn.error", "message": "Shutting down"}
+server-1        | {"ts": "2026-06-06T19:00:45.462716+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application shutdown."}
+server-1        | {"ts": "2026-06-06T19:00:45.463014+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application shutdown complete."}
+server-1        | {"ts": "2026-06-06T19:00:45.463056+00:00", "level": "info", "logger": "uvicorn.error", "message": "Finished server process [6]"}
+server-1        | {"ts": "2026-06-06T19:00:47.595009+00:00", "level": "info", "logger": "uvicorn.error", "message": "Started server process [7]"}
+server-1        | {"ts": "2026-06-06T19:00:47.595064+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application startup."}
+server-1        | {"ts": "2026-06-06T19:00:47.595164+00:00", "level": "info", "logger": "llm_server.limits", "message": "limits_init"}
+server-1        | {"ts": "2026-06-06T19:00:47.595241+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+server-1        | {"ts": "2026-06-06T19:00:47.596123+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/latest.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=False error=None"}
+server-1        | {"ts": "2026-06-06T19:00:47.596160+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+server-1        | {"ts": "2026-06-06T19:00:47.596181+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+server-1        | {"ts": "2026-06-06T19:00:47.610617+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:47.625061+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='test' source='MODELS_PROFILE' used_profile='test' primary_id=fake model_ids=1"}
+server-1        | {"ts": "2026-06-06T19:00:47.626888+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application startup complete."}
+server-1        | {"ts": "2026-06-06T19:00:47.627242+00:00", "level": "info", "logger": "uvicorn.error", "message": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"}
+server-1        | {"ts": "2026-06-06T19:00:47.907297+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "4109cea4793c874c911cbf17396a8c79", "trace_id": "4109cea4793c874c911cbf17396a8c79", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 2.7954578399658203, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:47.908146+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:35337 - \"GET /healthz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:47.973558+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "9898a1f860759a2feac6ee6a24f1e2dc", "trace_id": "9898a1f860759a2feac6ee6a24f1e2dc", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 40.62151908874512, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:47.973939+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53648 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:47.989967+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "29e01faada3856a5906de36b17318f99", "trace_id": "29e01faada3856a5906de36b17318f99", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 1.6989707946777344, "client_ip": "172.20.0.6", "route": "/readyz", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:47.990253+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53648 - \"GET /readyz HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:48.205050+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: HEAD https://huggingface.co/fake/resolve/main/tokenizer_config.json \"HTTP/1.1 404 Not Found\""}
+server-1        | {"ts": "2026-06-06T19:00:48.214688+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "resilience-postgres-recovery-request", "trace_id": "resilience-postgres-recovery-trace", "method": "POST", "path": "/v1/extract", "status_code": 200, "latency_ms": 181.8399429321289, "client_ip": "172.20.0.6", "route": "/v1/extract", "model_id": "fake", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:48.214960+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.6:53648 - \"POST /v1/extract HTTP/1.1\" 200"}
+server-1        | {"ts": "2026-06-06T19:00:48.378282+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "3bc0119bdac1174433358cb2cf35d817", "trace_id": "3bc0119bdac1174433358cb2cf35d817", "method": "GET", "path": "/metrics", "status_code": 200, "latency_ms": 1.5079975128173828, "client_ip": "192.168.65.1", "route": "/metrics", "model_id": "unknown", "cached": false}
+server-1        | {"ts": "2026-06-06T19:00:48.378554+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:58418 - \"GET /metrics HTTP/1.1\" 200"}

@@ -1,0 +1,6 @@
+{
+  "name": "api_down_extract",
+  "method": "POST",
+  "url": "http://127.0.0.1:18491/v1/extract",
+  "status_code": 503
+}

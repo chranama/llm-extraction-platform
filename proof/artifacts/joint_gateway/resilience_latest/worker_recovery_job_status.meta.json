@@ -1,0 +1,6 @@
+{
+  "name": "worker_recovery_job_status",
+  "method": "GET",
+  "url": "http://127.0.0.1:18491/v1/extract/jobs/a5e72245879b48ae969c719234d9610f",
+  "status_code": 200
+}

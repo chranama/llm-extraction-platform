@@ -1,0 +1,1 @@
+{"code":"internal_error","message":"An unexpected error occurred","extra":{"stage":"unhandled_exception","path":"/v1/extract","method":"POST","exc_type":"gaierror"},"request_id":"resilience-postgres-down-request"}
