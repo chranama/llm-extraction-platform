@@ -18,6 +18,7 @@ Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 | Joint Live Llama Extract | LLMEP Compose extract stack with sibling Go gateway | CPU-only containerized `llama.cpp` | Real model-backed sync and async extraction through the gateway | Accelerated inference, production throughput, or cloud model serving |
 | Joint Edge Controls | Host API server and worker with restarted gateway variants | Fake deterministic backend | Gateway-owned route policy, unsupported route, body-size rejection, backend auth pass-through, and metrics | Real model behavior or load testing |
 | Joint Containerized Stack | LLMEP API/worker containers, gateway container, and Compose infra | Fake deterministic backend | Same local Compose network for backend, worker, gateway, Postgres, and Redis | Real model quality or production orchestration |
+| Joint Containerized Live Llama | LLMEP API/worker containers, gateway container, llama.cpp container, and Compose infra | CPU-only containerized `llama.cpp` | Real model-backed sync and async extraction through a fully containerized local joint stack | Accelerated inference, production throughput, cloud ingress, or high availability |
 | Joint Kind Smoke | Local kind deployment using LLMEP and gateway resources | Fake deterministic backend | Kubernetes-shaped deployability plus gateway/backend/worker proof artifacts | Cloud ingress, AWS, TLS, or production HA |
 | Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
 | Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
@@ -227,12 +228,15 @@ tools/joint/inference_gateway_stack.sh verify-observability
 tools/joint/inference_gateway_stack.sh verify-edge-controls
 tools/joint/inference_gateway_stack.sh verify-llama
 tools/joint/inference_gateway_stack.sh verify-containerized
+tools/joint/inference_gateway_stack.sh verify-containerized-llama
 tools/joint/inference_gateway_stack.sh verify-kind
 ```
 
 The default workflow uses the deterministic `gateway-proof` model profile.
 `verify-llama` uses the promoted CPU-only Compose extract path with
 containerized `llama.cpp`. `verify-containerized` runs LLMEP and the gateway as
+containers on one Compose network. `verify-containerized-llama` combines those
+two dimensions by running LLMEP, the worker, the gateway, and `llama.cpp` as
 containers on one Compose network. `verify-kind` runs the Kubernetes-shaped
 local path and leaves the kind cluster intact while deleting applied resources.
 

@@ -76,6 +76,9 @@ captures logs, and writes `phase8_compose_llama_extract/`.
   extraction through the gateway using CPU-only containerized `llama.cpp`.
 - `joint_gateway/containerized_latest/`: LLMEP API, LLMEP worker, gateway,
   Postgres, and Redis running together on one local Compose network.
+- `joint_gateway/containerized_llama_latest/`: LLMEP API, LLMEP worker,
+  gateway, Postgres, Redis, and CPU-only `llama.cpp` running together on one
+  local Compose network.
 - `joint_gateway/kind_smoke_latest/`: Kubernetes-shaped joint deployment proof
   copied from the gateway repository's local kind workflow.
 
@@ -110,6 +113,11 @@ inference or production throughput.
 `joint_gateway/containerized_latest/` demonstrates local Compose service
 networking across LLMEP and the gateway. It does not claim Kubernetes or cloud
 readiness.
+
+`joint_gateway/containerized_llama_latest/` demonstrates the fully
+containerized local joint stack with real model-backed extraction. It does not
+claim accelerated inference, production throughput, cloud ingress, TLS, or high
+availability.
 
 `joint_gateway/kind_smoke_latest/` demonstrates Kubernetes-shaped local
 deployability. It does not claim AWS ingress, TLS, high availability, or managed

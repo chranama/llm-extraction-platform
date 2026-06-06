@@ -5,6 +5,8 @@
 # Use this with deploy/compose/docker-compose.yml. It contributes:
 # - gateway: Go edge gateway built from the sibling repository.
 # - joint_worker: generic async extract worker for fake-backend containerized proof.
+# - gateway_llama: Go edge gateway pointed at server_llama for the containerized
+#   live-model joint proof.
 
 services:
   gateway:
@@ -32,6 +34,33 @@ services:
       - "${JOINT_GATEWAY_PORT:-18091}:8080"
     depends_on:
       server:
+        condition: service_healthy
+
+  gateway_llama:
+    profiles: ["gateway-llama"]
+    build:
+      context: ${ISG_REPO_ROOT:-../inference-serving-gateway}
+      dockerfile: Dockerfile
+    restart: "no"
+    environment:
+      GATEWAY_LISTEN_ADDR: ":8080"
+      GATEWAY_UPSTREAM_BASE_URL: ${GATEWAY_UPSTREAM_BASE_URL:-http://server_llama:8000}
+      GATEWAY_REQUEST_TIMEOUT: ${GATEWAY_REQUEST_TIMEOUT:-30s}
+      GATEWAY_ENABLE_METRICS: ${GATEWAY_ENABLE_METRICS:-true}
+      GATEWAY_ALLOW_EXTRACT: ${GATEWAY_ALLOW_EXTRACT:-true}
+      GATEWAY_ALLOW_EXTRACT_JOBS: ${GATEWAY_ALLOW_EXTRACT_JOBS:-true}
+      GATEWAY_ALLOW_JOB_STATUS: ${GATEWAY_ALLOW_JOB_STATUS:-true}
+      GATEWAY_MAX_BODY_BYTES: ${GATEWAY_MAX_BODY_BYTES:-1048576}
+      GATEWAY_CONCURRENCY_LIMIT: ${GATEWAY_CONCURRENCY_LIMIT:-64}
+      GATEWAY_RATE_LIMIT_PER_SECOND: ${GATEWAY_RATE_LIMIT_PER_SECOND:-0}
+      GATEWAY_RATE_LIMIT_BURST: ${GATEWAY_RATE_LIMIT_BURST:-1}
+      GATEWAY_OTEL_ENABLED: ${GATEWAY_OTEL_ENABLED:-false}
+      GATEWAY_OTEL_SERVICE_NAME: ${GATEWAY_OTEL_SERVICE_NAME:-inference-serving-gateway}
+      GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT: ${GATEWAY_OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    ports:
+      - "${JOINT_GATEWAY_PORT:-18091}:8080"
+    depends_on:
+      server_llama:
         condition: service_healthy
 
   joint_worker:

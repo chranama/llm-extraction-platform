@@ -80,4 +80,6 @@ Joint workflow artifact groups include:
 - `joint_gateway/edge_controls_latest/`: gateway route/limit/error controls
 - `joint_gateway/llama_extract_latest/`: real model-backed CPU llama.cpp extract
 - `joint_gateway/containerized_latest/`: local all-container Compose stack
+- `joint_gateway/containerized_llama_latest/`: local all-container Compose stack
+  with CPU llama.cpp extract
 - `joint_gateway/kind_smoke_latest/`: local Kubernetes-shaped smoke proof

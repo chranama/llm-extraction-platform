@@ -56,6 +56,7 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_EDGE_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/edge_controls_latest}"
 : "${JOINT_LLAMA_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/llama_extract_latest}"
 : "${JOINT_CONTAINER_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_latest}"
+: "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_llama_latest}"
 : "${JOINT_KIND_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/kind_smoke_latest}"
 : "${JOINT_OTEL_EXPORTER_OTLP_ENDPOINT:=http://127.0.0.1:${JOINT_OTEL_COLLECTOR_PORT}/v1/traces}"
 : "${JOINT_BACKEND_OTEL_SERVICE_NAME:=llm-extraction-platform}"
@@ -84,6 +85,15 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_CONTAINER_API_PORT:=18290}"
 : "${JOINT_CONTAINER_GATEWAY_PORT:=18291}"
 
+: "${JOINT_CONTAINER_LLAMA_ENV_FILE:=${JOINT_LLAMA_ENV_FILE}}"
+: "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE:=${RUNTIME_DIR}/containerized-llama-compose.env}"
+: "${JOINT_CONTAINER_LLAMA_PROJECT_NAME:=llmep_joint_containerized_llama}"
+: "${JOINT_CONTAINER_LLAMA_API_PORT:=18390}"
+: "${JOINT_CONTAINER_LLAMA_GATEWAY_PORT:=18391}"
+: "${JOINT_CONTAINER_LLAMA_PUBLISH_PORT:=18392}"
+: "${JOINT_CONTAINER_LLAMA_API_KEY:=}"
+: "${JOINT_CONTAINER_LLAMA_ADMIN_API_KEY:=}"
+
 : "${JOINT_KIND_CLUSTER:=llm}"
 
 usage() {
@@ -100,6 +110,7 @@ Usage:
   tools/joint/inference_gateway_stack.sh verify-edge-controls
   tools/joint/inference_gateway_stack.sh verify-llama
   tools/joint/inference_gateway_stack.sh verify-containerized
+  tools/joint/inference_gateway_stack.sh verify-containerized-llama
   tools/joint/inference_gateway_stack.sh verify-kind
 
 Supported shape:
@@ -211,10 +222,32 @@ for path in root.rglob("*.headers"):
 PY
 }
 
+normalize_artifact_text_files() {
+  local path="$1"
+  [[ -d "${path}" ]] || return 0
+  python3 - <<'PY' "${path}"
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+for path in root.rglob("*"):
+    if not path.is_file():
+        continue
+    if path.suffix not in {".log", ".txt"}:
+        continue
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    lines = [line.rstrip() for line in text.replace("\r\n", "\n").split("\n")]
+    while lines and not lines[-1]:
+        lines.pop()
+    path.write_text("\n".join(lines) + "\n")
+PY
+}
+
 clean_artifacts() {
   local path="$1"
   redact_artifact_api_keys "${path}"
   normalize_artifact_headers "${path}"
+  normalize_artifact_text_files "${path}"
 }
 
 ensure_docker_ready() {
@@ -433,6 +466,43 @@ compose_containerized() {
       --profile server \
       --profile joint-worker \
       --profile gateway \
+      "$@"
+}
+
+compose_containerized_llama() {
+  local api_key admin_key
+  api_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "API_KEY")"
+  admin_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "ADMIN_API_KEY")"
+  env \
+    API_KEY="${api_key}" \
+    ADMIN_API_KEY="${admin_key}" \
+    API_PORT="${JOINT_CONTAINER_LLAMA_API_PORT}" \
+    LLAMA_PUBLISH_PORT="${JOINT_CONTAINER_LLAMA_PUBLISH_PORT}" \
+    JOINT_GATEWAY_PORT="${JOINT_CONTAINER_LLAMA_GATEWAY_PORT}" \
+    ISG_REPO_ROOT="${ISG_REPO_ROOT}" \
+    APP_PROFILE="docker" \
+    MODELS_PROFILE="compose-extract" \
+    EDGE_MODE="behind_gateway" \
+    REDIS_ENABLED="1" \
+    DATABASE_URL="postgresql+asyncpg://llm:llm@postgres:5432/llm" \
+    REDIS_URL="redis://redis:6379/0" \
+    MODELS_YAML="/app/config/models.yaml" \
+    SCHEMAS_DIR="/app/schemas/model_output" \
+    LLAMA_SERVER_URL="http://llama_server:8080" \
+    POLICY_DECISION_PATH="/app/policy_out/local_extract_allow.json" \
+    CONTAINER_MEMORY_BYTES="4294967296" \
+    OTEL_ENABLED="0" \
+    GATEWAY_UPSTREAM_BASE_URL="http://server_llama:8000" \
+    COMPOSE_PROJECT_NAME="${JOINT_CONTAINER_LLAMA_PROJECT_NAME}" \
+    docker compose \
+      --env-file "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" \
+      -f "${COMPOSE_FILE}" \
+      -f "${GATEWAY_COMPOSE_FILE}" \
+      --profile infra \
+      --profile llama \
+      --profile server-llama \
+      --profile worker-llama \
+      --profile gateway-llama \
       "$@"
 }
 
@@ -1035,14 +1105,20 @@ print(value)
 PY
 }
 
-write_llama_effective_env() {
+write_llama_env_file() {
+  local source_file="$1"
+  local target_file="$2"
+  local api_port="$3"
+  local llama_port="$4"
+  local api_key_override="$5"
+  local admin_key_override="$6"
   python3 - <<'PY' \
-    "${JOINT_LLAMA_ENV_FILE}" \
-    "${JOINT_LLAMA_EFFECTIVE_ENV_FILE}" \
-    "${JOINT_LLAMA_API_PORT}" \
-    "${JOINT_LLAMA_PUBLISH_PORT}" \
-    "${JOINT_LLAMA_API_KEY}" \
-    "${JOINT_LLAMA_ADMIN_API_KEY}"
+    "${source_file}" \
+    "${target_file}" \
+    "${api_port}" \
+    "${llama_port}" \
+    "${api_key_override}" \
+    "${admin_key_override}"
 import sys
 from pathlib import Path
 
@@ -1079,6 +1155,26 @@ env.setdefault("ADMIN_API_KEY", env.get("API_KEY", ""))
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_text("\n".join(f"{k}={v}" for k, v in sorted(env.items())) + "\n")
 PY
+}
+
+write_llama_effective_env() {
+  write_llama_env_file \
+    "${JOINT_LLAMA_ENV_FILE}" \
+    "${JOINT_LLAMA_EFFECTIVE_ENV_FILE}" \
+    "${JOINT_LLAMA_API_PORT}" \
+    "${JOINT_LLAMA_PUBLISH_PORT}" \
+    "${JOINT_LLAMA_API_KEY}" \
+    "${JOINT_LLAMA_ADMIN_API_KEY}"
+}
+
+write_containerized_llama_effective_env() {
+  write_llama_env_file \
+    "${JOINT_CONTAINER_LLAMA_ENV_FILE}" \
+    "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" \
+    "${JOINT_CONTAINER_LLAMA_API_PORT}" \
+    "${JOINT_CONTAINER_LLAMA_PUBLISH_PORT}" \
+    "${JOINT_CONTAINER_LLAMA_API_KEY}" \
+    "${JOINT_CONTAINER_LLAMA_ADMIN_API_KEY}"
 }
 
 cmd_stop_llama_compose() {
@@ -1198,9 +1294,86 @@ EOF
   compose_containerized exec -T postgres psql -U llm -d llm -v ON_ERROR_STOP=1 -c "${sql}"
 }
 
+seed_containerized_llama_keys() {
+  local api_key admin_key
+  api_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "API_KEY")"
+  admin_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "ADMIN_API_KEY")"
+  if [[ -z "${api_key}" || -z "${admin_key}" ]]; then
+    echo "Containerized llama joint workflow requires API_KEY and ADMIN_API_KEY in ${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" >&2
+    exit 1
+  fi
+  compose_containerized_llama exec -T \
+    -e PROOF_USER_KEY="${api_key}" \
+    -e PROOF_ADMIN_KEY="${admin_key}" \
+    server_llama python - <<'PY'
+import asyncio
+import os
+
+from sqlalchemy import select
+
+from llm_server.db.models import ApiKey, RoleTable
+from llm_server.db.session import get_sessionmaker
+
+PROOF_USER_KEY = os.environ["PROOF_USER_KEY"]
+PROOF_ADMIN_KEY = os.environ["PROOF_ADMIN_KEY"]
+
+
+async def ensure_role(session, name: str) -> RoleTable:
+    role = (
+        await session.execute(select(RoleTable).where(RoleTable.name == name))
+    ).scalar_one_or_none()
+    if role is None:
+        role = RoleTable(name=name)
+        session.add(role)
+        await session.flush()
+    return role
+
+
+async def ensure_key(session, *, key: str, role_id: int | None) -> None:
+    row = (
+        await session.execute(select(ApiKey).where(ApiKey.key == key))
+    ).scalar_one_or_none()
+    if row is None:
+        session.add(
+            ApiKey(
+                key=key,
+                active=True,
+                role_id=role_id,
+                quota_monthly=None,
+                quota_used=0,
+            )
+        )
+        return
+    if not row.active:
+        row.active = True
+    if row.role_id != role_id:
+        row.role_id = role_id
+    session.add(row)
+
+
+async def main() -> None:
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        admin = await ensure_role(session, "admin")
+        standard = await ensure_role(session, "standard")
+        await ensure_key(session, key=PROOF_USER_KEY, role_id=standard.id)
+        await ensure_key(session, key=PROOF_ADMIN_KEY, role_id=admin.id)
+        await session.commit()
+
+
+asyncio.run(main())
+PY
+}
+
 cmd_down_containerized() {
   if command -v docker >/dev/null 2>&1; then
     compose_containerized down --remove-orphans --volumes || true
+  fi
+}
+
+cmd_down_containerized_llama() {
+  if command -v docker >/dev/null 2>&1 && [[ -f "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" ]]; then
+    compose_containerized_llama down --remove-orphans --volumes || true
   fi
 }
 
@@ -1251,6 +1424,74 @@ manifest["artifacts"]["compose_logs"] = "compose.logs.txt"
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 PY
   echo "Joint containerized artifacts: ${JOINT_CONTAINER_ARTIFACT_DIR}"
+}
+
+cmd_verify_containerized_llama() {
+  need_cmd docker
+  need_cmd curl
+  ensure_docker_ready
+  need_file "${GATEWAY_COMPOSE_FILE}"
+  need_file "${JOINT_CONTAINER_LLAMA_ENV_FILE}"
+  clear_artifact_dir "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}"
+  write_containerized_llama_effective_env
+
+  local api_key admin_key
+  api_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "API_KEY")"
+  admin_key="$(env_file_value "${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" "ADMIN_API_KEY")"
+  if [[ -z "${api_key}" || -z "${admin_key}" ]]; then
+    echo "Containerized llama joint workflow requires API_KEY and ADMIN_API_KEY in ${JOINT_CONTAINER_LLAMA_EFFECTIVE_ENV_FILE}" >&2
+    exit 1
+  fi
+
+  trap cmd_down_containerized_llama EXIT
+  compose_containerized_llama up -d --build --remove-orphans postgres redis llama_server server_llama
+  wait_for_url "http://127.0.0.1:${JOINT_CONTAINER_LLAMA_API_PORT}/healthz" 240
+  compose_containerized_llama exec -T server_llama python -m alembic -c /app/server/alembic.ini upgrade head
+  seed_containerized_llama_keys
+  wait_for_url "http://127.0.0.1:${JOINT_CONTAINER_LLAMA_API_PORT}/readyz" 240
+  compose_containerized_llama up -d --build --remove-orphans worker_llama gateway_llama
+  wait_for_url "http://127.0.0.1:${JOINT_CONTAINER_LLAMA_GATEWAY_PORT}/healthz" 180
+  wait_for_url "http://127.0.0.1:${JOINT_CONTAINER_LLAMA_GATEWAY_PORT}/readyz" 180
+
+  env \
+    LLM_EXTRACTION_PLATFORM_BASE_URL="http://127.0.0.1:${JOINT_CONTAINER_LLAMA_API_PORT}" \
+    LLM_EXTRACTION_PLATFORM_API_KEY="${api_key}" \
+    LLM_EXTRACTION_PLATFORM_ADMIN_API_KEY="${admin_key}" \
+    GATEWAY_BASE_URL="http://127.0.0.1:${JOINT_CONTAINER_LLAMA_GATEWAY_PORT}" \
+    "${ISG_REPO_ROOT}/proof/generate_llm_extraction_platform_observability_pack.sh" \
+    "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}"
+  clean_artifacts "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}"
+
+  compose_containerized_llama ps >"${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}/compose.ps.txt" 2>&1 || true
+  compose_containerized_llama logs --no-color --tail=200 server_llama worker_llama llama_server gateway_llama \
+    >"${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}/compose.logs.txt" 2>&1 || true
+  python3 - <<'PY' "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}"
+import json
+import sys
+from pathlib import Path
+
+artifact_dir = Path(sys.argv[1])
+manifest_path = artifact_dir / "manifest.json"
+manifest = json.loads(manifest_path.read_text())
+manifest["mode"] = "joint_containerized_llama_extract"
+manifest["runtime"] = {
+    "backend": "containerized llama.cpp",
+    "api": "containerized LLMEP API",
+    "worker": "containerized LLMEP async worker",
+    "gateway": "containerized inference-serving-gateway",
+    "acceleration": "cpu",
+}
+manifest["checks"]["containerized_llama_extract_response_present"] = (
+    artifact_dir / "extract.body.json"
+).exists()
+manifest["checks"]["containerized_llama_async_response_present"] = (
+    artifact_dir / "job_status.body.json"
+).exists()
+manifest["artifacts"]["compose_ps"] = "compose.ps.txt"
+manifest["artifacts"]["compose_logs"] = "compose.logs.txt"
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+PY
+  echo "Joint containerized live llama artifacts: ${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR}"
 }
 
 cmd_verify_kind() {
@@ -1308,6 +1549,7 @@ main() {
     verify-edge-controls) shift; cmd_verify_edge_controls "$@" ;;
     verify-llama) shift; cmd_verify_llama "$@" ;;
     verify-containerized) shift; cmd_verify_containerized "$@" ;;
+    verify-containerized-llama) shift; cmd_verify_containerized_llama "$@" ;;
     verify-kind) shift; cmd_verify_kind "$@" ;;
     ""|-h|--help|help) usage ;;
     *)

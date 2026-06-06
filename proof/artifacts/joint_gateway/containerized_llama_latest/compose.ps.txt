@@ -1,0 +1,7 @@
+NAME                                              IMAGE                                           COMMAND                  SERVICE         CREATED          STATUS                    PORTS
+llmep_joint_containerized_llama-gateway_llama-1   llmep_joint_containerized_llama-gateway_llama   "gateway"                gateway_llama   9 seconds ago    Up 2 seconds              0.0.0.0:18391->8080/tcp, [::]:18391->8080/tcp
+llmep_joint_containerized_llama-llama_server-1    llmep-llama-server:b8069                        "/app/entrypoint.sh"     llama_server    19 seconds ago   Up 18 seconds (healthy)   0.0.0.0:18392->8080/tcp, [::]:18392->8080/tcp
+llmep_joint_containerized_llama-postgres-1        postgres:16-alpine                              "docker-entrypoint.s…"   postgres        19 seconds ago   Up 18 seconds (healthy)   5432/tcp
+llmep_joint_containerized_llama-redis-1           redis:7-alpine                                  "docker-entrypoint.s…"   redis           19 seconds ago   Up 18 seconds (healthy)   6379/tcp
+llmep_joint_containerized_llama-server_llama-1    llmep_joint_containerized_llama-server_llama    "/usr/bin/tini -- py…"   server_llama    19 seconds ago   Up 12 seconds (healthy)   0.0.0.0:18390->8000/tcp, [::]:18390->8000/tcp
+llmep_joint_containerized_llama-worker_llama-1    llmep_joint_containerized_llama-worker_llama    "/usr/bin/tini -- py…"   worker_llama    9 seconds ago    Up 7 seconds              8000/tcp

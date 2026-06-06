@@ -19,6 +19,7 @@ and generated proof artifacts.
 | Edge controls | `verify-edge-controls` | Fake deterministic profile | Host API/worker, Compose infra, restarted host gateway variants | `proof/artifacts/joint_gateway/edge_controls_latest/` |
 | Live llama.cpp extract | `verify-llama` | CPU-only containerized `llama.cpp` | LLMEP Compose extract stack, host gateway | `proof/artifacts/joint_gateway/llama_extract_latest/` |
 | Containerized stack | `verify-containerized` | Fake deterministic profile | LLMEP API/worker containers, gateway container, Compose infra | `proof/artifacts/joint_gateway/containerized_latest/` |
+| Containerized live llama stack | `verify-containerized-llama` | CPU-only containerized `llama.cpp` | LLMEP API/worker containers, gateway container, llama.cpp container, Compose infra | `proof/artifacts/joint_gateway/containerized_llama_latest/` |
 | Kind smoke | `verify-kind` | Fake deterministic profile | Local kind cluster with LLMEP and gateway resources | `proof/artifacts/joint_gateway/kind_smoke_latest/` |
 
 `verify` remains the compatibility alias for the original deterministic
@@ -69,6 +70,11 @@ The containerized target verifies the same sync/async extract path while LLMEP
 API, LLMEP worker, gateway, Postgres, and Redis run together on one local
 Compose network.
 
+The containerized live llama target verifies the same sync/async extract path
+while LLMEP API, LLMEP worker, gateway, Postgres, Redis, and `llama.cpp` run
+together as containers on one local Compose network. This is the most
+production-shaped local proof for the joint system.
+
 The kind target verifies the Kubernetes-shaped local deployment with LLMEP API,
 worker, gateway, Jaeger, and OTel resources in a local `kind` cluster.
 
@@ -105,6 +111,7 @@ tools/joint/inference_gateway_stack.sh verify-observability
 tools/joint/inference_gateway_stack.sh verify-edge-controls
 tools/joint/inference_gateway_stack.sh verify-llama
 tools/joint/inference_gateway_stack.sh verify-containerized
+tools/joint/inference_gateway_stack.sh verify-containerized-llama
 tools/joint/inference_gateway_stack.sh verify-kind
 ```
 
@@ -133,6 +140,7 @@ ISG_REPO_ROOT=/path/to/inference-serving-gateway \
 | `JOINT_EDGE_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/edge_controls_latest` | Edge-control proof output location |
 | `JOINT_LLAMA_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/llama_extract_latest` | Live llama proof output location |
 | `JOINT_CONTAINER_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/containerized_latest` | Containerized proof output location |
+| `JOINT_CONTAINER_LLAMA_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/containerized_llama_latest` | Containerized live llama proof output location |
 | `JOINT_KIND_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/kind_smoke_latest` | Kind proof output location |
 | `JOINT_WITH_OBS` | `1` | Start Prometheus and Grafana |
 | `JOINT_WITH_OTEL` | `1` | Start OTel Collector and Jaeger |
@@ -148,6 +156,8 @@ ISG_REPO_ROOT=/path/to/inference-serving-gateway \
 | `JOINT_LLAMA_ENV_FILE` | `.env.docker` | Env file for live llama Compose extract |
 | `JOINT_LLAMA_PROJECT_NAME` | `llmep_joint_llama` | Compose project name for live llama workflow |
 | `JOINT_CONTAINER_PROJECT_NAME` | `llmep_joint_containerized` | Compose project name for containerized workflow |
+| `JOINT_CONTAINER_LLAMA_ENV_FILE` | `.env.docker` | Env file for containerized live llama workflow |
+| `JOINT_CONTAINER_LLAMA_PROJECT_NAME` | `llmep_joint_containerized_llama` | Compose project name for containerized live llama workflow |
 | `JOINT_KIND_CLUSTER` | `llm` | Local kind cluster used by the kind workflow |
 
 The high default ports are intentional. They reduce collisions with LLMEP and
@@ -207,6 +217,18 @@ API, LLMEP worker, Postgres, Redis, and the gateway all run as containers on
 one Compose network. This path uses the fake deterministic model profile first
 so it can prove service networking and containerized orchestration without
 model latency.
+
+### Containerized Live llama.cpp Stack
+
+`verify-containerized-llama` uses the same Compose overlay but targets
+`server_llama`, `worker_llama`, and `llama_server`. LLMEP API, LLMEP worker,
+Postgres, Redis, the gateway, and `llama.cpp` all run as containers on one
+Compose network. It requires the same local GGUF model prerequisites as
+`compose-extract`.
+
+This path closes the local proof gap between real model-backed extraction and
+fully containerized joint service networking. It is still CPU-only and does not
+claim production throughput or accelerated inference.
 
 ### Kind Smoke
 

@@ -1,0 +1,278 @@
+gateway_llama-1  | {"time":"2026-06-06T18:36:30.971015466Z","level":"INFO","msg":"otel bootstrap disabled","service_name":"inference-serving-gateway"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:30.973399133Z","level":"INFO","msg":"gateway starting","listen_addr":":8080","upstream_base_url":"http://server_llama:8000","otel_enabled":false,"otel_service_name":"inference-serving-gateway"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:31.217423966Z","level":"INFO","msg":"gateway request","request_id":"b1cf6ee3-db36-41d5-97fd-c2cb373b09ec","trace_id":"117ef2c2-c320-4b54-95e4-519817ceaf6c","route":"healthz","method":"GET","status_code":200,"latency_ms":0,"bytes_written":16,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:31.256397216Z","level":"INFO","msg":"gateway request","request_id":"5bdc19cc-b0d6-40b1-8a9b-e4f2a7da34f4","trace_id":"67946ffe-d122-46bb-870f-b5a18f3c8adc","route":"readyz","method":"GET","status_code":200,"latency_ms":22,"bytes_written":19,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:31.322879258Z","level":"INFO","msg":"gateway request","request_id":"a9c075e9-dbb7-4cba-b986-0351cb246ed1","trace_id":"a94d7910-7dd3-4c1b-8480-a432b44fc6a5","route":"healthz","method":"GET","status_code":200,"latency_ms":0,"bytes_written":16,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:32.3326343Z","level":"INFO","msg":"gateway request","request_id":"integration-obs-request-1","trace_id":"integration-obs-trace-1","route":"extract","method":"POST","status_code":200,"latency_ms":979,"bytes_written":187,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:32.419230217Z","level":"INFO","msg":"gateway request","request_id":"integration-obs-request-2","trace_id":"integration-obs-trace-2","route":"extract_jobs","method":"POST","status_code":202,"latency_ms":12,"bytes_written":295,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:32.516027384Z","level":"INFO","msg":"gateway request","request_id":"integration-obs-request-3","trace_id":"integration-obs-trace-2","route":"job_status","method":"GET","status_code":200,"latency_ms":20,"bytes_written":364,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:32.860186759Z","level":"INFO","msg":"gateway request","request_id":"integration-obs-request-3","trace_id":"integration-obs-trace-2","route":"job_status","method":"GET","status_code":200,"latency_ms":8,"bytes_written":449,"upstream_host":"server_llama:8000"}
+gateway_llama-1  | {"time":"2026-06-06T18:36:32.955140675Z","level":"INFO","msg":"gateway request","request_id":"e2626a96-5244-4c20-b6d6-686409662790","trace_id":"d8f0ca8a-7088-4c2d-96e8-3cfe1a315f0b","route":"metrics","method":"GET","status_code":200,"latency_ms":5,"bytes_written":12814,"upstream_host":"server_llama:8000"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.208338+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.209252+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/local_extract_allow.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=True error=None"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.209290+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.209316+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.223170+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='compose-extract' source='MODELS_PROFILE' used_profile='compose-extract' primary_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF model_ids=1"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:27.236792+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='compose-extract' source='MODELS_PROFILE' used_profile='compose-extract' primary_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF model_ids=1"}
+worker_llama-1   | {"ts": "2026-06-06T18:36:32.758862+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: POST http://llama_server:8080/v1/chat/completions \"HTTP/1.1 200 OK\""}
+worker_llama-1   | {"ts": "2026-06-06T18:36:32.773563+00:00", "level": "info", "logger": "llm_server.application.process_extract_job", "message": "extract_job_done", "request_id": "integration-obs-request-2", "trace_id": "integration-obs-trace-2", "job_id": "e3f9d2d2b8224642813d460fe250d3e4", "route": "/v1/extract/jobs/worker", "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF"}
+llama_server-1   | llama_model_loader: loaded meta data with 33 key-value pairs and 290 tensors from /models/smollm2-360m-instruct/Q8_0.gguf (version GGUF V3 (latest))
+llama_server-1   | llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_server-1   | llama_model_loader: - kv   0:                       general.architecture str              = llama
+llama_server-1   | llama_model_loader: - kv   1:                               general.type str              = model
+llama_server-1   | llama_model_loader: - kv   2:                               general.name str              = Smollm2 360M 8k Lc100K Mix1 Ep2
+llama_server-1   | llama_model_loader: - kv   3:                       general.organization str              = Loubnabnl
+llama_server-1   | llama_model_loader: - kv   4:                           general.finetune str              = 8k-lc100k-mix1-ep2
+llama_server-1   | llama_model_loader: - kv   5:                           general.basename str              = smollm2
+llama_server-1   | llama_model_loader: - kv   6:                         general.size_label str              = 360M
+llama_server-1   | llama_model_loader: - kv   7:                            general.license str              = apache-2.0
+llama_server-1   | llama_model_loader: - kv   8:                          general.languages arr[str,1]       = ["en"]
+llama_server-1   | llama_model_loader: - kv   9:                          llama.block_count u32              = 32
+llama_server-1   | llama_model_loader: - kv  10:                       llama.context_length u32              = 8192
+llama_server-1   | llama_model_loader: - kv  11:                     llama.embedding_length u32              = 960
+llama_server-1   | llama_model_loader: - kv  12:                  llama.feed_forward_length u32              = 2560
+llama_server-1   | llama_model_loader: - kv  13:                 llama.attention.head_count u32              = 15
+llama_server-1   | llama_model_loader: - kv  14:              llama.attention.head_count_kv u32              = 5
+llama_server-1   | llama_model_loader: - kv  15:                       llama.rope.freq_base f32              = 100000.000000
+llama_server-1   | llama_model_loader: - kv  16:     llama.attention.layer_norm_rms_epsilon f32              = 0.000010
+llama_server-1   | llama_model_loader: - kv  17:                          general.file_type u32              = 7
+llama_server-1   | llama_model_loader: - kv  18:                           llama.vocab_size u32              = 49152
+llama_server-1   | llama_model_loader: - kv  19:                 llama.rope.dimension_count u32              = 64
+llama_server-1   | llama_model_loader: - kv  20:            tokenizer.ggml.add_space_prefix bool             = false
+llama_server-1   | llama_model_loader: - kv  21:               tokenizer.ggml.add_bos_token bool             = false
+llama_server-1   | llama_model_loader: - kv  22:                       tokenizer.ggml.model str              = gpt2
+llama_server-1   | llama_model_loader: - kv  23:                         tokenizer.ggml.pre str              = smollm
+llama_server-1   | llama_model_loader: - kv  24:                      tokenizer.ggml.tokens arr[str,49152]   = ["<|endoftext|>", "<|im_start|>", "<|...
+llama_server-1   | llama_model_loader: - kv  25:                  tokenizer.ggml.token_type arr[i32,49152]   = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_server-1   | llama_model_loader: - kv  26:                      tokenizer.ggml.merges arr[str,48900]   = ["Ġ t", "Ġ a", "i n", "h e", "Ġ Ġ...
+llama_server-1   | llama_model_loader: - kv  27:                tokenizer.ggml.bos_token_id u32              = 1
+llama_server-1   | llama_model_loader: - kv  28:                tokenizer.ggml.eos_token_id u32              = 2
+llama_server-1   | llama_model_loader: - kv  29:            tokenizer.ggml.unknown_token_id u32              = 0
+llama_server-1   | llama_model_loader: - kv  30:            tokenizer.ggml.padding_token_id u32              = 2
+llama_server-1   | llama_model_loader: - kv  31:                    tokenizer.chat_template str              = {% for message in messages %}{% if lo...
+llama_server-1   | llama_model_loader: - kv  32:               general.quantization_version u32              = 2
+llama_server-1   | llama_model_loader: - type  f32:   65 tensors
+llama_server-1   | llama_model_loader: - type q8_0:  225 tensors
+llama_server-1   | print_info: file format = GGUF V3 (latest)
+llama_server-1   | print_info: file type   = Q8_0
+llama_server-1   | print_info: file size   = 366.80 MiB (8.50 BPW)
+llama_server-1   | load: 0 unused tokens
+llama_server-1   | load: printing all EOG tokens:
+llama_server-1   | load:   - 0 ('<|endoftext|>')
+llama_server-1   | load:   - 2 ('<|im_end|>')
+llama_server-1   | load:   - 4 ('<reponame>')
+llama_server-1   | load: special tokens cache size = 17
+llama_server-1   | load: token to piece cache size = 0.3170 MB
+llama_server-1   | print_info: arch                  = llama
+llama_server-1   | print_info: vocab_only            = 0
+llama_server-1   | print_info: no_alloc              = 0
+llama_server-1   | print_info: n_ctx_train           = 8192
+llama_server-1   | print_info: n_embd                = 960
+llama_server-1   | print_info: n_embd_inp            = 960
+llama_server-1   | print_info: n_layer               = 32
+llama_server-1   | print_info: n_head                = 15
+llama_server-1   | print_info: n_head_kv             = 5
+llama_server-1   | print_info: n_rot                 = 64
+llama_server-1   | print_info: n_swa                 = 0
+llama_server-1   | print_info: is_swa_any            = 0
+llama_server-1   | print_info: n_embd_head_k         = 64
+llama_server-1   | print_info: n_embd_head_v         = 64
+llama_server-1   | print_info: n_gqa                 = 3
+llama_server-1   | print_info: n_embd_k_gqa          = 320
+llama_server-1   | print_info: n_embd_v_gqa          = 320
+llama_server-1   | print_info: f_norm_eps            = 0.0e+00
+llama_server-1   | print_info: f_norm_rms_eps        = 1.0e-05
+llama_server-1   | print_info: f_clamp_kqv           = 0.0e+00
+llama_server-1   | print_info: f_max_alibi_bias      = 0.0e+00
+llama_server-1   | print_info: f_logit_scale         = 0.0e+00
+llama_server-1   | print_info: f_attn_scale          = 0.0e+00
+llama_server-1   | print_info: n_ff                  = 2560
+llama_server-1   | print_info: n_expert              = 0
+llama_server-1   | print_info: n_expert_used         = 0
+llama_server-1   | print_info: n_expert_groups       = 0
+llama_server-1   | print_info: n_group_used          = 0
+llama_server-1   | print_info: causal attn           = 1
+llama_server-1   | print_info: pooling type          = 0
+llama_server-1   | print_info: rope type             = 0
+llama_server-1   | print_info: rope scaling          = linear
+llama_server-1   | print_info: freq_base_train       = 100000.0
+llama_server-1   | print_info: freq_scale_train      = 1
+llama_server-1   | print_info: n_ctx_orig_yarn       = 8192
+llama_server-1   | print_info: rope_yarn_log_mul     = 0.0000
+llama_server-1   | print_info: rope_finetuned        = unknown
+llama_server-1   | print_info: model type            = 3B
+llama_server-1   | print_info: model params          = 361.82 M
+llama_server-1   | print_info: general.name          = Smollm2 360M 8k Lc100K Mix1 Ep2
+llama_server-1   | print_info: vocab type            = BPE
+llama_server-1   | print_info: n_vocab               = 49152
+llama_server-1   | print_info: n_merges              = 48900
+llama_server-1   | print_info: BOS token             = 1 '<|im_start|>'
+llama_server-1   | print_info: EOS token             = 2 '<|im_end|>'
+llama_server-1   | print_info: EOT token             = 0 '<|endoftext|>'
+llama_server-1   | print_info: UNK token             = 0 '<|endoftext|>'
+llama_server-1   | print_info: PAD token             = 2 '<|im_end|>'
+llama_server-1   | print_info: LF token              = 198 'Ċ'
+llama_server-1   | print_info: FIM REP token         = 4 '<reponame>'
+llama_server-1   | print_info: EOG token             = 0 '<|endoftext|>'
+llama_server-1   | print_info: EOG token             = 2 '<|im_end|>'
+llama_server-1   | print_info: EOG token             = 4 '<reponame>'
+llama_server-1   | print_info: max token length      = 162
+llama_server-1   | load_tensors: loading model tensors, this can take a while... (mmap = false, direct_io = false)
+llama_server-1   | warning: failed to mlock 384618496-byte buffer (after previously locking 0 bytes): Cannot allocate memory
+llama_server-1   | load_tensors:          CPU model buffer size =   366.80 MiB
+llama_server-1   | ........................................................................................
+llama_server-1   | common_init_result: added <|endoftext|> logit bias = -inf
+llama_server-1   | common_init_result: added <|im_end|> logit bias = -inf
+llama_server-1   | common_init_result: added <reponame> logit bias = -inf
+llama_server-1   | llama_context: constructing llama_context
+llama_server-1   | llama_context: n_seq_max     = 1
+llama_server-1   | llama_context: n_ctx         = 4096
+llama_server-1   | llama_context: n_ctx_seq     = 4096
+llama_server-1   | llama_context: n_batch       = 256
+llama_server-1   | llama_context: n_ubatch      = 256
+llama_server-1   | llama_context: causal_attn   = 1
+llama_server-1   | llama_context: flash_attn    = auto
+llama_server-1   | llama_context: kv_unified    = false
+llama_server-1   | llama_context: freq_base     = 100000.0
+llama_server-1   | llama_context: freq_scale    = 1
+llama_server-1   | llama_context: n_ctx_seq (4096) < n_ctx_train (8192) -- the full capacity of the model will not be utilized
+llama_server-1   | llama_context:        CPU  output buffer size =     0.19 MiB
+llama_server-1   | llama_kv_cache:        CPU KV buffer size =   160.00 MiB
+llama_server-1   | llama_kv_cache: size =  160.00 MiB (  4096 cells,  32 layers,  1/1 seqs), K (f16):   80.00 MiB, V (f16):   80.00 MiB
+llama_server-1   | sched_reserve: reserving ...
+llama_server-1   | sched_reserve: Flash Attention was auto, set to enabled
+llama_server-1   | sched_reserve:        CPU compute buffer size =    56.69 MiB
+llama_server-1   | sched_reserve: graph nodes  = 999
+llama_server-1   | sched_reserve: graph splits = 1
+llama_server-1   | sched_reserve: reserve took 1.23 ms, sched copies = 1
+llama_server-1   | common_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+llama_server-1   | srv    load_model: initializing slots, n_slots = 1
+llama_server-1   | no implementations specified for speculative decoding
+llama_server-1   | slot   load_model: id  0 | task -1 | speculative decoding context not initialized
+llama_server-1   | slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+llama_server-1   | srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+llama_server-1   | srv    load_model: use `--cache-ram 0` to disable the prompt cache
+llama_server-1   | srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+llama_server-1   | init: chat template, example_format: '<|im_start|>system
+llama_server-1   | You are a helpful assistant<|im_end|>
+llama_server-1   | <|im_start|>user
+llama_server-1   | Hello<|im_end|>
+llama_server-1   | <|im_start|>assistant
+llama_server-1   | Hi there<|im_end|>
+llama_server-1   | <|im_start|>user
+llama_server-1   | How are you?<|im_end|>
+llama_server-1   | <|im_start|>assistant
+llama_server-1   | '
+llama_server-1   | srv          init: init: chat template, thinking = 0
+llama_server-1   | main: model loaded
+llama_server-1   | main: server is listening on http://0.0.0.0:8080
+llama_server-1   | main: starting the main loop...
+llama_server-1   | srv  update_slots: all slots are idle
+llama_server-1   | srv  log_server_r: done request: GET /version 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/version 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /build 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/build 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /version 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/version 172.20.0.5 404
+server_llama-1   | {"ts": "2026-06-06T18:36:22.404427+00:00", "level": "info", "logger": "uvicorn.error", "message": "Started server process [7]"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.404483+00:00", "level": "info", "logger": "uvicorn.error", "message": "Waiting for application startup."}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.404602+00:00", "level": "info", "logger": "llm_server.limits", "message": "limits_init"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.404680+00:00", "level": "info", "logger": "uvicorn.error", "message": "otel bootstrap disabled"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.406031+00:00", "level": "info", "logger": "uvicorn.error", "message": "policy: ok=True source=/app/policy_out/local_extract_allow.json model_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF enable_extract=True error=None"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.406069+00:00", "level": "info", "logger": "uvicorn.error", "message": "startup: env=dev debug=False app_profile=docker db_instance=docker redis_enabled=True model_load_mode=lazy"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.406087+00:00", "level": "info", "logger": "uvicorn.error", "message": "CORS enabled=True allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost', 'http://127.0.0.1']"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.420375+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='compose-extract' source='MODELS_PROFILE' used_profile='compose-extract' primary_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF model_ids=1"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.433962+00:00", "level": "info", "logger": "llm_server.models", "message": "models: loaded path=/app/config/models.yaml requested_profile='compose-extract' source='MODELS_PROFILE' used_profile='compose-extract' primary_id=llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF model_ids=1"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.439623+00:00", "level": "info", "logger": "uvicorn.error", "message": "Application startup complete."}
+llama_server-1   | srv  log_server_r: done request: GET /build 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/build 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /version 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/version 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /build 172.20.0.5 404
+llama_server-1   | srv  log_server_r: done request: GET /v1/build 172.20.0.5 404
+llama_server-1   | srv  params_from_: Chat format: Content-only
+server_llama-1   | {"ts": "2026-06-06T18:36:22.440026+00:00", "level": "info", "logger": "uvicorn.error", "message": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.554363+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "ac62778ff3fc15b9f1efd55921c77235", "trace_id": "ac62778ff3fc15b9f1efd55921c77235", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 0.8699893951416016, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:22.554668+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:35655 - \"GET /healthz HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.019736+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/health \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.020156+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/models \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.020502+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/version \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.021093+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/version \"HTTP/1.1 404 Not Found\""}
+llama_server-1   | slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+llama_server-1   | slot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> ?top-p -> min-p -> ?xtc -> temp-ext -> dist
+llama_server-1   | slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+llama_server-1   | slot update_slots: id  0 | task 0 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 379
+llama_server-1   | slot update_slots: id  0 | task 0 | n_tokens = 0, memory_seq_rm [0, end)
+llama_server-1   | slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 256, batch.n_tokens = 256, progress = 0.675462
+server_llama-1   | {"ts": "2026-06-06T18:36:24.021664+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/build \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.022165+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/build \"HTTP/1.1 404 Not Found\""}
+llama_server-1   | slot update_slots: id  0 | task 0 | n_tokens = 256, memory_seq_rm [256, end)
+llama_server-1   | slot update_slots: id  0 | task 0 | prompt processing progress, n_tokens = 379, batch.n_tokens = 123, progress = 1.000000
+llama_server-1   | slot update_slots: id  0 | task 0 | prompt done, n_tokens = 379, batch.n_tokens = 123
+llama_server-1   | slot init_sampler: id  0 | task 0 | init sampler, took 0.04 ms, tokens: text = 379, total = 379
+server_llama-1   | {"ts": "2026-06-06T18:36:24.022414+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "4ec477141067e6f7f7b579faff0ec1ab", "trace_id": "4ec477141067e6f7f7b579faff0ec1ab", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 28.622150421142578, "client_ip": "192.168.65.1", "route": "/readyz", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:24.022769+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:51637 - \"GET /readyz HTTP/1.1\" 200"}
+llama_server-1   | slot print_timing: id  0 | task 0 |
+llama_server-1   | prompt eval time =     712.73 ms /   379 tokens (    1.88 ms per token,   531.76 tokens per second)
+llama_server-1   |        eval time =     228.42 ms /    43 tokens (    5.31 ms per token,   188.25 tokens per second)
+llama_server-1   |       total time =     941.15 ms /   422 tokens
+server_llama-1   | {"ts": "2026-06-06T18:36:30.690335+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/health \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:30.690967+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/models \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:30.691486+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/version \"HTTP/1.1 404 Not Found\""}
+llama_server-1   | slot      release: id  0 | task 0 | stop processing: n_tokens = 421, truncated = 0
+llama_server-1   | srv  update_slots: all slots are idle
+llama_server-1   | srv  log_server_r: done request: POST /v1/chat/completions 172.20.0.5 200
+llama_server-1   | srv  params_from_: Chat format: Content-only
+llama_server-1   | slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, sim_best = 1.000 (> 0.100 thold), f_keep = 0.900
+server_llama-1   | {"ts": "2026-06-06T18:36:30.692482+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/version \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:30.693177+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/build \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:30.693800+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/build \"HTTP/1.1 404 Not Found\""}
+llama_server-1   | slot launch_slot_: id  0 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> ?top-p -> min-p -> ?xtc -> temp-ext -> dist
+llama_server-1   | slot launch_slot_: id  0 | task 45 | processing task, is_child = 0
+llama_server-1   | slot update_slots: id  0 | task 45 | new prompt, n_ctx_slot = 4096, n_keep = 0, task.n_tokens = 379
+llama_server-1   | slot update_slots: id  0 | task 45 | need to evaluate at least 1 token for each active slot (n_past = 379, task.n_tokens() = 379)
+llama_server-1   | slot update_slots: id  0 | task 45 | n_past was set to 378
+llama_server-1   | slot update_slots: id  0 | task 45 | n_tokens = 378, memory_seq_rm [378, end)
+server_llama-1   | {"ts": "2026-06-06T18:36:30.694119+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "11de91e198e19f3782c78fb6f56680e5", "trace_id": "11de91e198e19f3782c78fb6f56680e5", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 6.980657577514648, "client_ip": "127.0.0.1", "route": "/readyz", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:30.694421+00:00", "level": "info", "logger": "uvicorn.access", "message": "127.0.0.1:41810 - \"GET /readyz HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.251410+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/health \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.251821+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/models \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.252157+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/version \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.253477+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/version \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.254047+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/build \"HTTP/1.1 404 Not Found\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.254546+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: GET http://llama_server:8080/v1/build \"HTTP/1.1 404 Not Found\""}
+llama_server-1   | slot update_slots: id  0 | task 45 | prompt processing progress, n_tokens = 379, batch.n_tokens = 1, progress = 1.000000
+llama_server-1   | slot update_slots: id  0 | task 45 | prompt done, n_tokens = 379, batch.n_tokens = 1
+llama_server-1   | slot init_sampler: id  0 | task 45 | init sampler, took 0.03 ms, tokens: text = 379, total = 379
+llama_server-1   | slot print_timing: id  0 | task 45 |
+llama_server-1   | prompt eval time =       5.48 ms /     1 tokens (    5.48 ms per token,   182.42 tokens per second)
+llama_server-1   |        eval time =     227.66 ms /    43 tokens (    5.29 ms per token,   188.88 tokens per second)
+llama_server-1   |       total time =     233.14 ms /    44 tokens
+llama_server-1   | slot      release: id  0 | task 45 | stop processing: n_tokens = 421, truncated = 0
+llama_server-1   | srv  update_slots: all slots are idle
+llama_server-1   | srv  log_server_r: done request: POST /v1/chat/completions 172.20.0.6 200
+server_llama-1   | {"ts": "2026-06-06T18:36:31.254832+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "5bc4d2f7c5c199e920af7a677e02b73d", "trace_id": "5bc4d2f7c5c199e920af7a677e02b73d", "method": "GET", "path": "/readyz", "status_code": 200, "latency_ms": 5.575418472290039, "client_ip": "172.20.0.7", "route": "/readyz", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.255085+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.7:36174 - \"GET /readyz HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.310708+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "280c09565d61ffb913d773a4ce249ae8", "trace_id": "280c09565d61ffb913d773a4ce249ae8", "method": "GET", "path": "/healthz", "status_code": 200, "latency_ms": 0.4143714904785156, "client_ip": "192.168.65.1", "route": "/healthz", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:31.310901+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:53355 - \"GET /healthz HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.318176+00:00", "level": "info", "logger": "httpx", "message": "HTTP Request: POST http://llama_server:8080/v1/chat/completions \"HTTP/1.1 200 OK\""}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.331854+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "integration-obs-request-1", "trace_id": "integration-obs-trace-1", "method": "POST", "path": "/v1/extract", "status_code": 200, "latency_ms": 978.0571460723877, "client_ip": "172.20.0.7", "route": "/v1/extract", "model_id": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.332188+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.7:36174 - \"POST /v1/extract HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.418773+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "integration-obs-request-2", "trace_id": "integration-obs-trace-2", "method": "POST", "path": "/v1/extract/jobs", "status_code": 202, "latency_ms": 11.262893676757812, "client_ip": "172.20.0.7", "route": "/v1/extract/jobs", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.419020+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.7:36174 - \"POST /v1/extract/jobs HTTP/1.1\" 202"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.515568+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "integration-obs-request-3", "trace_id": "integration-obs-trace-2", "method": "GET", "path": "/v1/extract/jobs/e3f9d2d2b8224642813d460fe250d3e4", "status_code": 200, "latency_ms": 19.756078720092773, "client_ip": "172.20.0.7", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.515824+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.7:36174 - \"GET /v1/extract/jobs/e3f9d2d2b8224642813d460fe250d3e4 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.859737+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "integration-obs-request-3", "trace_id": "integration-obs-trace-2", "method": "GET", "path": "/v1/extract/jobs/e3f9d2d2b8224642813d460fe250d3e4", "status_code": 200, "latency_ms": 7.674932479858398, "client_ip": "172.20.0.7", "route": "/v1/extract/jobs/{job_id}", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.859977+00:00", "level": "info", "logger": "uvicorn.access", "message": "172.20.0.7:36174 - \"GET /v1/extract/jobs/e3f9d2d2b8224642813d460fe250d3e4 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.966643+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "79ffab3e25dd4c2d5cd435f23a6b5356", "trace_id": "79ffab3e25dd4c2d5cd435f23a6b5356", "method": "GET", "path": "/metrics", "status_code": 200, "latency_ms": 2.409696578979492, "client_ip": "192.168.65.1", "route": "/metrics", "model_id": "unknown", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.966915+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:45533 - \"GET /metrics HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.983605+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "6805360e51d645e719811df3191d0e81", "trace_id": "6805360e51d645e719811df3191d0e81", "method": "GET", "path": "/v1/admin/traces/integration-obs-trace-1", "status_code": 200, "latency_ms": 7.987260818481445, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:32.983935+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:38204 - \"GET /v1/admin/traces/integration-obs-trace-1 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.047515+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "04f974726defdeaa670dbf4cedbfd909", "trace_id": "04f974726defdeaa670dbf4cedbfd909", "method": "GET", "path": "/v1/admin/traces/integration-obs-trace-2", "status_code": 200, "latency_ms": 54.31365966796875, "client_ip": "192.168.65.1", "route": "/v1/admin/traces", "model_id": "admin", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.047759+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:41094 - \"GET /v1/admin/traces/integration-obs-trace-2 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.064430+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "a4c01bd4efd7d1ed7537e0c0c657cb6d", "trace_id": "a4c01bd4efd7d1ed7537e0c0c657cb6d", "method": "GET", "path": "/v1/admin/logs", "status_code": 200, "latency_ms": 5.787372589111328, "client_ip": "192.168.65.1", "route": "/v1/admin/logs", "model_id": "admin", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.064711+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:53462 - \"GET /v1/admin/logs?trace_id=integration-obs-trace-1 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.078389+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "5845b1e93761638678c139ecceecba9c", "trace_id": "5845b1e93761638678c139ecceecba9c", "method": "GET", "path": "/v1/admin/logs", "status_code": 200, "latency_ms": 4.324674606323242, "client_ip": "192.168.65.1", "route": "/v1/admin/logs", "model_id": "admin", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.078628+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:36816 - \"GET /v1/admin/logs?trace_id=integration-obs-trace-2&job_id=e3f9d2d2b8224642813d460fe250d3e4 HTTP/1.1\" 200"}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.091992+00:00", "level": "info", "logger": "llm_server.access", "message": "request", "request_id": "782dce46a9b5767f4f9e5b1caceab9ba", "trace_id": "782dce46a9b5767f4f9e5b1caceab9ba", "method": "GET", "path": "/v1/admin/logs", "status_code": 200, "latency_ms": 4.197835922241211, "client_ip": "192.168.65.1", "route": "/v1/admin/logs", "model_id": "admin", "cached": false}
+server_llama-1   | {"ts": "2026-06-06T18:36:33.092201+00:00", "level": "info", "logger": "uvicorn.access", "message": "192.168.65.1:52002 - \"GET /v1/admin/logs?request_id=integration-obs-request-3 HTTP/1.1\" 200"}

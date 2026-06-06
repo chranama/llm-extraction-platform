@@ -1,0 +1,1 @@
+{"schema_id":"sroie_receipt_v1","model":"llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF","data":{"company":"ACME","date":"2024-01-01","total":"$10.00"},"cached":false,"repair_attempted":false}
