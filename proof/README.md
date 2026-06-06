@@ -18,6 +18,10 @@ This directory contains the latest saved runtime evidence bundle and validation 
 - `validate_evidence_manifest.py`: strict validator (schema-lite + artifact checks)
 - `fixtures/models.gateway-proof.yaml`: deterministic fake-model profile for live gateway-backed extract proof
 
+The joint LLMEP plus `inference-serving-gateway` workflow is started from
+`tools/joint/inference_gateway_stack.sh` and writes optional artifacts under
+`artifacts/joint_gateway/latest/`.
+
 ## Regenerate
 
 ```bash
@@ -63,3 +67,8 @@ Ops-surface evidence shows local API, UI, Prometheus, and Grafana reachability
 directly and through nginx. It also captures Prometheus scrape state and Grafana
 dashboard population. It does not claim production ingress, TLS, identity
 controls, or production observability operations.
+
+Joint gateway evidence shows sync and async extraction through the companion
+edge gateway with request identity, trace identity, metrics, admin traces, and
+optional OTel export. It uses a deterministic fake model profile and does not
+claim real-model quality or cloud deployment behavior.

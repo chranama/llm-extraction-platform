@@ -16,6 +16,8 @@ The repository keeps stable runtime evidence under `proof/`.
   linkage proof and writes phase 9 artifacts.
 - `proof/generate_ops_surface_proof.py`: runs the API/UI/observability/proxy
   proof and writes phase 10 artifacts.
+- `tools/joint/inference_gateway_stack.sh`: runs the LLMEP plus
+  `inference-serving-gateway` joint workflow and writes joint gateway artifacts.
 
 ## Validate Current Artifacts
 
@@ -62,6 +64,9 @@ captures logs, and writes `phase8_compose_llama_extract/`.
 - `phase10_ops_surface/`: direct and proxied API, UI, Prometheus, Grafana, and
   Compose status outputs, including Prometheus scrape state and Grafana
   dashboard population.
+- `joint_gateway/latest/`: sync and async extract through the companion gateway,
+  request and trace identity propagation, gateway/backend metrics, admin trace
+  inspection, optional OTel traces, and process logs from the joint local run.
 
 ## Scope Boundaries
 
@@ -81,6 +86,10 @@ not claim broad benchmark coverage or a full dataset evaluation run.
 claim production TLS, identity, or ingress hardening. Its Prometheus and Grafana
 artifacts prove local scrape/dashboard wiring, not production observability
 operations.
+
+`joint_gateway/latest/` demonstrates a local edge/backend integration with a
+deterministic model profile. It does not claim real-model extraction quality,
+cloud networking, TLS, production identity, or AWS deployment.
 
 Generated artifacts should stay close to the behavior they support. If a new
 artifact does not clarify current runtime behavior, it should not be added to the

@@ -37,9 +37,9 @@ inspecting, and shutting down the platform:
 - [Runbook](docs/runbook.md)
 
 It covers the supported reviewer smoke, Compose extract, external model,
-Kubernetes smoke, policy/eval linkage, admin/trace, ops-surface, and
-evidence-validation paths. The promoted real-model local path uses CPU-only
-containerized `llama.cpp` for model-backed extraction.
+joint inference-gateway, Kubernetes smoke, policy/eval linkage, admin/trace,
+ops-surface, and evidence-validation paths. The promoted real-model local path
+uses CPU-only containerized `llama.cpp` for model-backed extraction.
 
 ## Documentation
 
@@ -48,6 +48,7 @@ containerized `llama.cpp` for model-backed extraction.
 - [Testing](docs/testing.md)
 - [Operations](docs/operations.md)
 - [Runbook](docs/runbook.md)
+- [Inference Gateway Integration](docs/inference-gateway-integration.md)
 - [Artifacts](docs/artifacts.md)
 - [Scope](docs/scope.md)
 

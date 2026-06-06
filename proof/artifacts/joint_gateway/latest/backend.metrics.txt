@@ -1,0 +1,233 @@
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 2938.0
+python_gc_objects_collected_total{generation="1"} 658.0
+python_gc_objects_collected_total{generation="2"} 120.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 592.0
+python_gc_collections_total{generation="1"} 53.0
+python_gc_collections_total{generation="2"} 4.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="12",patchlevel="11",version="3.12.11"} 1.0
+# HELP llm_tokens_total Total tokens processed
+# TYPE llm_tokens_total counter
+# HELP llm_api_request_latency_seconds Request latency in seconds
+# TYPE llm_api_request_latency_seconds histogram
+llm_api_request_latency_seconds_bucket{cached="false",le="0.005",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.01",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.025",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.05",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.075",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.1",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.25",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.5",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.75",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="1.0",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="2.5",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="5.0",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="7.5",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="10.0",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_bucket{cached="false",le="+Inf",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_count{cached="false",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_latency_seconds_sum{cached="false",model_id="unknown",route="/healthz",status_code="200"} 0.0034677982330322266
+llm_api_request_latency_seconds_bucket{cached="false",le="0.005",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.01",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.025",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.05",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.075",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.1",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.25",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.5",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.75",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="1.0",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="2.5",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="5.0",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="7.5",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="10.0",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="+Inf",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_count{cached="false",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_latency_seconds_sum{cached="false",model_id="fake-sroie",route="/v1/extract",status_code="200"} 0.19478297233581543
+llm_api_request_latency_seconds_bucket{cached="false",le="0.005",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.01",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.025",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.05",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.075",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.1",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.25",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.5",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.75",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="1.0",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="2.5",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="5.0",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="7.5",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="10.0",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="+Inf",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_count{cached="false",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_latency_seconds_sum{cached="false",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 0.023884057998657227
+llm_api_request_latency_seconds_bucket{cached="false",le="0.005",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.01",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 0.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.025",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 1.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.05",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.075",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.1",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.25",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.5",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="0.75",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="1.0",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="2.5",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="5.0",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="7.5",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="10.0",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_bucket{cached="false",le="+Inf",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_count{cached="false",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+llm_api_request_latency_seconds_sum{cached="false",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 0.05244302749633789
+# HELP llm_api_request_latency_seconds_created Request latency in seconds
+# TYPE llm_api_request_latency_seconds_created gauge
+llm_api_request_latency_seconds_created{cached="false",model_id="unknown",route="/healthz",status_code="200"} 1.780767619915684e+09
+llm_api_request_latency_seconds_created{cached="false",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.780767620301336e+09
+llm_api_request_latency_seconds_created{cached="false",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.780767620375493e+09
+llm_api_request_latency_seconds_created{cached="false",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 1.780767620478131e+09
+# HELP llm_api_request_total Total requests
+# TYPE llm_api_request_total counter
+llm_api_request_total{cached="false",model_id="unknown",route="/healthz",status_code="200"} 3.0
+llm_api_request_total{cached="false",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.0
+llm_api_request_total{cached="false",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.0
+llm_api_request_total{cached="false",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 2.0
+# HELP llm_api_request_created Total requests
+# TYPE llm_api_request_created gauge
+llm_api_request_created{cached="false",model_id="unknown",route="/healthz",status_code="200"} 1.780767619915735e+09
+llm_api_request_created{cached="false",model_id="fake-sroie",route="/v1/extract",status_code="200"} 1.780767620301362e+09
+llm_api_request_created{cached="false",model_id="unknown",route="/v1/extract/jobs",status_code="202"} 1.780767620375516e+09
+llm_api_request_created{cached="false",model_id="unknown",route="/v1/extract/jobs/{job_id}",status_code="200"} 1.780767620478158e+09
+# HELP llm_redis_hits_total Redis cache hits
+# TYPE llm_redis_hits_total counter
+# HELP llm_redis_misses_total Redis cache misses
+# TYPE llm_redis_misses_total counter
+# HELP llm_redis_latency_seconds Latency of Redis cache GET operations
+# TYPE llm_redis_latency_seconds histogram
+# HELP llm_redis_enabled Whether Redis caching is enabled (1=yes, 0=no)
+# TYPE llm_redis_enabled gauge
+llm_redis_enabled 1.0
+# HELP llm_guard_trips_total Total guard trips (e.g., memory guard shedding) by kind and route
+# TYPE llm_guard_trips_total counter
+# HELP llm_extraction_requests_total Total extraction requests
+# TYPE llm_extraction_requests_total counter
+llm_extraction_requests_total{model_id="fake-sroie",schema_id="sroie_receipt_v1"} 1.0
+# HELP llm_extraction_requests_created Total extraction requests
+# TYPE llm_extraction_requests_created gauge
+llm_extraction_requests_created{model_id="fake-sroie",schema_id="sroie_receipt_v1"} 1.780767620156363e+09
+# HELP llm_extraction_cache_hits_total Extraction cache hits by layer
+# TYPE llm_extraction_cache_hits_total counter
+# HELP llm_extraction_validation_failures_total Extraction failures due to parse or schema validation issues
+# TYPE llm_extraction_validation_failures_total counter
+# HELP llm_extraction_repair_total Extraction repair attempts and outcomes
+# TYPE llm_extraction_repair_total counter
+# HELP llm_loader_ops_total Count of llm_loader operations
+# TYPE llm_loader_ops_total counter
+llm_loader_ops_total{op="load_model"} 1.0
+# HELP llm_loader_ops_created Count of llm_loader operations
+# TYPE llm_loader_ops_created gauge
+llm_loader_ops_created{op="load_model"} 1.780767620156265e+09
+# HELP llm_loader_ops_fail_total Count of failed llm_loader operations
+# TYPE llm_loader_ops_fail_total counter
+# HELP llm_loader_op_latency_seconds Latency of llm_loader operations (seconds)
+# TYPE llm_loader_op_latency_seconds histogram
+llm_loader_op_latency_seconds_bucket{le="0.005",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.01",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.025",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.05",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.075",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.1",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.25",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.5",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="0.75",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="1.0",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="2.5",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="5.0",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="7.5",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="10.0",op="load_model"} 1.0
+llm_loader_op_latency_seconds_bucket{le="+Inf",op="load_model"} 1.0
+llm_loader_op_latency_seconds_count{op="load_model"} 1.0
+llm_loader_op_latency_seconds_sum{op="load_model"} 8.162499580066651e-05
+# HELP llm_loader_op_latency_seconds_created Latency of llm_loader operations (seconds)
+# TYPE llm_loader_op_latency_seconds_created gauge
+llm_loader_op_latency_seconds_created{op="load_model"} 1.78076762015634e+09
+# HELP llm_model_loaded 1 if in-process model weights are loaded (transformers), else 0
+# TYPE llm_model_loaded gauge
+llm_model_loaded 0.0
+# HELP llm_model_error 1 if model_error is set, else 0
+# TYPE llm_model_error gauge
+llm_model_error 0.0
+# HELP llm_loaded_model_id_info Info gauge: 1 for the currently loaded model id label
+# TYPE llm_loaded_model_id_info gauge
+llm_loaded_model_id_info{model_id="fake-sroie"} 1.0
+# HELP llm_runtime_default_model_id_info Info gauge: 1 for the current runtime default model id label
+# TYPE llm_runtime_default_model_id_info gauge
+# HELP llm_generate_queue_depth Number of /v1/generate requests waiting in the gate queue
+# TYPE llm_generate_queue_depth gauge
+llm_generate_queue_depth 0.0
+# HELP llm_generate_in_flight Number of /v1/generate requests currently executing
+# TYPE llm_generate_in_flight gauge
+llm_generate_in_flight 0.0
+# HELP llm_generate_gate_rejects_total Number of /v1/generate requests rejected by the gate
+# TYPE llm_generate_gate_rejects_total counter
+# HELP llm_generate_gate_enters_total Number of /v1/generate requests that entered the gate (queued or immediate)
+# TYPE llm_generate_gate_enters_total counter
+llm_generate_gate_enters_total 1.0
+# HELP llm_generate_gate_enters_created Number of /v1/generate requests that entered the gate (queued or immediate)
+# TYPE llm_generate_gate_enters_created gauge
+llm_generate_gate_enters_created 1.780767618608201e+09
+# HELP llm_generate_gate_starts_total Number of /v1/generate requests that started execution (semaphore acquired)
+# TYPE llm_generate_gate_starts_total counter
+llm_generate_gate_starts_total 1.0
+# HELP llm_generate_gate_starts_created Number of /v1/generate requests that started execution (semaphore acquired)
+# TYPE llm_generate_gate_starts_created gauge
+llm_generate_gate_starts_created 1.780767618608205e+09
+# HELP llm_generate_gate_timeouts_total Number of /v1/generate requests that timed out waiting or executing in the gate
+# TYPE llm_generate_gate_timeouts_total counter
+# HELP llm_generate_queue_wait_seconds Time spent waiting in /v1/generate gate queue before execution
+# TYPE llm_generate_queue_wait_seconds histogram
+llm_generate_queue_wait_seconds_bucket{le="0.001"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="0.01"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="0.05"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="0.1"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="0.25"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="0.5"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="1.0"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="2.0"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="5.0"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="10.0"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="30.0"} 1.0
+llm_generate_queue_wait_seconds_bucket{le="+Inf"} 1.0
+llm_generate_queue_wait_seconds_count 1.0
+llm_generate_queue_wait_seconds_sum 2.582994056865573e-06
+# HELP llm_generate_queue_wait_seconds_created Time spent waiting in /v1/generate gate queue before execution
+# TYPE llm_generate_queue_wait_seconds_created gauge
+llm_generate_queue_wait_seconds_created 1.780767618608214e+09
+# HELP llm_generate_execution_seconds Time spent executing /v1/generate while holding concurrency slot
+# TYPE llm_generate_execution_seconds histogram
+llm_generate_execution_seconds_bucket{le="0.01"} 1.0
+llm_generate_execution_seconds_bucket{le="0.05"} 1.0
+llm_generate_execution_seconds_bucket{le="0.1"} 1.0
+llm_generate_execution_seconds_bucket{le="0.25"} 1.0
+llm_generate_execution_seconds_bucket{le="0.5"} 1.0
+llm_generate_execution_seconds_bucket{le="1.0"} 1.0
+llm_generate_execution_seconds_bucket{le="2.0"} 1.0
+llm_generate_execution_seconds_bucket{le="5.0"} 1.0
+llm_generate_execution_seconds_bucket{le="10.0"} 1.0
+llm_generate_execution_seconds_bucket{le="30.0"} 1.0
+llm_generate_execution_seconds_bucket{le="60.0"} 1.0
+llm_generate_execution_seconds_bucket{le="120.0"} 1.0
+llm_generate_execution_seconds_bucket{le="+Inf"} 1.0
+llm_generate_execution_seconds_count 1.0
+llm_generate_execution_seconds_sum 0.0001295830006711185
+# HELP llm_generate_execution_seconds_created Time spent executing /v1/generate while holding concurrency slot
+# TYPE llm_generate_execution_seconds_created gauge
+llm_generate_execution_seconds_created 1.7807676186082299e+09

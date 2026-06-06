@@ -14,6 +14,7 @@ Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 | Reviewer Smoke | API server plus local Compose infra | Fake deterministic backend | API startup, health/readiness, schemas, generate, sync extract, and basic auth/gating with low runtime variability | Real model quality or model-serving performance |
 | Compose Extract | API server, Postgres, Redis, worker, and llama-server in Docker Compose | CPU-only containerized `llama.cpp` serving SmolLM2 | Real model-backed generate/extract, sync extract, async extract, durable job state, policy/capability surfaces, and traceable runtime behavior | Accelerated inference, production throughput, GPU scheduling, or high availability |
 | External Model Runtime | Containerized API server calls a model runtime outside the server container | Host `llama.cpp` or Docker-managed model runtime | Production-relevant model-serving boundary and external backend integration | Fully containerized accelerated inference on Docker for Mac |
+| Joint Inference Gateway | Host API server and worker, Compose infra, and sibling Go gateway | Fake deterministic backend | Backend behavior behind an inference edge service, sync and async extract forwarding, request identity, traces, and metrics across both services | Real model quality, `/v1/generate` through the gateway, AWS deployment, TLS, or production ingress |
 | Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
 | Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
 | Admin/Trace | Host proof server with Postgres/Redis and async worker | Fake deterministic backend | Admin trace inspection for sync and async extract, including worker lineage | Distributed tracing export or external telemetry compliance |
@@ -195,6 +196,32 @@ This target proves an external model-serving boundary. It does not claim that
 the model runtime is containerized or accelerated inside the Compose stack. It
 is an operational target, not part of the canonical proof bundle, because the
 model runtime lifecycle is external to this repository.
+
+## Joint Inference Gateway
+
+Use this path to run LLMEP behind the companion `inference-serving-gateway`
+checkout. This target is owned by LLMEP because the backend owns API contracts,
+worker state, policy behavior, admin traces, and the integrated proof artifacts.
+
+Run:
+
+```bash
+tools/joint/inference_gateway_stack.sh preflight
+tools/joint/inference_gateway_stack.sh up
+tools/joint/inference_gateway_stack.sh status
+tools/joint/inference_gateway_stack.sh proof
+tools/joint/inference_gateway_stack.sh down
+```
+
+Use `tools/joint/inference_gateway_stack.sh verify` to run startup, proof
+generation, and shutdown as one sequence.
+
+The default workflow uses the deterministic `gateway-proof` model profile. It
+proves sync and async extract through the gateway, request and trace identity
+propagation, gateway/backend metrics, admin traces, and optional OTel export.
+
+See [Inference Gateway Integration](inference-gateway-integration.md) for the
+runtime shape, supported capability set, overrides, and artifact inventory.
 
 ## Kubernetes Smoke
 
