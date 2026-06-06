@@ -42,7 +42,29 @@ The model path is mounted into the `llama_server` container at `/models`.
 `LLAMA_N_GPU_LAYERS=0` is the supported default. This path demonstrates
 CPU-only, real-model extraction correctness, not accelerated inference.
 
+## Preflight
+
+Run preflight before starting a target when you want to catch local setup
+problems without starting containers, applying migrations, seeding API keys, or
+generating proof artifacts.
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight smoke
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight compose-extract
+uv run llmctl preflight evidence --json
+```
+
+Supported preflight targets are `smoke`, `compose-extract`, `external-model`,
+`kind-smoke`, `policy-eval`, `admin-trace`, `ops-surface`, `evidence`, and
+`all`.
+
 ## Reviewer Smoke
+
+Preflight:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight smoke
+```
 
 Run:
 
@@ -74,6 +96,12 @@ uv run llmctl --project-name llmep --env-override-file .env.docker stop
 ```
 
 ## Compose Extract
+
+Preflight:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight compose-extract
+```
 
 Run:
 
@@ -147,6 +175,12 @@ external runtime is already started and reachable at `LLAMA_SERVER_URL`; setup,
 acceleration, and lifecycle for that model server are intentionally external to
 this target.
 
+Preflight:
+
+```bash
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight external-model
+```
+
 Run:
 
 ```bash
@@ -163,6 +197,12 @@ is an operational target, not part of the canonical proof bundle, because the
 model runtime lifecycle is external to this repository.
 
 ## Kubernetes Smoke
+
+Preflight:
+
+```bash
+uv run llmctl preflight kind-smoke
+```
 
 Run:
 
@@ -191,6 +231,12 @@ uv run llmctl k8s kind-down
 
 ## Policy/Eval Linkage
 
+Preflight:
+
+```bash
+uv run llmctl preflight policy-eval
+```
+
 Run:
 
 ```bash
@@ -215,6 +261,12 @@ full benchmark or dataset evaluation run.
 
 ## Admin/Trace
 
+Preflight:
+
+```bash
+uv run llmctl preflight admin-trace
+```
+
 Run:
 
 ```bash
@@ -227,6 +279,12 @@ trace detail for both flows, and writes ordered trace artifacts under
 `proof/artifacts/phase7_trace_inspection/`.
 
 ## UI/Observability/Proxy
+
+Preflight:
+
+```bash
+uv run llmctl preflight ops-surface
+```
 
 Run:
 
@@ -248,6 +306,12 @@ nginx proxy profiles. It verifies direct and proxied access to:
 Artifacts are written under `proof/artifacts/phase10_ops_surface/`.
 
 ## Evidence Validation
+
+Preflight:
+
+```bash
+uv run llmctl preflight evidence
+```
 
 Validate saved artifacts:
 

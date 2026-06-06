@@ -8,6 +8,13 @@ model and runs CPU-only containerized `llama.cpp`.
 For ordered start, verification, log inspection, and shutdown commands, use
 [`runbook.md`](runbook.md).
 
+Use `llmctl preflight <target>` before a promoted path when you want a
+non-mutating local setup check. Preflight validates binaries, Docker reachability
+when required, deterministic Compose rendering, required env values, policy and
+schema files, model-file paths, Kubernetes overlay rendering, evidence artifact
+presence, and local port availability. It is a pre-start guardrail; `doctor`
+remains the post-start diagnostic for a running Compose stack.
+
 ## Requirements
 
 Common requirements:

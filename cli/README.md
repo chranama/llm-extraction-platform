@@ -9,6 +9,7 @@ environment files, applies migrations when needed, and runs the core smoke
 checks for supported runtime targets.
 
 ## Key Entrypoints
+- `llmctl preflight <target>`
 - `llmctl smoke`
 - `llmctl compose-extract`
 - `llmctl external-model`
@@ -19,6 +20,18 @@ checks for supported runtime targets.
 - `cli/commands/`
 - `cli/utils/`
 - `cli/tests/`
+
+## Preflight
+Use `preflight` before starting a promoted runtime target. It validates local
+prerequisites, rendered Compose wiring, required env values, model/policy/schema
+files, and port availability without starting containers or mutating runtime
+state.
+
+```bash
+uv run llmctl --env-override-file .env.docker preflight smoke
+uv run llmctl --env-override-file .env.docker preflight compose-extract
+uv run llmctl preflight evidence --json
+```
 
 ## Run/Test
 ```bash

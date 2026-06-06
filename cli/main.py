@@ -11,6 +11,7 @@ import cli.commands.compose as compose_cmd
 import cli.commands.dev as dev_cmd
 import cli.commands.k8s as k8s_cmd
 import cli.commands.paths as paths_cmd
+import cli.commands.preflight as preflight_cmd
 from cli.errors import CLIError, die
 from cli.types import GlobalConfig
 from cli.utils.paths import find_repo_root
@@ -168,6 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub = p.add_subparsers(dest="cmd", required=True)
+    preflight_cmd.register(sub)
     paths_cmd.register(sub)
     compose_cmd.register(sub)
     dev_cmd.register(sub)

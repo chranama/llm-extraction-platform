@@ -8,6 +8,7 @@ def test_root_parser_registers_expected_commands() -> None:
     subparsers_action = next(a for a in parser._actions if a.dest == "cmd")
     choices = set(subparsers_action.choices.keys())
     assert {
+        "preflight",
         "smoke",
         "compose-extract",
         "external-model",
