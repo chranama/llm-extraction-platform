@@ -150,6 +150,9 @@ results/**/*.csv
 logs/
 *.log
 !proof/artifacts/phase5_k8s_kind/k8s_smoke.log
+!proof/artifacts/phase8_compose_llama_extract/server_llama.log
+!proof/artifacts/phase8_compose_llama_extract/llama_server.log
+!proof/artifacts/phase8_compose_llama_extract/worker_llama.log
 
 # =========================
 # Streamlit / Gradio
