@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, cast
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from llm_server.core.config import get_settings
 from llm_server.core.errors import AppError
 from llm_server.db.models import ApiKey
 from llm_server.db.session import get_session
@@ -23,15 +22,11 @@ from llm_server.observability.replay_cases import (
 )
 from llm_server.api.dependencies.admin import ensure_admin
 from llm_server.api.dependencies.auth import get_api_key
-from llm_server.core.models_config import clear_models_config_cache
 from llm_server.core.request_settings import settings_from_request
-from llm_server.runtime.capabilities import effective_capabilities
 from llm_server.runtime.policy import snapshot_generate_cap
 from llm_server.services.runtime_admin import (
     allowed_model_ids_from_settings,
     get_loader,
-    runtime_default_model_id_from_app,
-    summarize_registry,
 )
 from llm_server.services.runtime_reload import reload_runtime_state
 from llm_server.services.llm_runtime.inference import set_request_meta

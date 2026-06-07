@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """Lower-level extract execution machinery used by application-layer use cases."""
+
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from llm_server.core.errors import AppError
 from llm_server.core.metrics import (

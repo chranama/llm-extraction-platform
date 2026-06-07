@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Tuple, cast
+from typing import Any, Tuple, cast
 
 from fastapi import Request
 

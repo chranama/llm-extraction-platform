@@ -23,7 +23,6 @@ from llm_server.api.dependencies.auth import get_api_key
 from llm_server.services.llm_runtime.access import get_llm
 from llm_server.services.extract_jobs import (
     ExtractJobBody,
-    serialize_extract_job,
 )
 from llm_server.telemetry.traces import (
     set_trace_meta,

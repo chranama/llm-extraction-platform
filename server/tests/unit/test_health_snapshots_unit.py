@@ -3,7 +3,6 @@ from __future__ import annotations
 import types
 from types import SimpleNamespace
 
-import pytest
 
 from llm_server.runtime import snapshots as snap
 
