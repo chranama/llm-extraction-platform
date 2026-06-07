@@ -56,6 +56,26 @@ ALB
 The backend API should not be directly exposed through public AWS ingress in the
 first slice.
 
+## Backend AWS Component Inventory
+
+The backend participates in this AWS component set:
+
+| Component | What It Does For The Backend | First-Slice Posture |
+|---|---|---|
+| ECR | Stores the CI-built backend image used by the API, worker, migration, and seed-job pods | `llm-server`, published as `linux/amd64` |
+| EKS | Runs the backend Kubernetes workloads in the joint stack | Backend pods are internal behind the gateway |
+| EC2 managed node group | Supplies the compute where backend pods are scheduled | Shared with gateway and observability pods |
+| RDS PostgreSQL | Provides the managed database for API keys, logs, traces, jobs, and usage state | Managed replacement for in-cluster Postgres |
+| ElastiCache Redis | Provides managed Redis for async extraction queue/state behavior | Managed replacement for in-cluster Redis |
+| Secrets Manager | Stores backend API keys and connection secrets outside source control and manifests | May be materialized into Kubernetes Secrets for the first slice |
+| CloudWatch Logs | Collects backend API and worker logs for cloud-side inspection | Must preserve `request_id`, `trace_id`, and `job_id` |
+| IAM | Defines image-publish, image-pull, and future workload permission boundaries | Small explicit role set |
+| VPC and security groups | Provide network reachability and firewall boundaries between backend pods and managed data | Backend access scoped to the bounded VPC |
+| Application Load Balancer | Provides public ingress to the gateway; backend traffic arrives only after gateway routing | Backend is reached only through the gateway route path |
+
+In-cluster OTel Collector, Jaeger, Prometheus, and Grafana remain part of the
+reviewable AWS proof path, but they are not backend-owned AWS managed services.
+
 ## Runtime Contract
 
 The backend must preserve these semantics in AWS:
