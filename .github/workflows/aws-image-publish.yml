@@ -1,0 +1,142 @@
+name: Publish AWS Server Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "contracts/**"
+      - "config/**"
+      - "schemas/**"
+      - "server/**"
+      - "deploy/docker/Dockerfile.server"
+      - ".github/workflows/aws-image-publish.yml"
+
+concurrency:
+  group: aws-image-publish-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: llm-server
+  IMAGE_PLATFORM: linux/amd64
+
+jobs:
+  publish_backend_image:
+    name: publish backend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard AWS publish configuration
+        id: guard
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ vars.AWS_ROLE_TO_ASSUME }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${AWS_ROLE_TO_ASSUME}" ]]; then
+            echo "publish_enabled=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "::error title=Missing AWS publish config::Set vars.AWS_ROLE_TO_ASSUME before running this workflow."
+            exit 1
+          fi
+
+          echo "::notice title=AWS publish skipped::Set vars.AWS_ROLE_TO_ASSUME to enable ECR publishing."
+          echo "publish_enabled=false" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        if: steps.guard.outputs.publish_enabled == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        if: steps.guard.outputs.publish_enabled == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+
+      - name: Log in to Amazon ECR
+        if: steps.guard.outputs.publish_enabled == 'true'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Derive image metadata
+        if: steps.guard.outputs.publish_enabled == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=git-
+            type=raw,value=main,enable={{is_default_branch}}
+            type=raw,value=aws-dev-latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=llm-server
+            org.opencontainers.image.description=AWS-target backend image for the bounded Phase 2.3 deployment slice
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push image
+        if: steps.guard.outputs.publish_enabled == 'true'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./deploy/docker/Dockerfile.server
+          platforms: ${{ env.IMAGE_PLATFORM }}
+          push: true
+          pull: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write image release artifact
+        if: steps.guard.outputs.publish_enabled == 'true'
+        env:
+          IMAGE_URI: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          mkdir -p _release
+
+          {
+            echo "image_uri=${IMAGE_URI}"
+            echo "image_digest=${IMAGE_DIGEST}"
+            echo "platform=${IMAGE_PLATFORM}"
+            echo "source_sha=${GITHUB_SHA}"
+            echo "published_tags:"
+            printf '%s\n' "${IMAGE_TAGS}"
+          } > _release/aws_image_release.txt
+
+          {
+            echo "## Published backend image"
+            echo
+            echo "- image: \`${IMAGE_URI}\`"
+            echo "- digest: \`${IMAGE_DIGEST}\`"
+            echo "- platform: \`${IMAGE_PLATFORM}\`"
+            echo "- source sha: \`${GITHUB_SHA}\`"
+            echo "- tags:"
+            printf '%s\n' "${IMAGE_TAGS}" | sed 's/^/  - `/; s/$/`/'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload image release artifact
+        if: steps.guard.outputs.publish_enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-aws-image-release
+          path: _release/aws_image_release.txt
+          if-no-files-found: error

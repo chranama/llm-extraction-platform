@@ -169,5 +169,5 @@ That is the intended outcome of Phase 2.2.9.
 
 - [06) Eval Methodology](06-eval-methodology.md)
 - [Application Runtime Architecture](application-runtime-architecture.md)
-- [AWS Deployment Contract](aws-deployment-contract.md)
+- [AWS Deployment Contract](../../docs/aws-deployment-contract.md)
 - [12) Trace Identity Contract](12-trace-identity-contract.md)

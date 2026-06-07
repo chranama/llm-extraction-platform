@@ -14,6 +14,7 @@ scope boundaries.
 - [Operations](operations.md): local runtime modes, diagnostics, and common failures.
 - [Runbook](runbook.md): start, verify, observe, and shut down the local system.
 - [Artifacts](artifacts.md): generated evidence files and validation commands.
+- [AWS Deployment Contract](aws-deployment-contract.md): backend participation in the bounded joint AWS deployment.
 - [Scope](scope.md): current claims, non-claims, and known limits.
 
 Archived documentation lives in [`../archive/docs/`](../archive/docs/). Treat it

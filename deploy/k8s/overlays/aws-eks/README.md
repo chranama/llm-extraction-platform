@@ -8,7 +8,7 @@ Planning reference:
 
 Backend-side AWS contract:
 
-- `/Users/chranama/career/llm-extraction-platform/archive/docs/aws-deployment-contract.md`
+- `/Users/chranama/career/llm-extraction-platform/docs/aws-deployment-contract.md`
 
 At `2.3.1`, this path is still scaffold-only, but the scaffold now has to preserve the runtime-quality and usage contracts defined before cloud rollout.
 

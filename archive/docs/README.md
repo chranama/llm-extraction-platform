@@ -2,7 +2,7 @@
 
 ## Start Here (Canonical)
 
-- [Root README](../README.md): project overview and entry point
+- [Root README](../../README.md): project overview and entry point
 - [00) Testing and CI](00-testing.md)
 - [01) Extraction Contract](01-extraction-contract.md)
 - [02) Project Demos](02-project-demos.md)
@@ -24,7 +24,6 @@
 - [Replay Export Seam](replay-export-seam.md)
 - [Local Environment Contract](local-environment-contract.md)
 - [Kind Deployment Contract](kind-deployment-contract.md)
-- [AWS Deployment Contract](aws-deployment-contract.md)
 - [Service Boundary: `inference-serving-gateway` Integration](service-boundary.inference-serving-gateway.md)
 - [v3 Rollout Plan](v3-rollout-plan.md)
 
