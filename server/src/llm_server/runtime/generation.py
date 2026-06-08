@@ -6,7 +6,6 @@ from typing import Any
 
 import anyio
 from fastapi import Request
-from transformers import AutoTokenizer
 
 from llm_server.io.policy_decisions import get_policy_snapshot
 from llm_server.runtime.policy import snapshot_generate_cap
@@ -132,6 +131,8 @@ def _llamacpp_tokenize(model: Any, texts: list[str]) -> list[list[int]] | None:
 
 @lru_cache(maxsize=16)
 def _get_tokenizer(tokenizer_id: str):
+    from transformers import AutoTokenizer
+
     return AutoTokenizer.from_pretrained(tokenizer_id, use_fast=True)
 
 

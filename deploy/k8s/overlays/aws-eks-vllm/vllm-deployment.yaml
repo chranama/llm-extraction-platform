@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: llm
+  labels:
+    app: vllm
+    runtime-slice: aws-vllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+        runtime-slice: aws-vllm
+    spec:
+      nodeSelector:
+        workload: model-runtime
+        accelerator: nvidia
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: model-runtime
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -lc
+          args:
+            - >
+              vllm serve "${VLLM_MODEL_ID}"
+              --host 0.0.0.0
+              --port 8000
+              --served-model-name "${VLLM_MODEL_ID}"
+              --max-model-len "${VLLM_MAX_MODEL_LEN}"
+              --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}"
+          env:
+            - name: VLLM_MODEL_ID
+              value: "Qwen/Qwen3-0.6B"
+            - name: VLLM_MAX_MODEL_LEN
+              value: "2048"
+            - name: VLLM_GPU_MEMORY_UTILIZATION
+              value: "0.80"
+            - name: HF_HOME
+              value: "/root/.cache/huggingface"
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: HF_TOKEN
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "2"
+              memory: 6Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: 14Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: hf-cache
+          emptyDir:
+            sizeLimit: 20Gi
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

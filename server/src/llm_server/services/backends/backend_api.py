@@ -260,9 +260,52 @@ class OpenAICompatClient:
         """
         GET /health
 
-        For llama-server this returns: {"status":"ok"} (per your curl).
+        Some OpenAI-compatible backends return JSON, while vLLM can return a
+        plain HTTP 200 response. Treat any 2xx health response as healthy, then
+        preserve JSON details when the backend provides them.
         """
-        return self._request_json("GET", "/health")
+        url = urljoin(self._base, "health")
+        try:
+            resp = self._client.get(url, headers=self._headers())
+        except Exception as e:
+            raise AppError(
+                code="backend_unreachable",
+                message="Backend is unreachable",
+                status_code=502,
+                extra={
+                    "base_url": self._base,
+                    "endpoint": "/health",
+                    "method": "GET",
+                    "error": repr(e),
+                },
+            ) from e
+
+        if resp.status_code >= 400:
+            detail: Any = None
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text[:1000]
+            raise AppError(
+                code="backend_error",
+                message="Backend request failed",
+                status_code=502,
+                extra={
+                    "base_url": self._base,
+                    "endpoint": "/health",
+                    "method": "GET",
+                    "status_code": resp.status_code,
+                    "detail": detail,
+                },
+            )
+
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                return {"ok": True, "status_code": resp.status_code, **data}
+            return {"ok": True, "status_code": resp.status_code, "raw": data}
+        except Exception:
+            return {"ok": True, "status_code": resp.status_code, "text": resp.text[:500]}
 
     # -----------------------------
     # misc probing

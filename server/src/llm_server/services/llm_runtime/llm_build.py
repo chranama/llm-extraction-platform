@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from llm_server.core.config import get_settings
@@ -9,6 +10,7 @@ from llm_server.core.errors import AppError
 from llm_server.services.llm_runtime.llm_config import ModelSpec, load_models_config
 from llm_server.services.llm_runtime.llm_registry import MultiModelManager
 
+from llm_server.services.backends.base import GenerateResult, GenerateTimings, GenerateUsage
 from llm_server.services.backends.backend_api import OpenAICompatClient, OpenAICompatClientConfig
 from llm_server.services.backends.fake_backend import FakeBackend, FakeBackendConfig
 from llm_server.services.backends.llamacpp_backend import LlamaCppBackend, LlamaCppBackendConfig
@@ -126,13 +128,15 @@ def _normalize_backend_name(raw: Any) -> str:
     Back-compat:
       - "local" => "transformers"
     New:
-      - "transformers" | "llamacpp" | "remote" | "fake"
+      - "transformers" | "llamacpp" | "remote" | "vllm" | "fake"
     """
     s = (str(raw or "")).strip().lower()
     if not s:
         return "transformers"
     if s == "local":
         return "transformers"
+    if s in ("vllm", "openai", "openai_compat", "openai-compatible"):
+        return "remote"
     if s in ("transformers", "llamacpp", "remote", "fake"):
         return s
     if s.startswith("llama"):
@@ -241,7 +245,11 @@ def _requested_connect_timeout_seconds(cfg_block: Any, *, total_timeout_seconds:
 
 class RemoteBackend:
     """
-    Generic OpenAI-compatible remote completion backend.
+    Generic OpenAI-compatible remote backend.
+
+    This supports llama.cpp-compatible completion servers, vLLM, and other
+    OpenAI-compatible model runtimes without loading model weights in the API
+    process.
     """
 
     backend_name: str = "remote"
@@ -255,9 +263,18 @@ class RemoteBackend:
         timeout_seconds: float = 60.0,
         connect_timeout_seconds: float = 5.0,
         remote_model_id: str | None = None,
+        request_mode: str = "completion",
+        provider: str = "openai_compat",
+        default_temperature: float = 0.7,
+        default_top_p: float = 0.95,
     ) -> None:
         self.model_id = model_id
         self.remote_model_id = remote_model_id or model_id
+        self.provider = (provider or "openai_compat").strip().lower() or "openai_compat"
+        mode = (request_mode or "completion").strip().lower()
+        self.request_mode = "chat" if mode in {"chat", "chat_completions"} else "completion"
+        self.default_temperature = float(default_temperature)
+        self.default_top_p = float(default_top_p)
 
         ct = (
             float(min(float(connect_timeout_seconds), float(timeout_seconds)))
@@ -277,6 +294,69 @@ class RemoteBackend:
     def ensure_loaded(self) -> None:
         return None
 
+    def model_info(self) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "ok": True,
+            "backend": self.backend_name,
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "remote_model_id": self.remote_model_id,
+            "request_mode": self.request_mode,
+            "loaded": None,
+            "runtime": {},
+        }
+        try:
+            out["runtime"]["health"] = self._client.health()
+        except Exception as e:
+            out["runtime"]["health_error"] = repr(e)
+        try:
+            out["runtime"]["models_raw"] = self._client.models()
+        except Exception as e:
+            out["runtime"]["models_error"] = repr(e)
+        for path in ("/version", "/v1/version", "/build", "/v1/build"):
+            try:
+                v = self._client.raw_get(path)
+                if isinstance(v, dict) and v:
+                    out["runtime"]["server_version"] = v
+                    out["runtime"]["server_version_path"] = path
+                    break
+            except Exception:
+                continue
+        return out
+
+    def is_ready(self) -> tuple[bool, dict[str, Any]]:
+        try:
+            data = self._client.health()
+            ok = bool(
+                isinstance(data, dict)
+                and (
+                    data.get("status") == "ok"
+                    or data.get("ok") is True
+                    or data.get("healthy") is True
+                )
+            )
+            return ok, {"health": data, "provider": self.provider}
+        except Exception as e:
+            return False, {"error": repr(e), "provider": self.provider}
+
+    def can_generate(self) -> tuple[bool, dict[str, Any]]:
+        try:
+            t0 = time.perf_counter()
+            result = self.generate_rich(prompt="ping", max_new_tokens=1, temperature=0.0)
+            dt_ms = (time.perf_counter() - t0) * 1000.0
+            return bool(result.text), {
+                "latency_ms": dt_ms,
+                "sample": result.text[:80],
+                "provider": self.provider,
+                "request_mode": self.request_mode,
+            }
+        except Exception as e:
+            return False, {
+                "error": repr(e),
+                "provider": self.provider,
+                "request_mode": self.request_mode,
+            }
+
     def generate(
         self,
         *,
@@ -288,25 +368,98 @@ class RemoteBackend:
         stop: list[str] | None = None,
         **kwargs: Any,
     ) -> str:
-        data = self._client.completions(
+        return self.generate_rich(
             prompt=prompt,
-            max_tokens=max_new_tokens,
+            max_new_tokens=max_new_tokens,
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
             stop=stop,
-            model=self.remote_model_id,
-            extra=kwargs if kwargs else None,
+            **kwargs,
+        ).text
+
+    def generate_rich(
+        self,
+        *,
+        prompt: str,
+        max_new_tokens: int | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GenerateResult:
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise AppError(
+                code="invalid_request", message="prompt must be a non-empty string", status_code=400
+            )
+
+        temp = (
+            float(temperature)
+            if isinstance(temperature, (int, float))
+            else float(self.default_temperature)
         )
+        tp = float(top_p) if isinstance(top_p, (int, float)) else float(self.default_top_p)
+        extra: Dict[str, Any] = {k: v for k, v in kwargs.items() if v is not None}
+
+        t0 = time.perf_counter()
+        if self.request_mode == "chat":
+            data = self._client.chat_completions(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_new_tokens,
+                temperature=temp,
+                top_p=tp,
+                top_k=top_k,
+                stop=stop,
+                model=self.remote_model_id,
+                extra=extra or None,
+            )
+        else:
+            data = self._client.completions(
+                prompt=prompt,
+                max_tokens=max_new_tokens,
+                temperature=temp,
+                top_p=tp,
+                top_k=top_k,
+                stop=stop,
+                model=self.remote_model_id,
+                extra=extra or None,
+            )
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+
+        text = ""
         try:
             choices = data.get("choices") or []
             if isinstance(choices, list) and choices:
                 c0 = choices[0] or {}
                 if isinstance(c0, dict):
-                    return str(c0.get("text") or "")
+                    if self.request_mode == "chat":
+                        msg = c0.get("message") or {}
+                        if isinstance(msg, dict):
+                            text = str(msg.get("content") or "")
+                    else:
+                        text = str(c0.get("text") or "")
         except Exception:
-            pass
-        return ""
+            text = ""
+
+        usage = data.get("usage") if isinstance(data, dict) else None
+        u = GenerateUsage()
+        if isinstance(usage, dict):
+            pt = usage.get("prompt_tokens")
+            ct = usage.get("completion_tokens")
+            tt = usage.get("total_tokens")
+            u = GenerateUsage(
+                prompt_tokens=int(pt) if isinstance(pt, int) else None,
+                completion_tokens=int(ct) if isinstance(ct, int) else None,
+                total_tokens=int(tt) if isinstance(tt, int) else None,
+            )
+
+        return GenerateResult(
+            text=text,
+            usage=u,
+            timings=GenerateTimings(total_ms=dt_ms, backend_ms=dt_ms),
+            raw=data if isinstance(data, dict) else None,
+        )
 
 
 # ------------------------------------------------------------
@@ -315,7 +468,8 @@ class RemoteBackend:
 
 
 def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict[str, Any]]:
-    backend_name = _normalize_backend_name(getattr(sp, "backend", None) or "transformers")
+    raw_backend_name = getattr(sp, "backend", None) or "transformers"
+    backend_name = _normalize_backend_name(raw_backend_name)
     caps = _caps_meta(sp)
     load_mode = str(getattr(sp, "load_mode", "lazy") or "lazy")
 
@@ -452,6 +606,21 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
         remote_model_id = _as_str(_get_nested(remote_cfg, "model_id")) or _as_str(
             _get_nested(remote_cfg, "model_name")
         )
+        provider = (
+            (
+                _as_str(_get_nested(remote_cfg, "provider"))
+                or ("vllm" if str(raw_backend_name).strip().lower() == "vllm" else "openai_compat")
+            )
+            .strip()
+            .lower()
+        )
+        request_mode = _as_str(_get_nested(remote_cfg, "request_mode")) or (
+            "chat" if provider == "vllm" else "completion"
+        )
+        default_temperature = float(
+            _as_float(_get_nested(remote_cfg, "default_temperature")) or 0.7
+        )
+        default_top_p = float(_as_float(_get_nested(remote_cfg, "default_top_p")) or 0.95)
 
         b = RemoteBackend(
             model_id=sp.id,
@@ -460,11 +629,17 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
             timeout_seconds=float(timeout_seconds),
             connect_timeout_seconds=float(connect_timeout_seconds),
             remote_model_id=remote_model_id,
+            request_mode=request_mode,
+            provider=provider,
+            default_temperature=default_temperature,
+            default_top_p=default_top_p,
         )
         meta = {
             "backend": "remote",
+            "provider": provider,
             "load_scope": "external",
             "base_url": base_url,
+            "request_mode": request_mode,
             "capabilities": caps,
             # NOTE: this is the model's own mode from models.yaml, not Settings.model_load_mode
             "load_mode": load_mode,
@@ -502,7 +677,7 @@ def _build_backend_for_model(*, sp: ModelSpec, settings: Any) -> Tuple[Any, Dict
         extra={
             "model_id": sp.id,
             "backend": backend_name,
-            "allowed": ["transformers", "llamacpp", "remote", "fake"],
+            "allowed": ["transformers", "llamacpp", "remote", "vllm", "fake"],
         },
     )
 

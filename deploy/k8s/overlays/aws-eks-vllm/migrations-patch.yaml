@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: llm
+spec:
+  template:
+    spec:
+      containers:
+        - name: migrate
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -lc
+            - |
+              set -euo pipefail
+
+              echo "Waiting for managed database readiness..."
+              python - <<'PY'
+              import os
+              import socket
+              import time
+              from urllib.parse import urlparse
+
+              parsed = urlparse(os.environ["DATABASE_URL"])
+              host = parsed.hostname
+              port = parsed.port or 5432
+
+              if not host:
+                  raise SystemExit("DATABASE_URL does not include a hostname")
+
+              for attempt in range(60):
+                  try:
+                      with socket.create_connection((host, port), timeout=5):
+                          print("database socket ready")
+                          break
+                  except OSError:
+                      if attempt == 59:
+                          raise
+                      time.sleep(2)
+              PY
+
+              echo "Running alembic migrations..."
+              python -m alembic -c /app/server/alembic.ini upgrade head

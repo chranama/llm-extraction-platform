@@ -20,7 +20,9 @@ Implemented or scaffolded surfaces:
 
 - backend AWS-target image publication workflow at
   `.github/workflows/aws-image-publish.yml`;
-- backend AWS/EKS overlay path at `deploy/k8s/overlays/aws-eks/`;
+- deterministic backend AWS/EKS overlay path at `deploy/k8s/overlays/aws-eks/`;
+- live vLLM backend AWS/EKS overlay path at
+  `deploy/k8s/overlays/aws-eks-vllm/`;
 - local, Compose, joint, and `kind` proof paths that define the behavior AWS
   should preserve.
 
@@ -28,7 +30,8 @@ Still pending:
 
 - live RDS/Redis secret materialization from the gateway-owned AWS harness;
 - execution of AWS migration and proof-key seed jobs against EKS;
-- AWS proof artifacts against the deployed ALB path.
+- AWS fake-backend proof artifacts against the deployed ALB path;
+- AWS vLLM proof artifacts against the deployed ALB path.
 
 ## Backend Role In The AWS Stack
 
@@ -48,12 +51,20 @@ ALB
   -> inference-serving-gateway
       -> llm-extraction-platform API
       -> llm-extraction-platform worker
+      -> optional vLLM model runtime
       -> RDS PostgreSQL
       -> ElastiCache Redis
 ```
 
 The backend API should not be directly exposed through public AWS ingress in the
 first slice.
+
+The backend supports two promoted AWS profiles:
+
+| Workflow | Overlay | Model Runtime |
+|---|---|---|
+| `AWS_WORKFLOW=fake` | `deploy/k8s/overlays/aws-eks/` | deterministic in-process fake backend |
+| `AWS_WORKFLOW=vllm` | `deploy/k8s/overlays/aws-eks-vllm/` | external OpenAI-compatible vLLM Service inside the cluster |
 
 ## Backend AWS Component Inventory
 
@@ -64,6 +75,7 @@ The backend participates in this AWS component set:
 | ECR | Stores the CI-built backend image used by the API, worker, migration, and seed-job pods | `llm-server`, published as `linux/amd64` |
 | EKS | Runs the backend Kubernetes workloads in the joint stack | Backend pods are internal behind the gateway |
 | EC2 managed node group | Supplies the compute where backend pods are scheduled | Shared with gateway and observability pods |
+| EC2 GPU managed node group | Supplies accelerated compute for the vLLM model-runtime pod | Disabled unless `AWS_WORKFLOW=vllm` is selected |
 | RDS PostgreSQL | Provides the managed database for API keys, logs, traces, jobs, and usage state | Managed replacement for in-cluster Postgres |
 | ElastiCache Redis | Provides managed Redis for async extraction queue/state behavior | Managed replacement for in-cluster Redis |
 | Secrets Manager | Stores backend API keys and connection secrets outside source control and manifests | May be materialized into Kubernetes Secrets for the first slice |
@@ -74,6 +86,10 @@ The backend participates in this AWS component set:
 
 In-cluster OTel Collector, Jaeger, Prometheus, and Grafana remain part of the
 reviewable AWS proof path, but they are not backend-owned AWS managed services.
+
+The vLLM model runtime uses a separate public image, `vllm/vllm-openai`. That
+image is not the backend API image and should not be pulled into the API,
+worker, migration, or seed-job pods.
 
 ## Runtime Contract
 
@@ -117,11 +133,18 @@ AWS deployment manifests should consume image digests or immutable `git-<sha>`
 tags where practical. Local and `kind` paths should continue using local image
 tags.
 
+The promoted AWS `llm-server` image is a slim application image. Default
+dependencies must not include Torch, Transformers, llama.cpp, or other
+model-serving stacks. Those dependencies are allowed only behind explicit local
+or legacy extras, while the vLLM workflow runs model serving in its own
+Deployment.
+
 ## Kubernetes Overlay Contract
 
-Canonical backend AWS overlay path:
+Canonical backend AWS overlay paths:
 
-- `deploy/k8s/overlays/aws-eks/`
+- `deploy/k8s/overlays/aws-eks/` for `AWS_WORKFLOW=fake`;
+- `deploy/k8s/overlays/aws-eks-vllm/` for `AWS_WORKFLOW=vllm`.
 
 The overlay should provide backend-specific deltas from the local/kind shape:
 
@@ -135,6 +158,15 @@ The overlay should provide backend-specific deltas from the local/kind shape:
 - model/profile config appropriate for the first AWS proof;
 - environment variables for managed RDS and Redis;
 - OTel/logging configuration for cloud inspection.
+
+The vLLM overlay additionally provides:
+
+- vLLM Deployment and Service;
+- `backend: vllm` model profile;
+- OpenAI-compatible remote backend configuration;
+- GPU resource request and node scheduling constraints;
+- optional Hugging Face token materialization when the selected model requires
+  authentication.
 
 The overlay should not reintroduce in-cluster Postgres or Redis for the AWS
 slice. Managed data is part of the cloud proof.
@@ -165,7 +197,7 @@ Required backend secrets/config:
 - admin API key;
 - database URL or database credentials;
 - Redis URL;
-- optional model-provider credentials;
+- optional Hugging Face token for the vLLM workflow;
 - OTel endpoint and service names;
 - model config path/profile;
 - schema directory.
@@ -184,24 +216,22 @@ artifacts.
 
 ## Model Runtime Contract
 
-The first AWS proof should start with a deterministic or low-variance backend
-profile unless live model runtime is explicitly promoted.
+The backend promotes two AWS model-runtime profiles:
 
-Reason:
+| Profile | Runtime | Compute | Purpose |
+|---|---|---|---|
+| `aws-fake` | deterministic in-process fake backend | CPU node group | Prove cloud deployment, routing, state, policy, traces, and teardown without model variance |
+| `aws-vllm` | external OpenAI-compatible vLLM Service | GPU node group with `nvidia.com/gpu: 1` | Prove live model serving through the same gateway/backend extract path |
 
-- the first AWS slice is proving cloud deployment, service boundaries, managed
-  data, ingress, and inspection;
-- live model quality and cloud model-serving acceleration can be added as a
-  later proof target.
+The vLLM profile treats model serving as an external runtime from the backend
+API's point of view. The backend reads an OpenAI-compatible endpoint, readiness
+probe, model name, and request mode from model config, then sends extract and
+generate traffic through the remote backend adapter.
 
-If a live model-backed AWS proof is added later, the contract must specify:
-
-- model backend;
-- compute requirements;
-- provider or runtime credentials;
-- expected latency budget;
-- extract contract validation threshold;
-- cost attribution assumptions.
+The selected vLLM model for the first workflow should be small enough for a
+single bounded AWS GPU node. The initial profile uses Qwen/Qwen3-0.6B and a
+bounded context length. Any larger model requires an explicit contract update
+covering instance type, expected latency, extract contract behavior, and cost.
 
 ## Identity And Trace Contract
 
@@ -235,6 +265,7 @@ Backend inspection should preserve:
 
 - API logs for one sync extract;
 - worker logs for one async extract;
+- vLLM logs and metrics for the live model workflow;
 - gateway/backend trace identity continuity;
 - backend metrics snapshot;
 - usage or rough-cost snapshot tied to the same proof key.
@@ -270,6 +301,7 @@ The backend side of the AWS proof should make these artifacts possible:
 - one async job that reaches terminal success through the worker;
 - one correlated trail across gateway, backend API, worker, and database state;
 - one backend metrics snapshot;
+- one vLLM log and metrics snapshot when `AWS_WORKFLOW=vllm`;
 - one usage or rough-cost snapshot tied to the proof key;
 - one note showing whether repair, policy, or quota affected the proof request.
 
@@ -305,12 +337,20 @@ The backend AWS contract is satisfied when:
 - proof artifacts match the deployed AWS behavior;
 - no backend public ingress bypasses the gateway in the first slice.
 
+For `AWS_WORKFLOW=vllm`, the backend contract also requires:
+
+- the vLLM Deployment becomes ready on a GPU node;
+- backend model readiness reflects the remote vLLM endpoint;
+- extract traffic reaches vLLM through the backend remote adapter;
+- vLLM logs and metrics are captured with the backend proof artifacts.
+
 ## Implementation Gaps To Close Next
 
-1. Configure live AWS credentials and billing guardrails from the gateway
-   runbook.
-2. Publish the backend image into ECR.
-3. Render and apply the backend overlay through the gateway-owned AWS harness.
-4. Run migrations and proof-key seed jobs against RDS.
-5. Capture backend logs, metrics, usage, and trace evidence through the joint
-   AWS proof harness.
+1. Publish the backend image into ECR.
+2. Render and apply the deterministic backend overlay through the gateway-owned
+   AWS harness.
+3. Run migrations and proof-key seed jobs against RDS.
+4. Capture backend logs, metrics, usage, and trace evidence for
+   `AWS_WORKFLOW=fake`.
+5. Enable the vLLM overlay through `AWS_WORKFLOW=vllm` and capture the same
+   backend proof plus vLLM logs and metrics.

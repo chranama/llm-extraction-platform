@@ -409,6 +409,11 @@ services:
   server_gpu:
     <<: *server_base
     profiles: ["server-gpu"]
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.server
+      args:
+        SERVER_EXTRAS: ${SERVER_EXTRAS_GPU:-[local-ml]}
     environment:
       <<: *server_gpu_env
       APP_PROFILE: ${APP_PROFILE:-docker}

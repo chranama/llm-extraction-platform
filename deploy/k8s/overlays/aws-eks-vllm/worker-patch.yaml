@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extract-worker
+  namespace: llm
+spec:
+  template:
+    metadata:
+      labels:
+        runtime-slice: aws-vllm
+    spec:
+      containers:
+        - name: worker
+          env:
+            - name: MODELS_PROFILE
+              value: "aws-vllm"
+            - name: REQUIRE_MODEL_READY
+              value: "1"
+            - name: TOKEN_COUNTING
+              value: "1"

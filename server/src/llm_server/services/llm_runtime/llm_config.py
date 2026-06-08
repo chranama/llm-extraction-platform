@@ -19,7 +19,7 @@ logger = logging.getLogger("llm_server.models")
 # Types / allowed values
 # -----------------------------
 
-Backend = Literal["transformers", "llamacpp", "remote"]
+Backend = Literal["transformers", "llamacpp", "remote", "vllm"]
 LoadMode = Literal["eager", "lazy", "off"]
 
 Capability = Literal["generate", "extract"]
@@ -27,7 +27,7 @@ CapabilitiesMap = Dict[Capability, bool]
 
 ReadinessMode = Literal["off", "probe", "generate"]
 
-_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote", "fake"}
+_ALLOWED_BACKENDS = {"transformers", "llamacpp", "remote", "vllm", "fake"}
 _ALLOWED_LOAD_MODES = {"eager", "lazy", "off"}
 _ALLOWED_CAP_KEYS: set[str] = {"generate", "extract"}
 _ALLOWED_READINESS_MODES = {"off", "probe", "generate"}

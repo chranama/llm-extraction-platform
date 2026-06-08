@@ -109,6 +109,29 @@ def test_request_json_invalid_json_maps_to_backend_bad_response(monkeypatch):
     assert e.value.code == "backend_bad_response"
 
 
+def test_health_accepts_plain_2xx_response(monkeypatch):
+    c, fake = _make(monkeypatch)
+    fake.get_resp = _Resp(status_code=200, data=ValueError("not json"), text="")
+    out = c.health()
+    assert out == {"ok": True, "status_code": 200, "text": ""}
+
+
+def test_health_preserves_json_details(monkeypatch):
+    c, fake = _make(monkeypatch)
+    fake.get_resp = _Resp(status_code=200, data={"status": "ok"})
+    out = c.health()
+    assert out == {"ok": True, "status_code": 200, "status": "ok"}
+
+
+def test_health_http_error_maps_to_backend_error(monkeypatch):
+    c, fake = _make(monkeypatch)
+    fake.get_resp = _Resp(status_code=503, data={"err": "down"}, text="down")
+    with pytest.raises(AppError) as e:
+        c.health()
+    assert e.value.code == "backend_error"
+    assert e.value.extra["detail"] == {"err": "down"}
+
+
 def test_completions_and_chat_payload_shape(monkeypatch):
     c, fake = _make(monkeypatch)
     fake.req_resp = _Resp(data={"choices": [{"text": "ok"}]})

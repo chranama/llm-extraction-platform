@@ -73,9 +73,16 @@ class FakeRemoteBackend:
         timeout_seconds: float = 60.0,
         connect_timeout_seconds: float = 5.0,
         remote_model_id: str | None = None,
+        request_mode: str = "completion",
+        provider: str = "openai_compat",
+        default_temperature: float = 0.7,
+        default_top_p: float = 0.95,
     ):
         self.model_id = model_id
         self.base_url = base_url
+        self.request_mode = request_mode
+        self.provider = provider
+        self.remote_model_id = remote_model_id
 
 
 def _settings(**kw):
@@ -235,3 +242,39 @@ def test_meta_propagation_local_and_remote_backend_types_and_caps_order(monkeypa
 
     primary_backend = llm["primary"]
     assert getattr(primary_backend, "trust_remote_code", None) is True
+
+
+def test_vllm_backend_alias_uses_remote_backend_with_chat_mode(monkeypatch):
+    spec = FakeModelSpec(
+        id="vllm-qwen",
+        backend="vllm",
+        capabilities=["generate", "extract"],
+    )
+    spec.remote = {
+        "base_url": "http://vllm:8000",
+        "model_name": "Qwen/Qwen3-0.6B",
+    }
+    cfg = FakeModelsConfig(
+        primary_id="vllm-qwen",
+        defaults={},
+        models=[spec, FakeModelSpec(id="fallback", kind="local")],
+    )
+    _patch_builder_deps(
+        monkeypatch,
+        cfg,
+        _settings(enable_multi_models=True, llm_service_url=None),
+    )
+
+    monkeypatch.setenv("ENABLE_MULTI_MODELS", "1")
+
+    llm = llm_mod.build_llm_from_settings()
+
+    backend = llm["vllm-qwen"]
+    meta = getattr(llm, "_meta", {})["vllm-qwen"]
+    assert isinstance(backend, FakeRemoteBackend)
+    assert backend.provider == "vllm"
+    assert backend.request_mode == "chat"
+    assert backend.remote_model_id == "Qwen/Qwen3-0.6B"
+    assert meta["backend"] == "remote"
+    assert meta["provider"] == "vllm"
+    assert meta["request_mode"] == "chat"

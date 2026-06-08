@@ -7,12 +7,6 @@ dependencies = [
   "fastapi>=0.116",
   "uvicorn[standard]>=0.35",
 
-  # --- LLM runtime ---
-  "transformers==5.0.0rc0",
-  "accelerate>=1.0.0",
-  "mistral-common>=1.8.6",
-  "safetensors>=0.4.0",
-
   # --- config / serialization ---
   "python-dotenv>=1.0.0",
   "pydantic-settings>=2.0",
@@ -36,7 +30,7 @@ dependencies = [
   "httpx>=0.27",
 
   # --- phase 0 memory guard ---
-  "psutil>=5.9,<6.0",
+  "psutil>=7.0,<8.0",
 
   # --- misc ---
   "typing-extensions>=4.8",
@@ -44,13 +38,20 @@ dependencies = [
   "typer>=0.12",
   "llm-contracts",
 
-  # ✅ default torch = CPU baseline (also fine on macOS; MPS is runtime)
+]
+
+[project.optional-dependencies]
+local-ml = [
+  # In-process model runtime. Promoted AWS workflows use fake or external
+  # OpenAI-compatible model servers and should not install this extra.
+  "transformers==5.0.0rc0",
+  "accelerate>=1.0.0",
+  "mistral-common>=1.8.6",
+  "safetensors>=0.4.0",
   "torch==2.4.1",
   "torchvision==0.19.1",
   "torchaudio==2.4.1",
 ]
-
-[project.optional-dependencies]
 cuda121 = [
   "torch==2.4.1",
   "torchvision==0.19.1",

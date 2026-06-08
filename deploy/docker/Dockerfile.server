@@ -3,9 +3,7 @@ FROM python:3.12-slim
 
 # ---- system deps ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl wget git ca-certificates \
-    cmake pkg-config \
-    libopenblas-dev \
+    curl ca-certificates \
     tini \
   && rm -rf /var/lib/apt/lists/*
 
@@ -14,7 +12,8 @@ ENV APP_ROOT=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Optional: if you use HF anywhere (even for tokenizers/config), keep cache deterministic
+# Optional local-ML installs use this cache path. Promoted AWS images do not
+# install in-process model runtimes.
 ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/hub
 
@@ -26,13 +25,11 @@ RUN pip install --no-cache-dir /app/contracts
 COPY server/pyproject.toml /app/server/pyproject.toml
 COPY server/src /app/server/src
 
-# Install server deps
-RUN pip install --no-cache-dir /app/server
-
-# ---- llama.cpp python binding ----
-# If wheels exist, this is fast. If not, it will compile (needs cmake + openblas).
-# You can pin versions once stable.
-RUN pip install --no-cache-dir "llama-cpp-python>=0.2.90"
+# Install server deps. Leave SERVER_EXTRAS empty for the promoted slim
+# application image. Use SERVER_EXTRAS='[local-ml]' only for legacy in-process
+# Transformers experiments.
+ARG SERVER_EXTRAS=""
+RUN pip install --no-cache-dir "/app/server${SERVER_EXTRAS}"
 
 # migrations
 COPY server/alembic.ini /app/server/alembic.ini

@@ -1,0 +1,72 @@
+base:
+  default_model: vllm-qwen-0.6b
+  defaults:
+    backend: vllm
+    load_mode: lazy
+    capabilities:
+      generate: true
+      extract: true
+    readiness_mode: "probe"
+    deployment_key: aws-vllm
+    remote:
+      provider: vllm
+      base_url: "${VLLM_BASE_URL:-http://vllm:8000}"
+      model_name: "${VLLM_MODEL_ID:-Qwen/Qwen3-0.6B}"
+      request_mode: chat
+      timeout_seconds: "${REMOTE_BACKEND_TIMEOUT_SECONDS:-90}"
+      connect_timeout_seconds: 5
+      default_temperature: 0.0
+      default_top_p: 0.95
+    assessment:
+      lane: aws-vllm
+      policy_schema: policy_decision_v2
+      require_for_extract: false
+      assessed: true
+  models: []
+
+profiles:
+  aws-vllm:
+    default_model: vllm-qwen-0.6b
+    defaults:
+      backend: vllm
+      load_mode: lazy
+      capabilities:
+        generate: true
+        extract: true
+      readiness_mode: "probe"
+      deployment_key: aws-vllm
+      remote:
+        provider: vllm
+        base_url: "${VLLM_BASE_URL:-http://vllm:8000}"
+        model_name: "${VLLM_MODEL_ID:-Qwen/Qwen3-0.6B}"
+        request_mode: chat
+        timeout_seconds: "${REMOTE_BACKEND_TIMEOUT_SECONDS:-90}"
+        connect_timeout_seconds: 5
+        default_temperature: 0.0
+        default_top_p: 0.95
+      assessment:
+        lane: aws-vllm
+        policy_schema: policy_decision_v2
+        require_for_extract: false
+        assessed: true
+    models:
+      - id: vllm-qwen-0.6b
+        backend: vllm
+        load_mode: lazy
+        capabilities:
+          generate: true
+          extract: true
+        readiness_mode: "probe"
+        deployment_key: aws-vllm--qwen-0.6b
+        remote:
+          provider: vllm
+          base_url: "${VLLM_BASE_URL:-http://vllm:8000}"
+          model_name: "${VLLM_MODEL_ID:-Qwen/Qwen3-0.6B}"
+          request_mode: chat
+          timeout_seconds: "${REMOTE_BACKEND_TIMEOUT_SECONDS:-90}"
+          connect_timeout_seconds: 5
+          default_temperature: 0.0
+          default_top_p: 0.95
+        assessment:
+          assessed: true
+        notes: "Live AWS vLLM model runtime reached over the OpenAI-compatible API."
