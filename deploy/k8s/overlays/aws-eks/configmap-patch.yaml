@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+  namespace: llm
+data:
+  server.yaml: |
+    service:
+      name: "llm-extraction-platform"
+      version: "0.1.0"
+      debug: false
+      env: "aws"
+
+    server:
+      host: "0.0.0.0"
+      port: 8000
+
+    database:
+      url: ""
+
+    redis:
+      enabled: true
+      url: ""
+
+    model:
+      default_id: "fake-extract"
+      dtype: "float16"
+      device: "cpu"
+      load_mode: "lazy"
+
+    limits:
+      rate_limit_rpm:
+        admin: 0
+        default: 120
+        free: 60
+      quota_auto_reset_days: 30
+
+    cache:
+      api_key_cache_ttl_seconds: 10

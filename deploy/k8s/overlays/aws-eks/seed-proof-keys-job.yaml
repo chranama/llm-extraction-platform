@@ -1,0 +1,170 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-proof-keys
+  namespace: llm
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: seed-proof-keys
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: llm-server:dev
+          imagePullPolicy: Always
+          env:
+            - name: APP_ROOT
+              value: "/app"
+            - name: APP_PROFILE
+              value: "test"
+            - name: APP_CONFIG_PATH
+              value: "/app/config/server.yaml"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: DATABASE_URL
+            - name: PROOF_USER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: API_KEY
+            - name: PROOF_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: ADMIN_API_KEY
+            - name: PROOF_USER_QUOTA
+              value: "20"
+          command:
+            - /bin/sh
+            - -lc
+            - |
+              set -euo pipefail
+
+              echo "Waiting for managed database readiness..."
+              python - <<'PY'
+              import os
+              import socket
+              import time
+              from urllib.parse import urlparse
+
+              parsed = urlparse(os.environ["DATABASE_URL"])
+              host = parsed.hostname
+              port = parsed.port or 5432
+
+              if not host:
+                  raise SystemExit("DATABASE_URL does not include a hostname")
+
+              for attempt in range(60):
+                  try:
+                      with socket.create_connection((host, port), timeout=5):
+                          print("database socket ready")
+                          break
+                  except OSError:
+                      if attempt == 59:
+                          raise
+                      time.sleep(2)
+              PY
+
+              echo "Waiting for database migrations..."
+              python - <<'PY'
+              import asyncio
+              import time
+
+              from sqlalchemy import text
+
+              from llm_server.db.session import get_sessionmaker
+
+              async def migrations_ready() -> bool:
+                  sessionmaker = get_sessionmaker()
+                  async with sessionmaker() as session:
+                      await session.execute(text("SELECT 1 FROM roles LIMIT 1"))
+                  return True
+
+              for attempt in range(60):
+                  try:
+                      asyncio.run(migrations_ready())
+                      print("database migrations ready")
+                      break
+                  except Exception:
+                      if attempt == 59:
+                          raise
+                      time.sleep(2)
+              PY
+
+              python - <<'PY'
+              import asyncio
+              import os
+
+              from sqlalchemy import select
+
+              from llm_server.db.models import ApiKey, RoleTable
+              from llm_server.db.session import get_sessionmaker
+
+              PROOF_USER_KEY = os.environ["PROOF_USER_KEY"]
+              PROOF_ADMIN_KEY = os.environ["PROOF_ADMIN_KEY"]
+              PROOF_USER_QUOTA = int(os.environ.get("PROOF_USER_QUOTA", "20"))
+
+              async def ensure_role(session, name: str) -> RoleTable:
+                  role = (
+                      await session.execute(select(RoleTable).where(RoleTable.name == name))
+                  ).scalar_one_or_none()
+                  if role is None:
+                      role = RoleTable(name=name)
+                      session.add(role)
+                      await session.flush()
+                  return role
+
+              async def ensure_key(
+                  session,
+                  *,
+                  key: str,
+                  role_id: int | None,
+                  quota_monthly: int | None,
+              ) -> None:
+                  row = (
+                      await session.execute(select(ApiKey).where(ApiKey.key == key))
+                  ).scalar_one_or_none()
+                  if row is None:
+                      session.add(
+                          ApiKey(
+                              key=key,
+                              active=True,
+                              role_id=role_id,
+                              quota_monthly=quota_monthly,
+                              quota_used=0,
+                          )
+                      )
+                      return
+
+                  row.active = True
+                  row.role_id = role_id
+                  row.quota_monthly = quota_monthly
+                  session.add(row)
+
+              async def main() -> None:
+                  sessionmaker = get_sessionmaker()
+                  async with sessionmaker() as session:
+                      admin = await ensure_role(session, "admin")
+                      standard = await ensure_role(session, "standard")
+                      await ensure_key(
+                          session,
+                          key=PROOF_USER_KEY,
+                          role_id=standard.id,
+                          quota_monthly=PROOF_USER_QUOTA,
+                      )
+                      await ensure_key(
+                          session,
+                          key=PROOF_ADMIN_KEY,
+                          role_id=admin.id,
+                          quota_monthly=None,
+                      )
+                      await session.commit()
+
+              asyncio.run(main())
+              PY

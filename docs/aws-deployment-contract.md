@@ -26,9 +26,8 @@ Implemented or scaffolded surfaces:
 
 Still pending:
 
-- deployable backend AWS overlay manifests;
-- managed RDS/Redis secret and config wiring;
-- AWS migration and proof-key seed jobs;
+- live RDS/Redis secret materialization from the gateway-owned AWS harness;
+- execution of AWS migration and proof-key seed jobs against EKS;
 - AWS proof artifacts against the deployed ALB path.
 
 ## Backend Role In The AWS Stack
@@ -308,8 +307,10 @@ The backend AWS contract is satisfied when:
 
 ## Implementation Gaps To Close Next
 
-1. Finish or commit the backend AWS image publication workflow.
-2. Replace the AWS overlay README-only scaffold with deployable manifests.
-3. Define the RDS/Redis secret materialization path.
-4. Add migration and proof-key seed jobs for AWS.
-5. Integrate backend proof capture into the joint AWS proof harness.
+1. Configure live AWS credentials and billing guardrails from the gateway
+   runbook.
+2. Publish the backend image into ECR.
+3. Render and apply the backend overlay through the gateway-owned AWS harness.
+4. Run migrations and proof-key seed jobs against RDS.
+5. Capture backend logs, metrics, usage, and trace evidence through the joint
+   AWS proof harness.

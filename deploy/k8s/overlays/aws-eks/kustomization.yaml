@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm
+
+resources:
+  - ../../base
+  - worker-deployment.yaml
+  - seed-proof-keys-job.yaml
+
+configMapGenerator:
+  - name: llm-models
+    files:
+      - models.yaml=models.aws-proof.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+images:
+  - name: llm-server
+    newName: 012345678901.dkr.ecr.us-east-1.amazonaws.com/llm-server
+    newTag: aws-dev-latest
+
+patches:
+  - path: delete-local-data.yaml
+  - path: delete-local-ingress.yaml
+  - path: delete-local-secret.yaml
+  - path: delete-policy-gate.yaml
+  - path: configmap-patch.yaml
+  - path: server-patch.yaml
+  - path: migrations-patch.yaml

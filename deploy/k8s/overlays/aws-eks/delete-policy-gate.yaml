@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: policy-gate
+  namespace: llm
+$patch: delete
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: policy-runner
+  namespace: llm
+$patch: delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: policy-runner
+  namespace: llm
+$patch: delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: policy-runner
+  namespace: llm
+$patch: delete

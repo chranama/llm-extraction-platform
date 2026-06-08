@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: llm
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        runtime-slice: aws-dev
+    spec:
+      containers:
+        - name: api
+          imagePullPolicy: Always
+          env:
+            - name: ENV
+              value: "aws"
+            - name: DEBUG
+              value: "false"
+            - name: APP_PROFILE
+              value: "test"
+            - name: MODELS_PROFILE
+              value: "aws-proof"
+            - name: MODELS_YAML
+              value: "/app/models/models.yaml"
+            - name: SCHEMAS_DIR
+              value: "/app/schemas/model_output"
+            - name: EDGE_MODE
+              value: "behind_gateway"
+            - name: OTEL_ENABLED
+              value: "1"
+            - name: OTEL_SERVICE_NAME
+              value: "llm-extraction-platform"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4318/v1/traces"
+            - name: MODEL_LOAD_MODE
+              value: "lazy"
+            - name: REQUIRE_MODEL_READY
+              value: "0"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

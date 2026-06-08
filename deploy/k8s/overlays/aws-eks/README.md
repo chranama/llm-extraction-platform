@@ -10,7 +10,9 @@ Backend-side AWS contract:
 
 - `/Users/chranama/career/llm-extraction-platform/docs/aws-deployment-contract.md`
 
-At `2.3.1`, this path is still scaffold-only, but the scaffold now has to preserve the runtime-quality and usage contracts defined before cloud rollout.
+This path now carries the backend-owned AWS/EKS overlay for the first bounded AWS
+slice. The gateway repository owns the integrated front door, ALB ingress,
+Terraform substrate, and joint AWS runbook.
 
 ## Contract Responsibilities
 
@@ -35,18 +37,16 @@ Even before manifests land, this path should make room for:
 - one usage or rough-cost snapshot tied to the same bounded `api_key` scope
 - one note about whether repair or policy influenced the result
 
-## Expected Future Contents
+## Contents
 
-- backend API AWS overlay
-- managed data connection wiring
-- AWS-target config/secrets assumptions
-- backend deployment deltas relative to the local and `kind` paths
-- worker deployment deltas relative to the local and `kind` paths
-- cloud log-path assumptions for backend and worker correlation
-- backend-side participation in the smoke and inspection workflow
-- backend-side surfacing of quota, admission, or fairness controls without adding a billing subsystem
+- `kustomization.yaml`: backend AWS overlay.
+- `models.aws-proof.yaml`: deterministic model profile for cloud deployment proof.
+- `server-patch.yaml`: API runtime settings for gateway mode, tracing, and model loading.
+- `worker-deployment.yaml`: async extract worker.
+- `migrations-patch.yaml`: explicit RDS-backed migration command.
+- `seed-proof-keys-job.yaml`: proof user/admin key seeding with a bounded user quota.
+- delete patches for local-only Postgres, Redis, ingress, static Secret, and policy gate.
 
-## 2.3.1 Done Means
-
-This path does not need full manifests yet.
-It does need to make the backend-side proof and runtime-quality assumptions explicit enough that later overlays can be judged against them.
+Runtime secrets are materialized by the gateway repository's AWS harness at
+deploy time. Live RDS, Redis, and API-key values are not committed in this
+overlay.

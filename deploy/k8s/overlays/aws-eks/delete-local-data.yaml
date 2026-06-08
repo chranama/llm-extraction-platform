@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: llm
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: llm
+$patch: delete
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: llm
+$patch: delete
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: llm
+$patch: delete
