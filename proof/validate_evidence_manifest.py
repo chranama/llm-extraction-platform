@@ -39,7 +39,6 @@ REQUIRED_K8S_CHECKS = [
     "generate_smoke",
     "extract_disabled",
     "local_overlay_render",
-    "prod_overlay_render",
 ]
 
 
@@ -110,10 +109,6 @@ def validate_k8s_summary() -> None:
     validate_rendered_manifest(
         ROOT / "proof" / "artifacts" / "phase5_k8s_kind" / "kustomize_local_generate_only.yaml",
         require_probe=True,
-    )
-    validate_rendered_manifest(
-        ROOT / "proof" / "artifacts" / "phase5_k8s_kind" / "kustomize_prod_gpu_full.yaml",
-        require_probe=False,
     )
 
 

@@ -25,7 +25,7 @@
       "expected_signal": "PASS runtime permits extract-capable behavior while FAIL runtime is capability-blocked."
     },
     {
-      "claim_text": "A local kind cluster can run the generate-only inference service with successful health and smoke checks, and the production Kubernetes scaffold renders cleanly with deployment primitives expected for a production-oriented ML service.",
+      "claim_text": "A local kind cluster can run the generate-only inference service with successful health and smoke checks.",
       "verification_command": "python proof/generate_canonical_manifest.py",
       "artifact_paths": [
         "proof/artifacts/phase5_k8s_kind/kind_smoke_summary.json",
@@ -33,10 +33,9 @@
         "proof/artifacts/phase5_k8s_kind/kubectl_get_svc.txt",
         "proof/artifacts/phase5_k8s_kind/server_rollout_status.txt",
         "proof/artifacts/phase5_k8s_kind/k8s_smoke.log",
-        "proof/artifacts/phase5_k8s_kind/kustomize_local_generate_only.yaml",
-        "proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml"
+        "proof/artifacts/phase5_k8s_kind/kustomize_local_generate_only.yaml"
       ],
-      "expected_signal": "Local kind deployment becomes ready, generate-only capability is enforced at runtime, and both local/prod overlays render successfully."
+      "expected_signal": "Local kind deployment becomes ready, generate-only capability is enforced at runtime, and the local overlay renders successfully."
     },
     {
       "claim_text": "Async extraction requests are durably queued, executed by a separate worker process, and resolved through a job-status API with reproducible evidence artifacts.",

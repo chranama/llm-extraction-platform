@@ -16,7 +16,7 @@ preserve.
 
 Current AWS work is in progress.
 
-Implemented or scaffolded surfaces:
+Implemented surfaces:
 
 - backend AWS-target image publication workflow at
   `.github/workflows/aws-image-publish.yml`;
@@ -72,7 +72,7 @@ The backend participates in this AWS component set:
 
 | Component | What It Does For The Backend | First-Slice Posture |
 |---|---|---|
-| ECR | Stores the CI-built backend image used by the API, worker, migration, and seed-job pods | `llm-server`, published as `linux/amd64` |
+| ECR | Stores the proof-session backend image used by the API, worker, migration, and seed-job pods | Terraform-owned ephemeral `llm-server`, published as `linux/amd64` and deleted on full teardown |
 | EKS | Runs the backend Kubernetes workloads in the joint stack | Backend pods are internal behind the gateway |
 | EC2 managed node group | Supplies the compute where backend pods are scheduled | Shared with gateway and observability pods |
 | EC2 GPU managed node group | Supplies accelerated compute for the vLLM model-runtime pod | Disabled unless `AWS_WORKFLOW=vllm` is selected |
@@ -114,7 +114,9 @@ adds that route later.
 
 ## Image Contract
 
-GitHub Actions owns backend AWS-target image publication.
+GitHub Actions owns backend AWS-target image publication during a live proof
+session. The gateway repository's Terraform substrate owns ECR repository
+creation and deletion.
 
 Workflow:
 
@@ -125,13 +127,21 @@ Publication rules:
 - build context: repository root;
 - Dockerfile: `deploy/docker/Dockerfile.server`;
 - platform: `linux/amd64`;
-- ECR repository: `llm-server`;
+- ECR repository: Terraform-created ephemeral `llm-server`;
 - immutable tag: `git-<sha>`;
-- dev moving tags: `main`, `aws-dev-latest`.
+- proof-session tag: `run-<github_run_id>`;
+- session moving tag: `aws-dev-latest`.
+
+The workflow is manual and runs after the AWS Terraform substrate has been
+applied. It refuses to publish unless the target ECR repository has
+`ephemeral=true` and `managed_by=terraform` tags. The workflow must not create
+ECR repositories; missing ECR means the operator has not applied the AWS
+substrate yet.
 
 AWS deployment manifests should consume image digests or immutable `git-<sha>`
 tags where practical. Local and `kind` paths should continue using local image
-tags.
+tags. At the end of the AWS proof session, `terraform destroy` removes the ECR
+repository and the pushed backend images.
 
 The promoted AWS `llm-server` image is a slim application image. Default
 dependencies must not include Torch, Transformers, llama.cpp, or other
@@ -326,7 +336,7 @@ acceptable operator path.
 
 The backend AWS contract is satisfied when:
 
-- the backend AWS image can be published to ECR;
+- the backend AWS image can be published to Terraform-owned ephemeral ECR;
 - backend API and worker run on EKS using the AWS image;
 - backend uses RDS PostgreSQL and ElastiCache Redis;
 - migrations run explicitly;
@@ -346,11 +356,12 @@ For `AWS_WORKFLOW=vllm`, the backend contract also requires:
 
 ## Implementation Gaps To Close Next
 
-1. Publish the backend image into ECR.
-2. Render and apply the deterministic backend overlay through the gateway-owned
+1. Apply the gateway-owned AWS Terraform substrate.
+2. Publish the backend image into the ephemeral ECR repository.
+3. Render and apply the deterministic backend overlay through the gateway-owned
    AWS harness.
-3. Run migrations and proof-key seed jobs against RDS.
-4. Capture backend logs, metrics, usage, and trace evidence for
+4. Run migrations and proof-key seed jobs against RDS.
+5. Capture backend logs, metrics, usage, and trace evidence for
    `AWS_WORKFLOW=fake`.
-5. Enable the vLLM overlay through `AWS_WORKFLOW=vllm` and capture the same
+6. Enable the vLLM overlay through `AWS_WORKFLOW=vllm` and capture the same
    backend proof plus vLLM logs and metrics.

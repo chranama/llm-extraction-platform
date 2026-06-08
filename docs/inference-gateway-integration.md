@@ -21,7 +21,7 @@ and generated proof artifacts.
 | Containerized stack | `verify-containerized` | Fake deterministic profile | LLMEP API/worker containers, gateway container, Compose infra | `proof/artifacts/joint_gateway/containerized_latest/` |
 | Containerized live llama stack | `verify-containerized-llama` | CPU-only containerized `llama.cpp` | LLMEP API/worker containers, gateway container, llama.cpp container, Compose infra | `proof/artifacts/joint_gateway/containerized_llama_latest/` |
 | Resilience proof | `verify-resilience` | Fake deterministic profile | Containerized LLMEP API/worker/gateway/Postgres/Redis with controlled interruptions | `proof/artifacts/joint_gateway/resilience_latest/` |
-| Kind smoke | `verify-kind` | Fake deterministic profile | Local kind cluster with LLMEP and gateway resources | `proof/artifacts/joint_gateway/kind_smoke_latest/` |
+| Kind live llama | `verify-kind` | CPU-only `llama.cpp` with a host-mounted GGUF model | Local kind cluster with LLMEP API/worker, llama-server, gateway, OTel, and Jaeger resources | `proof/artifacts/joint_gateway/kind_live_latest/` |
 
 `verify` remains the compatibility alias for the original deterministic
 baseline. Use the named commands when presenting a specific workflow.
@@ -81,7 +81,11 @@ controlled local interruption of LLMEP API, worker, Redis, and Postgres
 containers. It is local resilience evidence, not high availability evidence.
 
 The kind target verifies the Kubernetes-shaped local deployment with LLMEP API,
-worker, gateway, Jaeger, and OTel resources in a local `kind` cluster.
+worker, a live CPU-only `llama.cpp` model server, gateway, Jaeger, and OTel
+resources in a local `kind` cluster. The model backend is still local and
+CPU-only: the workflow mounts `LLAMA_MODELS_DIR` into the kind node at
+`/models`, runs the llama-server container inside the cluster, and uses the
+same sync/async extraction probes as the other joint workflows.
 
 It does not claim:
 
@@ -148,7 +152,9 @@ ISG_REPO_ROOT=/path/to/inference-serving-gateway \
 | `JOINT_CONTAINER_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/containerized_latest` | Containerized proof output location |
 | `JOINT_CONTAINER_LLAMA_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/containerized_llama_latest` | Containerized live llama proof output location |
 | `JOINT_RESILIENCE_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/resilience_latest` | Resilience proof output location |
-| `JOINT_KIND_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/kind_smoke_latest` | Kind proof output location |
+| `JOINT_KIND_ARTIFACT_DIR` | `proof/artifacts/joint_gateway/kind_live_latest` | Kind proof output location |
+| `JOINT_KIND_WORKFLOW` | `live` | Kind workflow variant; use `fake` for deterministic kind smoke |
+| `JOINT_KIND_ENV_FILE` | `.env.docker` | Env file for live kind model settings |
 | `JOINT_WITH_OBS` | `1` | Start Prometheus and Grafana |
 | `JOINT_WITH_OTEL` | `1` | Start OTel Collector and Jaeger |
 | `JOINT_RUN_TESTS` | `0` | Run all gateway tests during preflight |
@@ -257,12 +263,33 @@ This proof demonstrates explicit local failure behavior and operator-driven
 recovery. It does not claim high availability, autoscaling, zero-downtime
 deploys, cloud failover, or production incident response.
 
-### Kind Smoke
+### Kind Live Llama
 
 `verify-kind` wraps the gateway repository's Kubernetes-shaped local stack and
-copies the generated proof bundle back into LLMEP. The kind cluster is left
-intact, but the workflow deletes the applied LLMEP/gateway resources after the
-proof run.
+copies the generated proof bundle back into LLMEP. By default it runs the live
+CPU-only llama workflow: LLMEP API, worker, llama-server, gateway, OTel, and
+Jaeger resources are applied to the local kind cluster, then sync and async
+extraction are exercised through the gateway.
+
+This workflow requires the same `.env.docker` model settings as
+`compose-extract`, including `LLAMA_MODELS_DIR`, `LLAMA_MODEL_FILE`, and
+`LLAMA_N_GPU_LAYERS=0`. The harness mounts `LLAMA_MODELS_DIR` into the kind
+control-plane node when the cluster is created. Delete and recreate the cluster
+if it was created before that mount was configured.
+
+The gateway-side kind harness preloads third-party runtime images into the kind
+node before rollout so the proof is not blocked by in-cluster image pulls.
+
+To run the older deterministic kind smoke variant instead:
+
+```bash
+JOINT_KIND_WORKFLOW=fake \
+JOINT_KIND_ARTIFACT_DIR=proof/artifacts/joint_gateway/kind_smoke_latest \
+  tools/joint/inference_gateway_stack.sh verify-kind
+```
+
+The kind cluster is left intact, but the workflow deletes the applied
+LLMEP/gateway resources after the proof run.
 
 ## Proof Artifacts
 

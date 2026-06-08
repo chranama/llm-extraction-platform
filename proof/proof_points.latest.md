@@ -18,7 +18,7 @@
 - Validation signal: PASS and FAIL runtime outputs differ according to gating expectation.
 
 ## Proof 3: Kubernetes kind deployment
-- Claim: a local kind cluster runs the generate-only service successfully, while the production overlay renders as a production-oriented scaffold.
+- Claim: a local kind cluster runs the generate-only service successfully.
 - Command: `python proof/generate_canonical_manifest.py`
 - Artifacts:
   - `proof/artifacts/phase5_k8s_kind/kind_smoke_summary.json`
@@ -27,8 +27,7 @@
   - `proof/artifacts/phase5_k8s_kind/server_rollout_status.txt`
   - `proof/artifacts/phase5_k8s_kind/k8s_smoke.log`
   - `proof/artifacts/phase5_k8s_kind/kustomize_local_generate_only.yaml`
-  - `proof/artifacts/phase5_k8s_kind/kustomize_prod_gpu_full.yaml`
-- Validation signal: rollout passes, `/healthz` and generate smoke pass, `/v1/extract` is blocked, and both overlays render successfully.
+- Validation signal: rollout passes, `/healthz` and generate smoke pass, `/v1/extract` is blocked, and the local overlay renders successfully.
 
 ## Proof 4: Async extract jobs
 - Claim: extract requests can be queued and executed by a separate worker process with durable job state.

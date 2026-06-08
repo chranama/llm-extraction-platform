@@ -20,7 +20,7 @@ Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 | Joint Containerized Stack | LLMEP API/worker containers, gateway container, and Compose infra | Fake deterministic backend | Same local Compose network for backend, worker, gateway, Postgres, and Redis | Real model quality or production orchestration |
 | Joint Containerized Live Llama | LLMEP API/worker containers, gateway container, llama.cpp container, and Compose infra | CPU-only containerized `llama.cpp` | Real model-backed sync and async extraction through a fully containerized local joint stack | Accelerated inference, production throughput, cloud ingress, or high availability |
 | Joint Resilience | LLMEP API/worker containers, gateway container, Postgres, and Redis with controlled interruptions | Fake deterministic backend | Bounded local failure behavior, observable degradation, and recovery after component restart | High availability, autoscaling, zero downtime, or cloud failover |
-| Joint Kind Smoke | Local kind deployment using LLMEP and gateway resources | Fake deterministic backend | Kubernetes-shaped deployability plus gateway/backend/worker proof artifacts | Cloud ingress, AWS, TLS, or production HA |
+| Joint Kind Live Llama | Local kind deployment using LLMEP, gateway, worker, OTel/Jaeger, and llama-server resources | CPU-only containerized `llama.cpp` with a host-mounted GGUF model | Kubernetes-shaped joint deployment with real model-backed sync/async extraction, gateway forwarding, traces, logs, and model-runtime artifacts | Accelerated inference, production throughput, cloud ingress, AWS, TLS, or production HA |
 | Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
 | Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
 | Admin/Trace | Host proof server with Postgres/Redis and async worker | Fake deterministic backend | Admin trace inspection for sync and async extract, including worker lineage | Distributed tracing export or external telemetry compliance |
@@ -49,6 +49,12 @@ The model path is mounted into the `llama_server` container at `/models`.
 `LLAMA_N_GPU_LAYERS=0` is the supported default. This path demonstrates
 CPU-only, real-model extraction correctness, not accelerated inference.
 
+For the joint live kind workflow, the same `.env.docker` model settings are
+used by the gateway repository's kind harness. `LLAMA_MODELS_DIR` is mounted
+into the kind control-plane node at `/models` when the cluster is created. If
+the `llm` kind cluster already exists without that mount, delete and recreate
+the cluster before running `verify-kind`.
+
 ## Preflight
 
 Run preflight before starting a target when you want to catch local setup
@@ -58,12 +64,13 @@ generating proof artifacts.
 ```bash
 uv run llmctl --project-name llmep --env-override-file .env.docker preflight smoke
 uv run llmctl --project-name llmep --env-override-file .env.docker preflight compose-extract
+uv run llmctl --project-name llmep --env-override-file .env.docker preflight kind-live
 uv run llmctl preflight evidence --json
 ```
 
 Supported preflight targets are `smoke`, `compose-extract`, `external-model`,
-`kind-smoke`, `policy-eval`, `admin-trace`, `ops-surface`, `evidence`, and
-`all`.
+`kind-smoke`, `kind-live`, `policy-eval`, `admin-trace`, `ops-surface`,
+`evidence`, and `all`.
 
 ## Reviewer Smoke
 
@@ -241,8 +248,24 @@ containers on one Compose network. `verify-containerized-llama` combines those
 two dimensions by running LLMEP, the worker, the gateway, and `llama.cpp` as
 containers on one Compose network. `verify-resilience` interrupts the
 containerized fake-backend joint stack to capture degradation and recovery
-behavior. `verify-kind` runs the Kubernetes-shaped local path and leaves the
-kind cluster intact while deleting applied resources.
+behavior. `verify-kind` runs the promoted Kubernetes-shaped local path with a
+live CPU-only `llama.cpp` model server in kind, then leaves the kind cluster
+intact while deleting applied resources.
+
+For the older deterministic Kubernetes smoke path, run:
+
+```bash
+JOINT_KIND_WORKFLOW=fake \
+JOINT_KIND_ARTIFACT_DIR=proof/artifacts/joint_gateway/kind_smoke_latest \
+  tools/joint/inference_gateway_stack.sh verify-kind
+```
+
+Set `JOINT_KIND_ENV_FILE=/path/to/env` when the live kind workflow should read
+model settings from a file other than `.env.docker`.
+
+Set `JOINT_KIND_CLUSTER=llm-live` to run the live kind workflow in a separate
+cluster instead of recreating an existing `llm` cluster that lacks the `/models`
+mount.
 
 See [Inference Gateway Integration](inference-gateway-integration.md) for the
 runtime shape, supported capability set, overrides, and artifact inventory.

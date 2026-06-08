@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -25,6 +26,7 @@ TARGETS = (
     "smoke",
     "compose-extract",
     "external-model",
+    "kind-live",
     "kind-smoke",
     "policy-eval",
     "admin-trace",
@@ -151,6 +153,7 @@ def _run_target_preflight(
         "smoke": _preflight_smoke,
         "compose-extract": _preflight_compose_extract,
         "external-model": _preflight_external_model,
+        "kind-live": _preflight_kind_live,
         "kind-smoke": _preflight_kind_smoke,
         "policy-eval": _preflight_policy_eval,
         "admin-trace": _preflight_admin_trace,
@@ -222,8 +225,7 @@ def _check_docker_daemon(checks: list[PreflightCheck], target: str) -> None:
             if len(message) > 300:
                 message = message[-300:]
             raise CLIError(
-                "docker daemon is not reachable"
-                + (f": {message}" if message else ""),
+                "docker daemon is not reachable" + (f": {message}" if message else ""),
                 code=2,
             )
         return "reachable"
@@ -401,6 +403,7 @@ def _check_required_env(
     keys: Sequence[str],
 ) -> None:
     for key in keys:
+
         def run(key: str = key) -> str:
             if not str(env.get(key) or "").strip():
                 raise CLIError(f"missing required env value: {key}", code=2)
@@ -433,9 +436,7 @@ def _preflight_smoke(
     _check_schema_basics(cfg, checks, target)
     _check_models_profile(cfg, checks, target, "test")
 
-    ctx = _build_target_context(
-        cfg, args, target=target, default_profile="docker+reviewer-smoke"
-    )
+    ctx = _build_target_context(cfg, args, target=target, default_profile="docker+reviewer-smoke")
     if _check_context(checks, target, ctx) and isinstance(ctx, ComposeContext):
         env = _context_env(ctx)
         _check_required_env(checks, target, env, ("API_KEY",))
@@ -472,9 +473,7 @@ def _preflight_compose_extract(
         )
         _check_llama_model_file(checks, target, env)
         _check_cpu_llama_setting(checks, target, env)
-        _check_compose_config(
-            checks, target, ctx, path_cmds.COMPOSE_EXTRACT_PROFILES, args.verbose
-        )
+        _check_compose_config(checks, target, ctx, path_cmds.COMPOSE_EXTRACT_PROFILES, args.verbose)
         _check_compose_config(
             checks, target, ctx, path_cmds.COMPOSE_EXTRACT_WORKER_PROFILES, args.verbose
         )
@@ -599,12 +598,73 @@ def _preflight_kind_smoke(
         target,
         cfg.repo_root / "deploy" / "k8s" / "overlays" / "local-generate-only",
     )
+    _check_ports(checks, target, args, (("18080", "kind-port-forward"),))
+
+
+def _preflight_kind_live(
+    cfg: GlobalConfig, args: argparse.Namespace, checks: list[PreflightCheck]
+) -> None:
+    target = "kind-live"
+    _check_binaries(checks, target, ("docker", "kind", "kubectl"))
+    _check_docker_daemon(checks, target)
+    _check_file(
+        checks,
+        target,
+        cfg.repo_root / "deploy" / "k8s" / "kind" / "kind-config.yaml",
+        "kind config",
+    )
+    _check_file(
+        checks,
+        target,
+        cfg.repo_root / "deploy" / "docker" / "Dockerfile.server",
+        "server Dockerfile",
+    )
+    _check_file(
+        checks,
+        target,
+        cfg.repo_root / "deploy" / "docker" / "Dockerfile.llama-server",
+        "llama-server Dockerfile",
+    )
     _check_kustomize_overlay(
         checks,
         target,
-        cfg.repo_root / "deploy" / "k8s" / "overlays" / "prod-gpu-full",
+        cfg.repo_root / "deploy" / "k8s" / "overlays" / "local-live-llama-kind",
     )
-    _check_ports(checks, target, args, (("18080", "kind-port-forward"),))
+    _check_models_profile_file(
+        checks,
+        target,
+        cfg.repo_root
+        / "deploy"
+        / "k8s"
+        / "overlays"
+        / "local-live-llama-kind"
+        / "models.live-llama.yaml",
+        "kind-live-llama",
+    )
+
+    ctx = _build_target_context(
+        cfg, args, target=target, default_profile="docker+llama+compose-extract"
+    )
+    if _check_context(checks, target, ctx) and isinstance(ctx, ComposeContext):
+        env = _context_env(ctx)
+        _check_required_env(
+            checks, target, env, ("API_KEY", "LLAMA_MODELS_DIR", "LLAMA_MODEL_FILE")
+        )
+        _check_llama_model_file(checks, target, env)
+        _check_cpu_llama_setting(checks, target, env)
+        _check_existing_kind_model_mount(checks, target, env)
+
+    _check_ports(
+        checks,
+        target,
+        args,
+        (
+            ("18080", "kind-api-port-forward"),
+            ("18084", "kind-gateway-port-forward"),
+            ("16686", "kind-jaeger-port-forward"),
+            ("18088", "kind-llama-port-forward"),
+        ),
+    )
 
 
 def _check_kustomize_overlay(checks: list[PreflightCheck], target: str, overlay: Path) -> None:
@@ -623,6 +683,72 @@ def _check_kustomize_overlay(checks: list[PreflightCheck], target: str, overlay:
         raise CLIError(f"unable to render kustomize overlay: {overlay}", code=2)
 
     _check(checks, target, f"kustomize:{overlay.name}", run)
+
+
+def _check_models_profile_file(
+    checks: list[PreflightCheck], target: str, path: Path, profile: str
+) -> None:
+    def run() -> tuple[str, dict[str, Any]]:
+        if not path.exists():
+            raise CLIError(f"missing models config: {path}", code=2)
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        profiles = (data.get("profiles") or {}) if isinstance(data, dict) else {}
+        if not isinstance(profiles, dict) or profile not in profiles:
+            raise CLIError(f"models profile not found in {path}: {profile}", code=2)
+        return "present", {"profile": profile, "path": str(path)}
+
+    _check(checks, target, f"models profile:{profile}", run)
+
+
+def _check_existing_kind_model_mount(
+    checks: list[PreflightCheck], target: str, env: Mapping[str, str]
+) -> None:
+    cluster = env.get("PHASE2_KIND_CLUSTER") or os.environ.get("PHASE2_KIND_CLUSTER", "llm")
+    model_file = env.get("LLAMA_MODEL_FILE", "")
+
+    def run() -> tuple[str, dict[str, Any]]:
+        if not model_file.startswith("/models/"):
+            raise CLIError(
+                "LLAMA_MODEL_FILE must point inside /models for the live kind mount check",
+                code=2,
+            )
+        clusters_result = subprocess.run(
+            ["kind", "get", "clusters"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if clusters_result.returncode != 0:
+            message = (clusters_result.stderr or clusters_result.stdout or "").strip()
+            raise CLIError(
+                "unable to inspect kind clusters" + (f": {message}" if message else ""),
+                code=2,
+            )
+        clusters = {line.strip() for line in clusters_result.stdout.splitlines() if line.strip()}
+        if cluster not in clusters:
+            return (
+                "cluster not present; live workflow will create it with the model mount",
+                {"cluster": cluster, "model_file": model_file},
+            )
+
+        mount_result = subprocess.run(
+            ["docker", "exec", f"{cluster}-control-plane", "test", "-f", model_file],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if mount_result.returncode != 0:
+            raise CLIError(
+                f"existing kind cluster '{cluster}' does not expose {model_file}; "
+                f"delete and recreate it before running live kind",
+                code=2,
+            )
+        return (
+            "existing cluster exposes model file",
+            {"cluster": cluster, "model_file": model_file},
+        )
+
+    _check(checks, target, "kind model mount", run)
 
 
 def _preflight_policy_eval(
@@ -683,9 +809,7 @@ def _preflight_ops_surface(
         cfg.repo_root / "deploy" / "proxy" / "nginx" / "nginx.compose.conf",
         "compose proxy config",
     )
-    ctx = _build_target_context(
-        cfg, args, target=target, default_profile="docker+reviewer-smoke"
-    )
+    ctx = _build_target_context(cfg, args, target=target, default_profile="docker+reviewer-smoke")
     if _check_context(checks, target, ctx) and isinstance(ctx, ComposeContext):
         _check_compose_config(
             checks,
@@ -711,7 +835,9 @@ def _preflight_ops_surface(
 def _check_proof_script(
     cfg: GlobalConfig, checks: list[PreflightCheck], target: str, script_name: str
 ) -> None:
-    _check_file(checks, target, cfg.repo_root / "proof" / script_name, f"proof script:{script_name}")
+    _check_file(
+        checks, target, cfg.repo_root / "proof" / script_name, f"proof script:{script_name}"
+    )
 
 
 def _check_async_fixture_files(

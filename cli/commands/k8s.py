@@ -22,9 +22,6 @@ def register(sub: argparse._SubParsersAction) -> None:
     sp.add_parser("apply-local-generate-only", help="kubectl apply -k deploy/k8s/overlays/local-generate-only")
     sp.add_parser("delete-local-generate-only", help="kubectl delete -k deploy/k8s/overlays/local-generate-only")
 
-    sp.add_parser("apply-prod-gpu-full", help="kubectl apply -k deploy/k8s/overlays/prod-gpu-full")
-    sp.add_parser("delete-prod-gpu-full", help="kubectl delete -k deploy/k8s/overlays/prod-gpu-full")
-
     sp.add_parser("wait", help="Wait for api deployment rollout + db-migrate job")
     sp.add_parser("status", help="kubectl get all/pods")
     sp.add_parser("logs-api", help="kubectl logs deployment/api -f")
@@ -39,8 +36,6 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
     NS = "llm"
 
     overlay_local = K8S_DIR / "overlays" / "local-generate-only"
-    overlay_prod = K8S_DIR / "overlays" / "prod-gpu-full"
-
     c = args.k8s_cmd
 
     if c == "kind-up":
@@ -97,24 +92,6 @@ def _handle(cfg: GlobalConfig, args: argparse.Namespace) -> int:
             f'set -euo pipefail; '
             f'kubectl delete -k "{overlay_local}" --ignore-not-found; '
             f'echo "✅ deleted overlay: local-generate-only"',
-            verbose=args.verbose,
-        )
-        return 0
-
-    if c == "apply-prod-gpu-full":
-        run_bash(
-            f'set -euo pipefail; '
-            f'kubectl apply -k "{overlay_prod}"; '
-            f'echo "✅ applied overlay: prod-gpu-full"',
-            verbose=args.verbose,
-        )
-        return 0
-
-    if c == "delete-prod-gpu-full":
-        run_bash(
-            f'set -euo pipefail; '
-            f'kubectl delete -k "{overlay_prod}" --ignore-not-found; '
-            f'echo "✅ deleted overlay: prod-gpu-full"',
             verbose=args.verbose,
         )
         return 0

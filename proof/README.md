@@ -49,7 +49,8 @@ file.
 python proof/validate_evidence_manifest.py
 ```
 
-Local `kind` evidence shows runnable Kubernetes deployment. Production overlay render shows scaffold readiness only. This evidence does not claim real GPU scheduling or production-scale operation.
+Local `kind` evidence shows runnable Kubernetes deployment. It does not claim
+real GPU scheduling or production-scale operation.
 
 Async extraction evidence shows queue-backed job submission, separate worker execution, and durable job-state polling. It does not claim production-scale queue operations, retries, or horizontal worker orchestration.
 
@@ -70,8 +71,10 @@ controls, or production observability operations.
 
 Joint gateway evidence shows sync and async extraction through the companion
 edge gateway with request identity, trace identity, metrics, admin traces, and
-optional OTel export. It uses a deterministic fake model profile and does not
-claim real-model quality or cloud deployment behavior.
+optional OTel export. Most fast joint proofs use a deterministic fake model
+profile; the llama and kind-live groups use a real CPU-only `llama.cpp` backend.
+None of the local joint proofs claim accelerated inference, production
+throughput, or cloud deployment behavior.
 
 Joint workflow artifact groups include:
 
@@ -84,4 +87,4 @@ Joint workflow artifact groups include:
   with CPU llama.cpp extract
 - `joint_gateway/resilience_latest/`: local component interruption and recovery
   proof for the containerized joint stack
-- `joint_gateway/kind_smoke_latest/`: local Kubernetes-shaped smoke proof
+- `joint_gateway/kind_live_latest/`: local Kubernetes-shaped live llama proof

@@ -11,8 +11,7 @@
     "models_capabilities": "pass",
     "generate_smoke": "pass",
     "extract_disabled": "pass",
-    "local_overlay_render": "pass",
-    "prod_overlay_render": "pass"
+    "local_overlay_render": "pass"
   },
   "deployment_capabilities": {
     "generate": true,

@@ -1,0 +1,1 @@
+{"status":"degraded","model_load_mode":"lazy","model_loaded":false,"loaded_model_id":null,"runtime_default_model_id":null,"model_error":null,"default_model_id":"llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF","default_backend":"llamacpp"}

@@ -81,8 +81,10 @@ captures logs, and writes `phase8_compose_llama_extract/`.
   local Compose network.
 - `joint_gateway/resilience_latest/`: controlled local component interruption
   and recovery evidence for the containerized joint stack.
-- `joint_gateway/kind_smoke_latest/`: Kubernetes-shaped joint deployment proof
-  copied from the gateway repository's local kind workflow.
+- `joint_gateway/kind_live_latest/`: Kubernetes-shaped joint deployment proof
+  copied from the gateway repository's local kind workflow, including
+  gateway/backend traces, live llama model status, llama-server health, and
+  runtime logs.
 
 ## Scope Boundaries
 
@@ -126,9 +128,14 @@ and operator-driven recovery for API, worker, Redis, and Postgres interruption.
 It does not claim high availability, autoscaling, zero-downtime deployment,
 cloud failover, or production incident response.
 
-`joint_gateway/kind_smoke_latest/` demonstrates Kubernetes-shaped local
-deployability. It does not claim AWS ingress, TLS, high availability, or managed
-cloud operation.
+`joint_gateway/kind_live_latest/` demonstrates Kubernetes-shaped local
+deployability with a live CPU-only `llama.cpp` model server and host-mounted
+GGUF model file. It does not claim accelerated inference, production
+throughput, AWS ingress, TLS, high availability, or managed cloud operation.
+
+`joint_gateway/kind_smoke_latest/`, when generated explicitly with
+`JOINT_KIND_WORKFLOW=fake`, remains a lower-variance deterministic kind smoke
+artifact. It is not the promoted joint kind proof.
 
 Generated artifacts should stay close to the behavior they support. If a new
 artifact does not clarify current runtime behavior, it should not be added to the

@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: llm
+
+resources:
+  - ../../base
+  - llama-server-deployment.yaml
+  - llama-server-service.yaml
+
+configMapGenerator:
+  - name: llm-models
+    files:
+      - models.yaml=models.live-llama.yaml
+  - name: llama-runtime-config
+    literals:
+      - LLAMA_SERVER_PORT=8080
+      - LLAMA_MODEL_FILE=__LLAMA_MODEL_FILE__
+      - LLAMA_CTX_SIZE=__LLAMA_CTX_SIZE__
+      - LLAMA_THREADS=__LLAMA_THREADS__
+      - LLAMA_BATCH=__LLAMA_BATCH__
+      - LLAMA_UBATCH=__LLAMA_UBATCH__
+      - LLAMA_N_GPU_LAYERS=0
+      - LLAMA_SEED=__LLAMA_SEED__
+      - LLAMA_TEMP=__LLAMA_TEMP__
+      - LLAMA_TOP_P=__LLAMA_TOP_P__
+      - LLAMA_MLOCK=__LLAMA_MLOCK__
+      - LLAMA_NO_MMAP=__LLAMA_NO_MMAP__
+      - LLAMA_PARALLEL=__LLAMA_PARALLEL__
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - path: server-patch.yaml
+  - path: policy-job-disable.yaml
+  - path: ingress-disable.yaml

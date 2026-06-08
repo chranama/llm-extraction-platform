@@ -1,0 +1,576 @@
+{
+  "query_name": "async",
+  "service": "llm-extraction-platform-worker",
+  "tags": {
+    "llm.trace_id": "integration-obs-trace-2",
+    "llm.job_id": "dbd7e4b1aeda4f98b864a0c7787b416f"
+  },
+  "trace_count": 1,
+  "selected_trace_id": "6c7c0a9b2eedb4a8750de36817051fc6",
+  "selected_trace_services": [
+    "inference-serving-gateway",
+    "llm-extraction-platform",
+    "llm-extraction-platform-worker"
+  ],
+  "required_services": [
+    "inference-serving-gateway",
+    "llm-extraction-platform",
+    "llm-extraction-platform-worker"
+  ],
+  "data": {
+    "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+    "spans": [
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "50f48a376f3636bf",
+        "operationName": "extract.execute",
+        "references": [
+          {
+            "refType": "CHILD_OF",
+            "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+            "spanID": "8e3bdf4283fee4a8"
+          }
+        ],
+        "startTime": 1780945698885574,
+        "duration": 431289,
+        "tags": [
+          {
+            "key": "http.request.method",
+            "type": "string",
+            "value": "UNKNOWN"
+          },
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "llm.job_id",
+            "type": "string",
+            "value": "dbd7e4b1aeda4f98b864a0c7787b416f"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.resolved_model_id",
+            "type": "string",
+            "value": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "/v1/extract/jobs/worker"
+          },
+          {
+            "key": "llm.schema_id",
+            "type": "string",
+            "value": "sroie_receipt_v1"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "llm-extraction-platform/application"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "internal"
+          },
+          {
+            "key": "url.path",
+            "type": "string",
+            "value": "/v1/extract/jobs/worker"
+          }
+        ],
+        "logs": [],
+        "processID": "p1",
+        "warnings": null
+      },
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "8e3bdf4283fee4a8",
+        "operationName": "extract.job_worker",
+        "references": [
+          {
+            "refType": "CHILD_OF",
+            "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+            "spanID": "c9b1bb4a25733274"
+          }
+        ],
+        "startTime": 1780945698864014,
+        "duration": 452933,
+        "tags": [
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "llm.job_id",
+            "type": "string",
+            "value": "dbd7e4b1aeda4f98b864a0c7787b416f"
+          },
+          {
+            "key": "llm.job_status",
+            "type": "string",
+            "value": "succeeded"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.resolved_model_id",
+            "type": "string",
+            "value": "llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "/v1/extract/jobs/worker"
+          },
+          {
+            "key": "llm.schema_id",
+            "type": "string",
+            "value": "sroie_receipt_v1"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "messaging.destination.name",
+            "type": "string",
+            "value": "llm:extract_jobs:queue"
+          },
+          {
+            "key": "messaging.system",
+            "type": "string",
+            "value": "redis"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "llm-extraction-platform/worker"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "consumer"
+          }
+        ],
+        "logs": [],
+        "processID": "p1",
+        "warnings": null
+      },
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "ca9b34a2ec78a863",
+        "operationName": "backend.extract_jobs.submit",
+        "references": [
+          {
+            "refType": "CHILD_OF",
+            "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+            "spanID": "5a48aa223bb5da74"
+          }
+        ],
+        "startTime": 1780945698826758,
+        "duration": 10911,
+        "tags": [
+          {
+            "key": "http.request.method",
+            "type": "string",
+            "value": "POST"
+          },
+          {
+            "key": "http.response.status_code",
+            "type": "int64",
+            "value": 202
+          },
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          },
+          {
+            "key": "llm.schema_id",
+            "type": "string",
+            "value": "sroie_receipt_v1"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "llm-extraction-platform/http.server"
+          },
+          {
+            "key": "otel.status_code",
+            "type": "string",
+            "value": "OK"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "server"
+          },
+          {
+            "key": "url.path",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          }
+        ],
+        "logs": [],
+        "processID": "p2",
+        "warnings": null
+      },
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "c9b1bb4a25733274",
+        "operationName": "extract.job_submit",
+        "references": [
+          {
+            "refType": "CHILD_OF",
+            "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+            "spanID": "ca9b34a2ec78a863"
+          }
+        ],
+        "startTime": 1780945698829922,
+        "duration": 7383,
+        "tags": [
+          {
+            "key": "http.request.method",
+            "type": "string",
+            "value": "POST"
+          },
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          },
+          {
+            "key": "llm.schema_id",
+            "type": "string",
+            "value": "sroie_receipt_v1"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "llm-extraction-platform/application"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "internal"
+          },
+          {
+            "key": "url.path",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          }
+        ],
+        "logs": [],
+        "processID": "p2",
+        "warnings": null
+      },
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "25cc602c5339a5af",
+        "operationName": "gateway.extract_jobs",
+        "references": [],
+        "startTime": 1780945698826048,
+        "duration": 11888,
+        "tags": [
+          {
+            "key": "http.request.method",
+            "type": "string",
+            "value": "POST"
+          },
+          {
+            "key": "http.response.body.size",
+            "type": "int64",
+            "value": 295
+          },
+          {
+            "key": "http.response.status_code",
+            "type": "int64",
+            "value": 202
+          },
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "gateway"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "extract_jobs"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "inference-serving-gateway/http.server"
+          },
+          {
+            "key": "otel.status_code",
+            "type": "string",
+            "value": "OK"
+          },
+          {
+            "key": "server.address",
+            "type": "string",
+            "value": "127.0.0.1:18084"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "server"
+          },
+          {
+            "key": "url.path",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          }
+        ],
+        "logs": [],
+        "processID": "p3",
+        "warnings": null
+      },
+      {
+        "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+        "spanID": "5a48aa223bb5da74",
+        "operationName": "upstream.extract_jobs",
+        "references": [
+          {
+            "refType": "CHILD_OF",
+            "traceID": "6c7c0a9b2eedb4a8750de36817051fc6",
+            "spanID": "25cc602c5339a5af"
+          }
+        ],
+        "startTime": 1780945698826233,
+        "duration": 11642,
+        "tags": [
+          {
+            "key": "http.request.method",
+            "type": "string",
+            "value": "POST"
+          },
+          {
+            "key": "http.response.body.size",
+            "type": "int64",
+            "value": 295
+          },
+          {
+            "key": "http.response.status_code",
+            "type": "int64",
+            "value": 202
+          },
+          {
+            "key": "internal.span.format",
+            "type": "string",
+            "value": "otlp"
+          },
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "gateway"
+          },
+          {
+            "key": "llm.request_id",
+            "type": "string",
+            "value": "integration-obs-request-2"
+          },
+          {
+            "key": "llm.route",
+            "type": "string",
+            "value": "extract_jobs"
+          },
+          {
+            "key": "llm.trace_id",
+            "type": "string",
+            "value": "integration-obs-trace-2"
+          },
+          {
+            "key": "otel.scope.name",
+            "type": "string",
+            "value": "inference-serving-gateway/http.client"
+          },
+          {
+            "key": "otel.status_code",
+            "type": "string",
+            "value": "OK"
+          },
+          {
+            "key": "server.address",
+            "type": "string",
+            "value": "api:8000"
+          },
+          {
+            "key": "span.kind",
+            "type": "string",
+            "value": "client"
+          },
+          {
+            "key": "url.path",
+            "type": "string",
+            "value": "/v1/extract/jobs"
+          }
+        ],
+        "logs": [],
+        "processID": "p3",
+        "warnings": null
+      }
+    ],
+    "processes": {
+      "p1": {
+        "serviceName": "llm-extraction-platform-worker",
+        "tags": [
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "type": "string",
+            "value": "python"
+          },
+          {
+            "key": "telemetry.sdk.name",
+            "type": "string",
+            "value": "opentelemetry"
+          },
+          {
+            "key": "telemetry.sdk.version",
+            "type": "string",
+            "value": "1.42.1"
+          }
+        ]
+      },
+      "p2": {
+        "serviceName": "llm-extraction-platform",
+        "tags": [
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "backend"
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "type": "string",
+            "value": "python"
+          },
+          {
+            "key": "telemetry.sdk.name",
+            "type": "string",
+            "value": "opentelemetry"
+          },
+          {
+            "key": "telemetry.sdk.version",
+            "type": "string",
+            "value": "1.42.1"
+          }
+        ]
+      },
+      "p3": {
+        "serviceName": "inference-serving-gateway",
+        "tags": [
+          {
+            "key": "llm.component",
+            "type": "string",
+            "value": "gateway"
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "type": "string",
+            "value": "go"
+          },
+          {
+            "key": "telemetry.sdk.name",
+            "type": "string",
+            "value": "opentelemetry"
+          },
+          {
+            "key": "telemetry.sdk.version",
+            "type": "string",
+            "value": "1.38.0"
+          }
+        ]
+      }
+    },
+    "warnings": null
+  }
+}

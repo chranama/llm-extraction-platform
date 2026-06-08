@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: llm
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: APP_PROFILE
+              value: "test"
+            - name: MODELS_PROFILE
+              value: "kind-live-llama"
+            - name: MODELS_YAML
+              value: "/app/models/models.yaml"
+            - name: SCHEMAS_DIR
+              value: "/app/schemas/model_output"
+            - name: EDGE_MODE
+              value: "behind_gateway"
+            - name: OTEL_ENABLED
+              value: "1"
+            - name: OTEL_SERVICE_NAME
+              value: "llm-extraction-platform"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4318/v1/traces"
+            - name: MODEL_LOAD_MODE
+              value: "lazy"
+            - name: REQUIRE_MODEL_READY
+              value: "0"
+            - name: LLAMA_SERVER_URL
+              value: "http://llama-server:8080"

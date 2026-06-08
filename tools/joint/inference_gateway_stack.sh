@@ -58,7 +58,7 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_CONTAINER_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_latest}"
 : "${JOINT_CONTAINER_LLAMA_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/containerized_llama_latest}"
 : "${JOINT_RESILIENCE_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/resilience_latest}"
-: "${JOINT_KIND_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/kind_smoke_latest}"
+: "${JOINT_KIND_ARTIFACT_DIR:=${LLMEP_ROOT}/proof/artifacts/joint_gateway/kind_live_latest}"
 : "${JOINT_OTEL_EXPORTER_OTLP_ENDPOINT:=http://127.0.0.1:${JOINT_OTEL_COLLECTOR_PORT}/v1/traces}"
 : "${JOINT_BACKEND_OTEL_SERVICE_NAME:=llm-extraction-platform}"
 : "${JOINT_WORKER_OTEL_SERVICE_NAME:=llm-extraction-platform-worker}"
@@ -101,6 +101,8 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 : "${JOINT_RESILIENCE_GATEWAY_TIMEOUT:=1s}"
 
 : "${JOINT_KIND_CLUSTER:=llm}"
+: "${JOINT_KIND_WORKFLOW:=live}"
+: "${JOINT_KIND_ENV_FILE:=${LLMEP_ROOT}/.env.docker}"
 
 usage() {
   cat <<'EOF'
@@ -2139,32 +2141,64 @@ cmd_verify_kind() {
   clear_artifact_dir "${JOINT_KIND_ARTIFACT_DIR}"
 
   cleanup() {
-    PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" down || true
+    PHASE2_KIND_WORKFLOW="${JOINT_KIND_WORKFLOW:-live}" \
+      PHASE2_KIND_ENV_FILE="${JOINT_KIND_ENV_FILE}" \
+      PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" \
+      "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" down || true
   }
   trap cleanup EXIT
 
-  PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" up
-  PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" proof
+  PHASE2_KIND_WORKFLOW="${JOINT_KIND_WORKFLOW:-live}" \
+    PHASE2_KIND_ENV_FILE="${JOINT_KIND_ENV_FILE}" \
+    PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" \
+    "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" up
+  PHASE2_KIND_WORKFLOW="${JOINT_KIND_WORKFLOW:-live}" \
+    PHASE2_KIND_ENV_FILE="${JOINT_KIND_ENV_FILE}" \
+    PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" \
+    "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" proof
 
   local source_dir="${ISG_REPO_ROOT}/proof/artifacts/kind_stack"
   if [[ -d "${source_dir}" ]]; then
     cp -R "${source_dir}/." "${JOINT_KIND_ARTIFACT_DIR}/"
   fi
   clean_artifacts "${JOINT_KIND_ARTIFACT_DIR}"
-  python3 - <<'PY' "${JOINT_KIND_ARTIFACT_DIR}"
+  python3 - <<'PY' "${JOINT_KIND_ARTIFACT_DIR}" "${JOINT_KIND_WORKFLOW:-live}"
 import json
 import sys
 from pathlib import Path
 
 artifact_dir = Path(sys.argv[1])
+workflow = sys.argv[2]
+
+def load_json(relative_path: str) -> dict:
+    path = artifact_dir / relative_path
+    if not path.exists():
+        return {}
+    try:
+      return json.loads(path.read_text())
+    except json.JSONDecodeError:
+      return {}
+
+sync_extract = load_json("observability_latest/extract.body.json")
+async_status = load_json("observability_latest/job_status.body.json")
+sync_model = str(sync_extract.get("model", ""))
+async_model = str(async_status.get("model", ""))
 summary = {
-    "mode": "joint_kind_smoke",
+    "mode": f"joint_kind_{workflow}",
     "source": "inference-serving-gateway/proof/run_kind_stack.sh",
     "artifact_root": str(artifact_dir),
     "observability_manifest": "observability_latest/manifest.json",
+    "workflow": workflow,
     "checks": {
         "observability_manifest_present": (artifact_dir / "observability_latest" / "manifest.json").exists(),
         "jaeger_services_present": (artifact_dir / "jaeger-services.json").exists(),
+        "runtime_workflow_present": (artifact_dir / "runtime" / "workflow.env").exists(),
+        "models_status_present": (artifact_dir / "runtime" / "models_status.json").exists(),
+        "llama_health_present": (artifact_dir / "runtime" / "llama_health.json").exists(),
+        "llama_models_present": (artifact_dir / "runtime" / "llama_models.json").exists(),
+        "llama_logs_present": (artifact_dir / "runtime" / "llama-server.logs.txt").exists(),
+        "sync_extract_uses_llama_model": "llama.cpp/" in sync_model,
+        "async_extract_uses_llama_model": "llama.cpp/" in async_model,
     },
 }
 (artifact_dir / "manifest.json").write_text(json.dumps(summary, indent=2) + "\n")

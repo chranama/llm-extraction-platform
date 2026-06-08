@@ -1,20 +1,10 @@
-name: Publish AWS Server Image
+name: Publish Ephemeral AWS Server Image
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "contracts/**"
-      - "config/**"
-      - "schemas/**"
-      - "server/**"
-      - "deploy/docker/Dockerfile.server"
-      - ".github/workflows/aws-image-publish.yml"
 
 concurrency:
-  group: aws-image-publish-backend-${{ github.ref }}
+  group: aws-image-publish-backend-${{ github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -71,6 +61,26 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Verify Terraform-owned ephemeral ECR repository
+        if: steps.guard.outputs.publish_enabled == 'true'
+        run: |
+          set -euo pipefail
+
+          repo_json="$(aws ecr describe-repositories \
+            --region "${AWS_REGION}" \
+            --repository-names "${ECR_REPOSITORY}")"
+          repo_arn="$(jq -r '.repositories[0].repositoryArn' <<<"${repo_json}")"
+          tags_json="$(aws ecr list-tags-for-resource \
+            --region "${AWS_REGION}" \
+            --resource-arn "${repo_arn}")"
+          ephemeral_tag="$(jq -r '.tags[]? | select(.Key == "ephemeral") | .Value' <<<"${tags_json}")"
+          managed_by_tag="$(jq -r '.tags[]? | select(.Key == "managed_by") | .Value' <<<"${tags_json}")"
+
+          if [[ "${ephemeral_tag}" != "true" || "${managed_by_tag}" != "terraform" ]]; then
+            echo "::error title=ECR repository is not an ephemeral Terraform repository::Run the AWS Terraform apply step first. Refusing to publish into a long-lived or manually-created repository."
+            exit 1
+          fi
+
       - name: Derive image metadata
         if: steps.guard.outputs.publish_enabled == 'true'
         id: meta
@@ -79,11 +89,11 @@ jobs:
           images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
           tags: |
             type=sha,prefix=git-
-            type=raw,value=main,enable={{is_default_branch}}
-            type=raw,value=aws-dev-latest,enable={{is_default_branch}}
+            type=raw,value=run-${{ github.run_id }}
+            type=raw,value=aws-dev-latest
           labels: |
             org.opencontainers.image.title=llm-server
-            org.opencontainers.image.description=AWS-target backend image for the bounded Phase 2.3 deployment slice
+            org.opencontainers.image.description=Ephemeral AWS proof-session backend image
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
@@ -118,6 +128,8 @@ jobs:
             echo "image_digest=${IMAGE_DIGEST}"
             echo "platform=${IMAGE_PLATFORM}"
             echo "source_sha=${GITHUB_SHA}"
+            echo "github_run_id=${GITHUB_RUN_ID}"
+            echo "repository_lifecycle=terraform_ephemeral"
             echo "published_tags:"
             printf '%s\n' "${IMAGE_TAGS}"
           } > _release/aws_image_release.txt
@@ -129,6 +141,8 @@ jobs:
             echo "- digest: \`${IMAGE_DIGEST}\`"
             echo "- platform: \`${IMAGE_PLATFORM}\`"
             echo "- source sha: \`${GITHUB_SHA}\`"
+            echo "- GitHub run: \`${GITHUB_RUN_ID}\`"
+            echo "- repository lifecycle: Terraform-created, force-deleted by AWS proof teardown"
             echo "- tags:"
             printf '%s\n' "${IMAGE_TAGS}" | sed 's/^/  - `/; s/$/`/'
           } >> "${GITHUB_STEP_SUMMARY}"

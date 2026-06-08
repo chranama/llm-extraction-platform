@@ -1,0 +1,91 @@
+base:
+  default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+  defaults:
+    backend: llamacpp
+    load_mode: lazy
+    readiness_mode: probe
+    deployment_key: kind-live-llama--smollm2-360m-q8
+    deployment:
+      profile_id: kind-live-llama
+      models_profile: kind-live-llama
+      expected:
+        in_kubernetes: true
+        accelerator: "cpu"
+        precision: "int8"
+    capabilities:
+      generate: true
+      extract: true
+    assessment:
+      lane: kind-live-llama
+      policy_schema: policy_decision_v2
+      require_for_extract: false
+      assessed: true
+    backend_constraints:
+      llamacpp_model_selector: "fixed"
+    llamacpp:
+      server_url: http://llama-server:8080
+      timeout_seconds: 60
+      connect_timeout_seconds: 5
+      default_temperature: 0.0
+      default_top_p: 1.0
+  models: []
+
+profiles:
+  kind-live-llama:
+    default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+    defaults:
+      backend: llamacpp
+      load_mode: lazy
+      readiness_mode: probe
+      deployment_key: kind-live-llama--smollm2-360m-q8
+      deployment:
+        profile_id: kind-live-llama
+        models_profile: kind-live-llama
+        expected:
+          in_kubernetes: true
+          accelerator: "cpu"
+          precision: "int8"
+      capabilities:
+        generate: true
+        extract: true
+      assessment:
+        lane: kind-live-llama
+        policy_schema: policy_decision_v2
+        require_for_extract: false
+        assessed: true
+      backend_constraints:
+        llamacpp_model_selector: "fixed"
+      llamacpp:
+        server_url: http://llama-server:8080
+        timeout_seconds: 60
+        connect_timeout_seconds: 5
+        default_temperature: 0.0
+        default_top_p: 1.0
+    models:
+      - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: kind-live-llama--smollm2-360m-q8
+        backend_constraints:
+          llamacpp_model_selector: "fixed"
+        llamacpp:
+          server_url: http://llama-server:8080
+          timeout_seconds: 60
+          connect_timeout_seconds: 5
+          model_name: "SmolLM2-360M-Instruct"
+          default_temperature: 0.0
+          default_top_p: 1.0
+        capabilities:
+          generate: true
+          extract: true
+        assessment:
+          assessed: true
+          status: allowed
+          assessed_by: local_kind_live_llama_path
+        deployment:
+          expected:
+            in_kubernetes: true
+            accelerator: "cpu"
+            precision: "int8"
+        notes: "Local kind live-model path: CPU-only llama.cpp SmolLM2 runtime behind the API and gateway."

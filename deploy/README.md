@@ -27,7 +27,6 @@ uv run llmctl --project-name llmep compose --env-override-file .env.docker ps
 
 ## Scope Boundary
 - Local `kind` evidence shows runnable Kubernetes deployment.
-- `prod-gpu-full` render shows scaffold readiness only.
 - This surface does not claim real GPU scheduling or production-scale operation.
 
 ## AWS Image Publish Path

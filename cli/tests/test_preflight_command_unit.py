@@ -55,9 +55,7 @@ def _write_repo_basics(tmp_path: Path, *, models_profiles: tuple[str, ...] = ("t
         "profiles:\n  docker:\n    APP_PROFILE: docker\n", encoding="utf-8"
     )
     profiles_yaml = "\n".join(f"  {profile}: {{}}" for profile in models_profiles)
-    (tmp_path / "config/models.yaml").write_text(
-        f"profiles:\n{profiles_yaml}\n", encoding="utf-8"
-    )
+    (tmp_path / "config/models.yaml").write_text(f"profiles:\n{profiles_yaml}\n", encoding="utf-8")
     (tmp_path / "schemas/model_output").mkdir(parents=True)
     (tmp_path / "schemas/model_output/sroie_receipt_v1.json").write_text(
         '{"type":"object"}\n', encoding="utf-8"
@@ -143,10 +141,7 @@ def test_smoke_preflight_fails_when_api_key_missing(
 
     checks = preflight_mod._run_target_preflight(_cfg(tmp_path), _args("smoke"), "smoke")
 
-    assert any(
-        check.name == "env:API_KEY" and check.status == "fail"
-        for check in checks
-    )
+    assert any(check.name == "env:API_KEY" and check.status == "fail" for check in checks)
 
 
 def test_compose_extract_preflight_fails_when_model_file_missing(
@@ -178,10 +173,7 @@ def test_compose_extract_preflight_fails_when_model_file_missing(
         _cfg(tmp_path), _args("compose-extract"), "compose-extract"
     )
 
-    assert any(
-        check.name == "llama model file" and check.status == "fail"
-        for check in checks
-    )
+    assert any(check.name == "llama model file" and check.status == "fail" for check in checks)
 
 
 def test_compose_extract_preflight_accepts_model_file(
@@ -217,7 +209,64 @@ def test_compose_extract_preflight_accepts_model_file(
     )
 
     assert not [check for check in checks if check.status == "fail"]
-    assert any(
-        check.name == "llama model file" and check.status == "pass"
-        for check in checks
+    assert any(check.name == "llama model file" and check.status == "pass" for check in checks)
+
+
+def test_kind_live_preflight_accepts_local_model_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo_basics(tmp_path, models_profiles=("kind-live-llama",))
+    (tmp_path / "deploy/k8s/kind").mkdir(parents=True)
+    (tmp_path / "deploy/k8s/kind/kind-config.yaml").write_text("kind: Cluster\n", encoding="utf-8")
+    (tmp_path / "deploy/docker").mkdir(parents=True)
+    (tmp_path / "deploy/docker/Dockerfile.server").write_text("FROM scratch\n", encoding="utf-8")
+    (tmp_path / "deploy/docker/Dockerfile.llama-server").write_text(
+        "FROM scratch\n", encoding="utf-8"
     )
+    overlay = tmp_path / "deploy/k8s/overlays/local-live-llama-kind"
+    overlay.mkdir(parents=True)
+    (overlay / "models.live-llama.yaml").write_text(
+        "profiles:\n  kind-live-llama: {}\n", encoding="utf-8"
+    )
+    model = tmp_path / "models" / "smollm2" / "Q8_0.gguf"
+    model.parent.mkdir(parents=True)
+    model.write_text("fake gguf", encoding="utf-8")
+
+    _mock_external_checks(monkeypatch)
+    monkeypatch.setattr(
+        preflight_mod,
+        "_check_kustomize_overlay",
+        lambda checks, target, overlay: checks.append(
+            preflight_mod.PreflightCheck(target, f"kustomize:{overlay.name}", "pass", "renders")
+        ),
+    )
+    monkeypatch.setattr(
+        preflight_mod,
+        "_check_existing_kind_model_mount",
+        lambda checks, target, env: checks.append(
+            preflight_mod.PreflightCheck(target, "kind model mount", "pass", "cluster ready")
+        ),
+    )
+    monkeypatch.setattr(
+        preflight_mod,
+        "_build_target_context",
+        lambda *args, **kwargs: _ctx(
+            tmp_path,
+            "\n".join(
+                [
+                    "API_KEY=key",
+                    f"LLAMA_MODELS_DIR={tmp_path / 'models'}",
+                    "LLAMA_MODEL_FILE=/models/smollm2/Q8_0.gguf",
+                    "LLAMA_N_GPU_LAYERS=0",
+                    "",
+                ]
+            ),
+            defaults_profile="docker+llama+compose-extract",
+        ),
+    )
+
+    checks = preflight_mod._run_target_preflight(_cfg(tmp_path), _args("kind-live"), "kind-live")
+
+    assert not [check for check in checks if check.status == "fail"]
+    assert any(check.name == "models profile:kind-live-llama" for check in checks)
+    assert any(check.name == "llama model file" and check.status == "pass" for check in checks)

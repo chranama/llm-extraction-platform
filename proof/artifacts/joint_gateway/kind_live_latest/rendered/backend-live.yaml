@@ -49,6 +49,26 @@ subjects:
 ---
 apiVersion: v1
 data:
+  LLAMA_BATCH: "256"
+  LLAMA_CTX_SIZE: "4096"
+  LLAMA_MLOCK: "1"
+  LLAMA_MODEL_FILE: "/models/smollm2-360m-instruct/Q8_0.gguf"
+  LLAMA_N_GPU_LAYERS: "0"
+  LLAMA_NO_MMAP: "1"
+  LLAMA_PARALLEL: "1"
+  LLAMA_SEED: "0"
+  LLAMA_SERVER_PORT: "8080"
+  LLAMA_TEMP: "0.7"
+  LLAMA_THREADS: "8"
+  LLAMA_TOP_P: "0.95"
+  LLAMA_UBATCH: ""
+kind: ConfigMap
+metadata:
+  name: llama-runtime-config
+  namespace: llm
+---
+apiVersion: v1
+data:
   server.yaml: |-
     service:
       name: "llm-extraction-platform"
@@ -95,74 +115,99 @@ metadata:
 ---
 apiVersion: v1
 data:
-  models.yaml: |
+  models.yaml: |+
     base:
-      default_model: meta-llama/Llama-3.2-1B-Instruct
+      default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
       defaults:
-        backend: transformers
-        load_mode: eager
+        backend: llamacpp
+        load_mode: lazy
+        readiness_mode: probe
+        deployment_key: kind-live-llama--smollm2-360m-q8
+        deployment:
+          profile_id: kind-live-llama
+          models_profile: kind-live-llama
+          expected:
+            in_kubernetes: true
+            accelerator: "cpu"
+            precision: "int8"
         capabilities:
           generate: true
           extract: true
-        readiness_mode: generate
-        deployment_key: prod-gpu-full
-        deployment:
-          profile_id: prod-gpu-full
-          models_profile: prod-gpu-full
-          expected:
-            in_docker: true
-            accelerator: cuda
-            precision: float16
         assessment:
-          lane: offline
+          lane: kind-live-llama
           policy_schema: policy_decision_v2
-          require_for_extract: true
+          require_for_extract: false
           assessed: true
+        backend_constraints:
+          llamacpp_model_selector: "fixed"
+        llamacpp:
+          server_url: http://llama-server:8080
+          timeout_seconds: 60
+          connect_timeout_seconds: 5
+          default_temperature: 0.0
+          default_top_p: 1.0
       models: []
 
     profiles:
-      prod-gpu-full:
-        default_model: meta-llama/Llama-3.2-1B-Instruct
+      kind-live-llama:
+        default_model: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
         defaults:
-          backend: transformers
-          load_mode: eager
+          backend: llamacpp
+          load_mode: lazy
+          readiness_mode: probe
+          deployment_key: kind-live-llama--smollm2-360m-q8
+          deployment:
+            profile_id: kind-live-llama
+            models_profile: kind-live-llama
+            expected:
+              in_kubernetes: true
+              accelerator: "cpu"
+              precision: "int8"
           capabilities:
             generate: true
             extract: true
-          readiness_mode: generate
-          deployment_key: prod-gpu-full
-          deployment:
-            profile_id: prod-gpu-full
-            models_profile: prod-gpu-full
-            expected:
-              in_docker: true
-              accelerator: cuda
-              precision: float16
           assessment:
-            lane: offline
+            lane: kind-live-llama
             policy_schema: policy_decision_v2
-            require_for_extract: true
+            require_for_extract: false
             assessed: true
+          backend_constraints:
+            llamacpp_model_selector: "fixed"
+          llamacpp:
+            server_url: http://llama-server:8080
+            timeout_seconds: 60
+            connect_timeout_seconds: 5
+            default_temperature: 0.0
+            default_top_p: 1.0
         models:
-          - id: meta-llama/Llama-3.2-1B-Instruct
-            backend: transformers
-            load_mode: eager
+          - id: llama.cpp/SmolLM2-360M-Instruct-Q8_0-GGUF
+            backend: llamacpp
+            load_mode: lazy
+            readiness_mode: probe
+            deployment_key: kind-live-llama--smollm2-360m-q8
+            backend_constraints:
+              llamacpp_model_selector: "fixed"
+            llamacpp:
+              server_url: http://llama-server:8080
+              timeout_seconds: 60
+              connect_timeout_seconds: 5
+              model_name: "SmolLM2-360M-Instruct"
+              default_temperature: 0.0
+              default_top_p: 1.0
             capabilities:
               generate: true
               extract: true
-            deployment_key: prod-gpu-full--llama32-1b
-            transformers:
-              device: cuda
-              dtype: float16
-              trust_remote_code: false
             assessment:
               assessed: true
               status: allowed
-              assessed_at_utc: "2026-03-12T00:00:00Z"
-              assessed_by: canonical_scaffold
-              assessed_pipeline: extract_only
-              thresholds_profile: extract/default
-            notes: "Production-oriented scaffold profile for full-capability render validation."
+              assessed_by: local_kind_live_llama_path
+            deployment:
+              expected:
+                in_kubernetes: true
+                accelerator: "cpu"
+                precision: "int8"
+            notes: "Local kind live-model path: CPU-only llama.cpp SmolLM2 runtime behind the API and gateway."
+
 kind: ConfigMap
 metadata:
   name: llm-models
@@ -200,6 +245,20 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: llama-server
+  namespace: llm
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: llama-server
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: postgres
   namespace: llm
 spec:
@@ -225,18 +284,6 @@ spec:
     app: redis
   type: ClusterIP
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: hf-cache
-  namespace: llm
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 100Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -254,31 +301,41 @@ spec:
     spec:
       containers:
       - env:
-        - name: ENV
-          value: prod
-        - name: MODEL_LOAD_MODE
-          value: eager
-        - name: REQUIRE_MODEL_READY
-          value: "1"
-        - name: MODEL_DEVICE
-          value: gpu
+        - name: APP_PROFILE
+          value: test
+        - name: MODELS_PROFILE
+          value: kind-live-llama
         - name: MODELS_YAML
           value: /app/models/models.yaml
-        - name: REDIS_ENABLED
-          value: "true"
-        - name: HF_HOME
-          value: /root/.cache/huggingface
-        - name: APP_ROOT
-          value: /app
-        - name: APP_CONFIG_PATH
-          value: /app/config/server.yaml
+        - name: SCHEMAS_DIR
+          value: /app/schemas/model_output
+        - name: EDGE_MODE
+          value: behind_gateway
+        - name: OTEL_ENABLED
+          value: "1"
+        - name: OTEL_SERVICE_NAME
+          value: llm-extraction-platform
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector:4318/v1/traces
+        - name: MODEL_LOAD_MODE
+          value: lazy
+        - name: REQUIRE_MODEL_READY
+          value: "0"
+        - name: LLAMA_SERVER_URL
+          value: http://llama-server:8080
+        - name: ENV
+          value: dev
         - name: DEBUG
           value: "true"
+        - name: APP_CONFIG_PATH
+          value: /app/config/server.yaml
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
               key: DATABASE_URL
               name: llm-secrets
+        - name: REDIS_ENABLED
+          value: "true"
         - name: REDIS_URL
           valueFrom:
             secretKeyRef:
@@ -289,7 +346,11 @@ spec:
             secretKeyRef:
               key: HF_TOKEN
               name: llm-secrets
-        image: ghcr.io/<github-username>/<repo-name>/llm-server:main
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: APP_ROOT
+          value: /app
+        image: llm-server:dev
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 6
@@ -310,15 +371,6 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 2
-        resources:
-          limits:
-            cpu: "4"
-            memory: 16Gi
-            nvidia.com/gpu: "1"
-          requests:
-            cpu: "1"
-            memory: 4Gi
-            nvidia.com/gpu: "1"
         startupProbe:
           failureThreshold: 60
           httpGet:
@@ -327,30 +379,82 @@ spec:
           periodSeconds: 2
           timeoutSeconds: 2
         volumeMounts:
-        - mountPath: /app/models
-          name: llm-models
-          readOnly: true
-        - mountPath: /root/.cache/huggingface
-          name: hf-cache
         - mountPath: /app/config
           name: llm-config
           readOnly: true
-      volumes:
-      - configMap:
-          items:
-          - key: models.yaml
-            path: models.yaml
+        - mountPath: /app/models
           name: llm-models
-        name: llm-models
-      - name: hf-cache
-        persistentVolumeClaim:
-          claimName: hf-cache
+          readOnly: true
+      volumes:
       - configMap:
           items:
           - key: server.yaml
             path: server.yaml
           name: llm-config
         name: llm-config
+      - configMap:
+          items:
+          - key: models.yaml
+            path: models.yaml
+          name: llm-models
+        name: llm-models
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-server
+  namespace: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-server
+  template:
+    metadata:
+      labels:
+        app: llama-server
+    spec:
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: llama-runtime-config
+        image: llmep-llama-server:b8069
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - /app/healthcheck.sh
+          failureThreshold: 12
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          timeoutSeconds: 5
+        name: llama-server
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          exec:
+            command:
+            - /app/healthcheck.sh
+          failureThreshold: 60
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "4"
+            memory: 8Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /models
+          name: llama-models
+          readOnly: true
+      volumes:
+      - hostPath:
+          path: /models
+          type: Directory
+        name: llama-models
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -512,125 +616,3 @@ spec:
           name: llm-config
         name: llm-config
   ttlSecondsAfterFinished: 3600
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: policy-gate
-  namespace: llm
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      containers:
-      - args:
-        - |
-          set -euo pipefail
-
-          echo "[kubectl] update configmap/${MODELS_CONFIGMAP_NAME} from patched file..."
-          kubectl -n llm create configmap "${MODELS_CONFIGMAP_NAME}" \
-            --from-file="${MODELS_FILE_KEY}=/work/models.yaml" \
-            -o yaml --dry-run=client \
-          | kubectl -n llm apply -f -
-
-          if [ "${ROLLOUT_RESTART_API}" = "1" ]; then
-            echo "[kubectl] rollout restart deployment/${API_DEPLOYMENT_NAME}..."
-            kubectl -n llm rollout restart "deployment/${API_DEPLOYMENT_NAME}"
-          fi
-
-          echo "[kubectl] done."
-        command:
-        - /bin/sh
-        - -lc
-        env:
-        - name: MODELS_CONFIGMAP_NAME
-          value: llm-models
-        - name: MODELS_FILE_KEY
-          value: models.yaml
-        - name: API_DEPLOYMENT_NAME
-          value: api
-        - name: ROLLOUT_RESTART_API
-          value: "1"
-        image: bitnami/kubectl:1.30
-        imagePullPolicy: IfNotPresent
-        name: apply-configmap
-        volumeMounts:
-        - mountPath: /work
-          name: work
-      initContainers:
-      - args:
-        - |
-          set -euo pipefail
-
-          echo "[policy] copy models.yaml from configmap mount..."
-          test -f "/in/${MODELS_FILE_KEY}"
-          cp "/in/${MODELS_FILE_KEY}" /work/models.yaml
-
-          echo "[policy] run decide-and-patch..."
-          llm-policy decide-and-patch \
-            --run-dir "${POLICY_RUN_DIR}" \
-            --models-yaml /work/models.yaml \
-            --model-id "${POLICY_MODEL_ID}" \
-            --threshold-profile "${POLICY_THRESHOLD_PROFILE}" \
-            --thresholds-root "${POLICY_THRESHOLDS_ROOT}" \
-            --format text
-
-          echo "[policy] patched file:"
-          head -n 40 /work/models.yaml
-        command:
-        - /bin/sh
-        - -lc
-        env:
-        - name: MODELS_FILE_KEY
-          value: models.yaml
-        - name: POLICY_RUN_DIR
-          value: /results/run
-        - name: POLICY_MODEL_ID
-          value: meta-llama/Llama-3.2-1B-Instruct
-        - name: POLICY_THRESHOLD_PROFILE
-          value: extract/default
-        - name: POLICY_THRESHOLDS_ROOT
-          value: /app/policy/src/llm_policy/thresholds
-        image: llm-policy:dev
-        imagePullPolicy: IfNotPresent
-        name: run-policy
-        volumeMounts:
-        - mountPath: /in
-          name: models
-          readOnly: true
-        - mountPath: /work
-          name: work
-        - mountPath: /results
-          name: results
-      restartPolicy: Never
-      serviceAccountName: policy-runner
-      volumes:
-      - emptyDir: {}
-        name: work
-      - configMap:
-          name: llm-models
-        name: models
-      - emptyDir: {}
-        name: results
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
-  name: llm-ingress
-  namespace: llm
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: llm.example.com
-    http:
-      paths:
-      - backend:
-          service:
-            name: api
-            port:
-              number: 8000
-        path: /api(/|$)(.*)
-        pathType: ImplementationSpecific

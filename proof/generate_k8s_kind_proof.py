@@ -288,12 +288,6 @@ def generate_k8s_kind_proof() -> None:
         str(ROOT / "deploy" / "k8s" / "overlays" / "local-generate-only"),
         ARTIFACT_DIR / "kustomize_local_generate_only.yaml",
     )
-    log_step("rendering prod overlay manifest")
-    render_overlay(
-        str(ROOT / "deploy" / "k8s" / "overlays" / "prod-gpu-full"),
-        ARTIFACT_DIR / "kustomize_prod_gpu_full.yaml",
-    )
-
     log_step("verifying live service via port-forward")
     with port_forward():
         health_code, _ = http_request("GET", "/healthz")
@@ -332,7 +326,6 @@ def generate_k8s_kind_proof() -> None:
             "generate_smoke": "pass",
             "extract_disabled": "pass",
             "local_overlay_render": "pass",
-            "prod_overlay_render": "pass",
         },
         "deployment_capabilities": {
             "generate": True,

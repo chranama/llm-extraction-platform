@@ -1,0 +1,18 @@
+{
+  "mode": "joint_kind_live",
+  "source": "inference-serving-gateway/proof/run_kind_stack.sh",
+  "artifact_root": "/Users/chranama/career/llm-extraction-platform/proof/artifacts/joint_gateway/kind_live_latest",
+  "observability_manifest": "observability_latest/manifest.json",
+  "workflow": "live",
+  "checks": {
+    "observability_manifest_present": true,
+    "jaeger_services_present": true,
+    "runtime_workflow_present": true,
+    "models_status_present": true,
+    "llama_health_present": true,
+    "llama_models_present": true,
+    "llama_logs_present": true,
+    "sync_extract_uses_llama_model": true,
+    "async_extract_uses_llama_model": true
+  }
+}

@@ -56,7 +56,7 @@ def test_k8s_base_kustomization_resource_paths_exist() -> None:
 def test_k8s_overlays_reference_base_and_patches() -> None:
     overlay_paths = [
         "deploy/k8s/overlays/local-generate-only/kustomization.yaml",
-        "deploy/k8s/overlays/prod-gpu-full/kustomization.yaml",
+        "deploy/k8s/overlays/local-live-llama-kind/kustomization.yaml",
     ]
     for overlay in overlay_paths:
         data = _read_yaml(overlay)
@@ -71,7 +71,7 @@ def test_k8s_overlays_reference_base_and_patches() -> None:
 def test_k8s_overlay_model_config_sources_exist() -> None:
     required = [
         "deploy/k8s/overlays/local-generate-only/models.generate-only.yaml",
-        "deploy/k8s/overlays/prod-gpu-full/models.full.yaml",
+        "deploy/k8s/overlays/local-live-llama-kind/models.live-llama.yaml",
     ]
     for rel in required:
         assert (REPO_ROOT / rel).exists(), rel
