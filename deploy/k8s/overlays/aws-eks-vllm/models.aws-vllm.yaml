@@ -1,7 +1,7 @@
 base:
   default_model: vllm-qwen-0.6b
   defaults:
-    backend: vllm
+    backend: remote
     load_mode: lazy
     capabilities:
       generate: true
@@ -28,7 +28,7 @@ profiles:
   aws-vllm:
     default_model: vllm-qwen-0.6b
     defaults:
-      backend: vllm
+      backend: remote
       load_mode: lazy
       capabilities:
         generate: true
@@ -51,7 +51,7 @@ profiles:
         assessed: true
     models:
       - id: vllm-qwen-0.6b
-        backend: vllm
+        backend: remote
         load_mode: lazy
         capabilities:
           generate: true

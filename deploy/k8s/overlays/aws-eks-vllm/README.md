@@ -10,8 +10,8 @@ The deterministic fake workflow remains in `deploy/k8s/overlays/aws-eks/`.
 
 - `api` and `extract-worker` use the slim `llm-server` image.
 - `vllm` uses the public `vllm/vllm-openai` image and runs on a GPU node.
-- `models.aws-vllm.yaml` selects `backend: vllm`, which is normalized to the
-  external OpenAI-compatible backend in application code.
+- `models.aws-vllm.yaml` selects `backend: remote` with `provider: vllm`,
+  which reaches the external OpenAI-compatible runtime over HTTP.
 - The vLLM pod requires a node labeled `workload=model-runtime` and
   `accelerator=nvidia`, plus a matching `workload=model-runtime:NoSchedule`
   toleration.

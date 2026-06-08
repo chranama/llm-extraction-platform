@@ -8,6 +8,9 @@ metadata:
     runtime-slice: aws-vllm
 spec:
   replicas: 1
+  progressDeadlineSeconds: 1800
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: vllm
@@ -17,6 +20,7 @@ spec:
         app: vllm
         runtime-slice: aws-vllm
     spec:
+      enableServiceLinks: false
       nodeSelector:
         workload: model-runtime
         accelerator: nvidia
@@ -62,14 +66,18 @@ spec:
             httpGet:
               path: /health
               port: 8000
+            initialDelaySeconds: 60
             periodSeconds: 10
-            failureThreshold: 30
+            timeoutSeconds: 5
+            failureThreshold: 120
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
+            initialDelaySeconds: 180
             periodSeconds: 30
-            failureThreshold: 5
+            timeoutSeconds: 5
+            failureThreshold: 20
           resources:
             requests:
               cpu: "2"
