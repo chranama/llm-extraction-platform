@@ -107,6 +107,10 @@ GATEWAY_PID_FILE="${PID_DIR}/gateway.pid"
 usage() {
   cat <<'EOF'
 Usage:
+  tools/joint/inference_gateway_stack.sh kind-up
+  tools/joint/inference_gateway_stack.sh kind-status
+  tools/joint/inference_gateway_stack.sh kind-smoke
+  tools/joint/inference_gateway_stack.sh kind-down
   tools/joint/inference_gateway_stack.sh preflight
   tools/joint/inference_gateway_stack.sh up
   tools/joint/inference_gateway_stack.sh status
@@ -122,7 +126,12 @@ Usage:
   tools/joint/inference_gateway_stack.sh verify-resilience
   tools/joint/inference_gateway_stack.sh verify-kind
 
-Supported shape:
+Promoted kind shape:
+  - LLMEP API server, worker, llama-server, gateway, OTel, and Jaeger in kind
+  - live CPU-only llama.cpp model runtime with host-mounted GGUF model
+  - no proof artifacts from kind-smoke
+
+Host evidence shape:
   - LLMEP API server on the host
   - LLMEP async extract worker on the host
   - LLMEP Postgres/Redis through the infra-host Compose profile
@@ -138,6 +147,7 @@ Common overrides:
   JOINT_RUN_TESTS=1
   JOINT_COMPOSE_PROJECT_NAME=llmep_joint_gateway
   JOINT_LLAMA_ENV_FILE=.env.docker
+  JOINT_KIND_ENV_FILE=.env.docker
 EOF
 }
 
@@ -2206,6 +2216,36 @@ PY
   echo "Joint kind artifacts: ${JOINT_KIND_ARTIFACT_DIR}"
 }
 
+run_gateway_kind_stack() {
+  PHASE2_KIND_WORKFLOW="${JOINT_KIND_WORKFLOW:-live}" \
+    PHASE2_KIND_ENV_FILE="${JOINT_KIND_ENV_FILE}" \
+    PHASE2_KIND_CLUSTER="${JOINT_KIND_CLUSTER}" \
+    "${ISG_REPO_ROOT}/proof/run_kind_stack.sh" "$@"
+}
+
+cmd_kind_up() {
+  need_cmd docker
+  need_cmd kind
+  need_cmd kubectl
+  ensure_docker_ready
+  run_gateway_kind_stack up
+}
+
+cmd_kind_status() {
+  need_cmd kubectl
+  run_gateway_kind_stack status
+}
+
+cmd_kind_smoke() {
+  need_cmd kubectl
+  need_cmd curl
+  run_gateway_kind_stack smoke
+}
+
+cmd_kind_down() {
+  run_gateway_kind_stack down
+}
+
 main() {
   local cmd="${1:-}"
   case "${cmd}" in
@@ -2222,6 +2262,10 @@ main() {
     verify-containerized) shift; cmd_verify_containerized "$@" ;;
     verify-containerized-llama) shift; cmd_verify_containerized_llama "$@" ;;
     verify-resilience) shift; cmd_verify_resilience "$@" ;;
+    kind-up) shift; cmd_kind_up "$@" ;;
+    kind-status) shift; cmd_kind_status "$@" ;;
+    kind-smoke) shift; cmd_kind_smoke "$@" ;;
+    kind-down) shift; cmd_kind_down "$@" ;;
     verify-kind) shift; cmd_verify_kind "$@" ;;
     ""|-h|--help|help) usage ;;
     *)

@@ -1,16 +1,38 @@
 # Runbook
 
-This runbook promotes a small set of supported runtime targets. The root
-`llmctl` commands start and verify the happy paths; normal tools such as
-`docker compose`, `kubectl`, `curl`, and the proof scripts remain the preferred
-inspection tools.
+This runbook promotes a small set of supported runtime targets. The promoted
+joint path runs LLMEP and `inference-serving-gateway` together in a local
+`kind` cluster with a live CPU-only `llama.cpp` model server. It verifies the
+running system without generating proof artifacts.
 
-Use [`operations.md`](operations.md) for runtime concepts and failure modes.
+Use [`operations.md`](operations.md) for runtime concepts and failure modes, and
+[`runtime-setup.md`](runtime-setup.md) for local hardware, model, and AWS prep.
+
+## Promoted Joint Kind Path
+
+From the LLMEP repository root:
+
+```bash
+tools/joint/inference_gateway_stack.sh kind-up
+tools/joint/inference_gateway_stack.sh kind-status
+tools/joint/inference_gateway_stack.sh kind-smoke
+tools/joint/inference_gateway_stack.sh kind-down
+```
+
+This path starts the local Kubernetes-shaped stack, checks service state, runs
+sync and async extraction through the gateway with a live model, and shuts down
+the applied resources. It leaves the kind cluster itself intact and does not
+write proof artifacts.
+
+Use this path for routine reviewer walkthroughs and technical interview
+presentation. Use the evidence workflows later in this runbook when you need to
+regenerate artifact bundles.
 
 ## Supported Runtime Targets
 
 | Target | Runtime Shape | Model Backend | What It Proves | What It Does Not Prove |
 |---|---|---|---|---|
+| Joint Kind Live Llama | Local kind deployment using LLMEP, gateway, worker, OTel/Jaeger, and llama-server resources | CPU-only containerized `llama.cpp` with a host-mounted GGUF model | Kubernetes-shaped joint deployment with real model-backed sync/async extraction, gateway forwarding, traces, logs, and model-runtime state | Accelerated inference, production throughput, cloud ingress, AWS, TLS, or production HA |
 | Reviewer Smoke | API server plus local Compose infra | Fake deterministic backend | API startup, health/readiness, schemas, generate, sync extract, and basic auth/gating with low runtime variability | Real model quality or model-serving performance |
 | Compose Extract | API server, Postgres, Redis, worker, and llama-server in Docker Compose | CPU-only containerized `llama.cpp` serving SmolLM2 | Real model-backed generate/extract, sync extract, async extract, durable job state, policy/capability surfaces, and traceable runtime behavior | Accelerated inference, production throughput, GPU scheduling, or high availability |
 | External Model Runtime | Containerized API server calls a model runtime outside the server container | Host `llama.cpp` or Docker-managed model runtime | Production-relevant model-serving boundary and external backend integration | Fully containerized accelerated inference on Docker for Mac |
@@ -20,7 +42,6 @@ Use [`operations.md`](operations.md) for runtime concepts and failure modes.
 | Joint Containerized Stack | LLMEP API/worker containers, gateway container, and Compose infra | Fake deterministic backend | Same local Compose network for backend, worker, gateway, Postgres, and Redis | Real model quality or production orchestration |
 | Joint Containerized Live Llama | LLMEP API/worker containers, gateway container, llama.cpp container, and Compose infra | CPU-only containerized `llama.cpp` | Real model-backed sync and async extraction through a fully containerized local joint stack | Accelerated inference, production throughput, cloud ingress, or high availability |
 | Joint Resilience | LLMEP API/worker containers, gateway container, Postgres, and Redis with controlled interruptions | Fake deterministic backend | Bounded local failure behavior, observable degradation, and recovery after component restart | High availability, autoscaling, zero downtime, or cloud failover |
-| Joint Kind Live Llama | Local kind deployment using LLMEP, gateway, worker, OTel/Jaeger, and llama-server resources | CPU-only containerized `llama.cpp` with a host-mounted GGUF model | Kubernetes-shaped joint deployment with real model-backed sync/async extraction, gateway forwarding, traces, logs, and model-runtime artifacts | Accelerated inference, production throughput, cloud ingress, AWS, TLS, or production HA |
 | Kubernetes Smoke | Local `kind` deployment | Fake generate-only backend | Kubernetes deployability, readiness, services, and extract-disabled capability gating | Full extraction workflow or real model serving |
 | Policy/Eval Linkage | Host proof server with Postgres/Redis and generated eval fixtures | Fake deterministic backend | Eval artifact to policy decision flow, admin policy reload, and runtime extract allow/deny behavior | Model quality or full evaluation dataset coverage |
 | Admin/Trace | Host proof server with Postgres/Redis and async worker | Fake deterministic backend | Admin trace inspection for sync and async extract, including worker lineage | Distributed tracing export or external telemetry compliance |
@@ -53,7 +74,7 @@ For the joint live kind workflow, the same `.env.docker` model settings are
 used by the gateway repository's kind harness. `LLAMA_MODELS_DIR` is mounted
 into the kind control-plane node at `/models` when the cluster is created. If
 the `llm` kind cluster already exists without that mount, delete and recreate
-the cluster before running `verify-kind`.
+the cluster before running the promoted kind workflow.
 
 ## Preflight
 
@@ -214,43 +235,40 @@ model runtime lifecycle is external to this repository.
 
 Use this path to run LLMEP behind the companion `inference-serving-gateway`
 checkout. This target is owned by LLMEP because the backend owns API contracts,
-worker state, policy behavior, admin traces, and the integrated proof artifacts.
+worker state, policy behavior, admin traces, and the integrated runtime
+contract.
 
 Run:
 
 ```bash
-tools/joint/inference_gateway_stack.sh preflight
-tools/joint/inference_gateway_stack.sh up
-tools/joint/inference_gateway_stack.sh status
-tools/joint/inference_gateway_stack.sh proof
-tools/joint/inference_gateway_stack.sh down
+tools/joint/inference_gateway_stack.sh kind-up
+tools/joint/inference_gateway_stack.sh kind-status
+tools/joint/inference_gateway_stack.sh kind-smoke
+tools/joint/inference_gateway_stack.sh kind-down
 ```
 
-Use `tools/joint/inference_gateway_stack.sh verify` to run startup, proof
-generation, and shutdown as one sequence.
+This is the promoted joint happy path. It does not generate artifacts.
 
-Named joint workflows:
+## Evidence Workflows
+
+Use these commands when you need to regenerate proof bundles for a specific
+claim:
 
 ```bash
+tools/joint/inference_gateway_stack.sh verify-kind
+tools/joint/inference_gateway_stack.sh verify
 tools/joint/inference_gateway_stack.sh verify-observability
 tools/joint/inference_gateway_stack.sh verify-edge-controls
 tools/joint/inference_gateway_stack.sh verify-llama
 tools/joint/inference_gateway_stack.sh verify-containerized
 tools/joint/inference_gateway_stack.sh verify-containerized-llama
 tools/joint/inference_gateway_stack.sh verify-resilience
-tools/joint/inference_gateway_stack.sh verify-kind
 ```
 
-The default workflow uses the deterministic `gateway-proof` model profile.
-`verify-llama` uses the promoted CPU-only Compose extract path with
-containerized `llama.cpp`. `verify-containerized` runs LLMEP and the gateway as
-containers on one Compose network. `verify-containerized-llama` combines those
-two dimensions by running LLMEP, the worker, the gateway, and `llama.cpp` as
-containers on one Compose network. `verify-resilience` interrupts the
-containerized fake-backend joint stack to capture degradation and recovery
-behavior. `verify-kind` runs the promoted Kubernetes-shaped local path with a
-live CPU-only `llama.cpp` model server in kind, then leaves the kind cluster
-intact while deleting applied resources.
+`verify-kind` generates the live kind evidence bundle. The other named
+workflows remain available for deterministic compatibility checks, observability
+surface evidence, edge controls, Compose live-model extraction, containerized
+runtime shape, and resilience proof.
 
 For the older deterministic Kubernetes smoke path, run:
 

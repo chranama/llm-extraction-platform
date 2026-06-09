@@ -1,19 +1,35 @@
 # Inference Gateway Integration
 
 These workflows run `llm-extraction-platform` behind the companion
-`inference-serving-gateway` repository. They show how the backend behaves when
-it sits behind an inference edge service across deterministic, live-model,
-edge-control, containerized, and Kubernetes-shaped targets.
+`inference-serving-gateway` repository. The promoted workflow is a live-model
+local kind deployment that can be started, smoked, and shut down without
+generating proof artifacts.
 
 The gateway repository keeps its isolated mock-upstream workflows. This document
 is the canonical place for the combined LLMEP plus gateway workflow because the
 backend owns the API contract, worker lifecycle, policy behavior, admin traces,
-and generated proof artifacts.
+and generated proof artifacts when an explicit evidence workflow is requested.
+
+## Promoted Workflow
+
+From the LLMEP repository root:
+
+```bash
+tools/joint/inference_gateway_stack.sh kind-up
+tools/joint/inference_gateway_stack.sh kind-status
+tools/joint/inference_gateway_stack.sh kind-smoke
+tools/joint/inference_gateway_stack.sh kind-down
+```
+
+This starts the local kind stack, verifies service state, runs sync and async
+extraction through the gateway with a live CPU-only `llama.cpp` backend, and
+deletes the applied resources. It does not write proof artifacts.
 
 ## Workflow Targets
 
-| Workflow | Command | Model Backend | Runtime Shape | Artifact Directory |
+| Workflow | Command | Model Backend | Runtime Shape | Artifact Output |
 |---|---|---|---|---|
+| Promoted live kind smoke | `kind-smoke` | CPU-only `llama.cpp` with a host-mounted GGUF model | Local kind cluster with LLMEP API/worker, llama-server, gateway, OTel, and Jaeger resources | None |
 | Deterministic baseline | `verify` | Fake deterministic profile | Host API/worker, Compose infra, host gateway | `proof/artifacts/joint_gateway/latest/` |
 | Observability surface | `verify-observability` | Fake deterministic profile | Host API/worker, Compose infra/obs/OTel, host gateway | `proof/artifacts/joint_gateway/observability_latest/` |
 | Edge controls | `verify-edge-controls` | Fake deterministic profile | Host API/worker, Compose infra, restarted host gateway variants | `proof/artifacts/joint_gateway/edge_controls_latest/` |
@@ -23,8 +39,9 @@ and generated proof artifacts.
 | Resilience proof | `verify-resilience` | Fake deterministic profile | Containerized LLMEP API/worker/gateway/Postgres/Redis with controlled interruptions | `proof/artifacts/joint_gateway/resilience_latest/` |
 | Kind live llama | `verify-kind` | CPU-only `llama.cpp` with a host-mounted GGUF model | Local kind cluster with LLMEP API/worker, llama-server, gateway, OTel, and Jaeger resources | `proof/artifacts/joint_gateway/kind_live_latest/` |
 
+`verify-kind` is the artifact-producing version of the promoted live kind path.
 `verify` remains the compatibility alias for the original deterministic
-baseline. Use the named commands when presenting a specific workflow.
+baseline.
 
 ## Host Runtime Shape
 
@@ -94,20 +111,15 @@ It does not claim:
 - `/v1/generate` support through the gateway.
 - AWS, TLS, identity provider integration, or production ingress hardening.
 
-## Run
+## Evidence Workflows
 
-From the LLMEP repository root:
+To generate proof artifacts for the promoted kind path:
 
 ```bash
-tools/joint/inference_gateway_stack.sh preflight
-tools/joint/inference_gateway_stack.sh up
-tools/joint/inference_gateway_stack.sh status
-tools/joint/inference_gateway_stack.sh proof
-tools/joint/inference_gateway_stack.sh down
+tools/joint/inference_gateway_stack.sh verify-kind
 ```
 
-To start the deterministic stack, generate proof artifacts, and shut it down in
-one command:
+To start the deterministic stack, generate proof artifacts, and shut it down:
 
 ```bash
 tools/joint/inference_gateway_stack.sh verify
@@ -137,7 +149,7 @@ Set `ISG_REPO_ROOT` when the gateway checkout lives elsewhere:
 
 ```bash
 ISG_REPO_ROOT=/path/to/inference-serving-gateway \
-  tools/joint/inference_gateway_stack.sh up
+  tools/joint/inference_gateway_stack.sh kind-up
 ```
 
 ## Useful Overrides
@@ -215,9 +227,9 @@ oversized request, invalid backend auth, and gateway metrics.
 
 ### Live llama.cpp Extract
 
-`verify-llama` starts LLMEP's promoted Compose extract stack with CPU-only
-containerized `llama.cpp`, then places the host gateway in front of that API.
-It requires the same prerequisites as `compose-extract`, including
+`verify-llama` starts LLMEP's Compose extract stack with CPU-only containerized
+`llama.cpp`, then places the host gateway in front of that API. It requires the
+same prerequisites as `compose-extract`, including
 `LLAMA_MODELS_DIR`, `LLAMA_MODEL_FILE`, and a local GGUF model file.
 
 The model runtime is containerized, but it is CPU-only. This path demonstrates

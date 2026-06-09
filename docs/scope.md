@@ -14,8 +14,8 @@ workflows. It is intentionally bounded.
 - Local Docker, compose, and Kubernetes-oriented deployment assets.
 - CI-backed unit, integration, UI, and repo-level tests.
 - Runtime evidence artifacts for selected behavior paths.
-- CPU-only model-backed extraction through the promoted Compose `llama.cpp`
-  path.
+- CPU-only model-backed extraction through the promoted joint kind path and the
+  supporting Compose `llama.cpp` path.
 - Local admin, trace, UI, observability, and proxy inspection surfaces.
 
 ## Out Of Scope
@@ -37,10 +37,12 @@ policy, deployment, and runtime evidence. The documentation and tests should mak
 those boundaries easy to inspect without presenting the project as a
 production-operated service.
 
-The promoted real-model local path is the Compose extract target: API server,
-Postgres, Redis, worker, and a CPU-only containerized `llama.cpp` backend. That
-path demonstrates extraction correctness and runtime boundaries, not model
-serving throughput. Host or Docker-managed model runtimes are treated as
+The promoted real-model local path is the joint kind target: LLMEP API, worker,
+gateway, OTel/Jaeger resources, and a CPU-only `llama.cpp` backend running in a
+local Kubernetes-shaped cluster. That path demonstrates extraction correctness,
+runtime boundaries, and gateway integration, not model-serving throughput. The
+Compose extract target remains a supporting local proof for the backend service
+without the gateway. Host or Docker-managed model runtimes are treated as
 external model-boundary checks. The policy/eval, admin/trace, and ops-surface
 paths demonstrate local inspection and control behavior around that runtime
 surface.

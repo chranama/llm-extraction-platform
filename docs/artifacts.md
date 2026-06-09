@@ -2,6 +2,10 @@
 
 The repository keeps stable runtime evidence under `proof/`.
 
+The promoted local walkthrough is the non-artifact joint kind smoke in the
+runbook. Use the artifact workflows when you need saved evidence for review,
+CI validation, or before/after comparison.
+
 ## Main Files
 
 - `proof/evidence_contract.schema.json`: schema for the evidence manifest.
@@ -10,14 +14,15 @@ The repository keeps stable runtime evidence under `proof/`.
 - `proof/artifacts/`: saved outputs from the current runtime evidence bundle.
 - `proof/validate_evidence_manifest.py`: validates the current bundle.
 - `proof/generate_canonical_manifest.py`: regenerates the bundle.
-- `proof/generate_compose_llama_extract_proof.py`: runs the promoted Compose
-  extract path with containerized `llama.cpp` and writes phase 8 artifacts.
+- `proof/generate_compose_llama_extract_proof.py`: runs the Compose extract
+  path with containerized `llama.cpp` and writes phase 8 artifacts.
 - `proof/generate_policy_eval_linkage_proof.py`: runs the eval-to-policy
   linkage proof and writes phase 9 artifacts.
 - `proof/generate_ops_surface_proof.py`: runs the API/UI/observability/proxy
   proof and writes phase 10 artifacts.
 - `tools/joint/inference_gateway_stack.sh`: runs the LLMEP plus
-  `inference-serving-gateway` joint workflow and writes joint gateway artifacts.
+  `inference-serving-gateway` joint workflows. The promoted kind smoke path
+  does not write artifacts; explicit `verify-*` commands write evidence bundles.
 
 ## Validate Current Artifacts
 
@@ -46,9 +51,9 @@ python proof/generate_compose_llama_extract_proof.py
 ```
 
 This command requires `.env.docker` or `PHASE8_ENV_FILE` to point at a local
-GGUF model. It starts the promoted Compose extract path with CPU-only
-containerized `llama.cpp`, verifies generate, sync extract, and async extract,
-captures logs, and writes `phase8_compose_llama_extract/`.
+GGUF model. It starts the Compose extract path with CPU-only containerized
+`llama.cpp`, verifies generate, sync extract, and async extract, captures logs,
+and writes `phase8_compose_llama_extract/`.
 
 ## Artifact Groups
 
